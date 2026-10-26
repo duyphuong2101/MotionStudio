@@ -13,6 +13,8 @@ const THREE_FILES = {
   'GLTFLoader.js': 'examples/jsm/loaders/GLTFLoader.js',
   'BufferGeometryUtils.js': 'examples/jsm/utils/BufferGeometryUtils.js',
   'SkeletonUtils.js': 'examples/jsm/utils/SkeletonUtils.js',
+  // The studio room the model scene's image-based lighting is built from; it imports 'three' only.
+  'RoomEnvironment.js': 'examples/jsm/environments/RoomEnvironment.js',
 };
 
 export function copyThree(dir) {

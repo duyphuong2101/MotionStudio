@@ -134,9 +134,12 @@ export function versionBase(seq) {
   return t || seq.id;
 }
 
-/** The next free "<base> v<N>.mp4" in a folder: one more than the highest version there. */
-export function nextVersionFile(dir, base) {
-  let n = 0;
+/**
+ * The next free "<base> v<N>.mp4" in a folder: one more than the highest version there, or than `floor` (the last
+ * version the sequence recorded) when that is higher, so a version number never comes back after files are renamed or removed.
+ */
+export function nextVersionFile(dir, base, floor = 0) {
+  let n = Math.max(0, Number(floor) || 0);
   const pre = `${base} v`;
   for (const f of exists(dir) ? fs.readdirSync(dir) : []) {
     if (!f.startsWith(pre) || !f.endsWith('.mp4')) continue;
@@ -636,14 +639,16 @@ export async function renderSequence(project, id, by = 'engine') {
   const dir = seqDir(project, id);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = path.join(dir, 'final.part.mp4');
-  setSequenceStatus(project, id, { status: 'rendering', error: null, outputs: null }, 'render started', by);
+  const was = getSequenceStatus(project, id);
+  const floor = Math.max(Number(was.lastVersion) || 0, Number(was.outputs?.version) || 0);
+  setSequenceStatus(project, id, { status: 'rendering', error: null, outputs: null, lastVersion: floor }, 'render started', by);
   const t0 = Date.now();
   try {
     const size = formatSize(seq.format);
     const parts = await probedParts(project, seq);
     const fps = cfg.render.fps;
     const { plan, bed } = await runJoin(project, seq, parts, (out) => sequencePlan({ parts, transition: seq.transition, transitions: seq.transitions, fps, crf: cfg.render.crf, size, out }), tmp, cfg);
-    const { file: final, version } = nextVersionFile(dir, versionBase(seq));
+    const { file: final, version } = nextVersionFile(dir, versionBase(seq), floor);
     fs.renameSync(tmp, within(dir, final));
     const srt = joinCaptions(parts.map((p, i) => ({ srt: p.captions ? fs.readFileSync(p.captions, 'utf8') : '', start: plan.starts[i], duration: p.duration })));
     const captions = path.join(dir, 'captions.srt');
@@ -651,7 +656,7 @@ export async function renderSequence(project, id, by = 'engine') {
     const qa = await qaFile(dir, final, 'qa.json', { width: size.width, height: size.height, fps, duration: plan.duration, silent: !bed && !parts.some((p) => p.hasAudio), format: seq.format });
     const secs = round((Date.now() - t0) / 1000, 1);
     return setSequenceStatus(project, id, {
-      status: 'done',
+      status: 'done', lastVersion: version,
       outputs: {
         final, version, captions: srt ? 'captions.srt' : null, width: size.width, height: size.height, fps, duration: plan.duration,
         transition: seq.transition, transitions: plan.transitions, ...(bed ? { musicBed: true } : {}), parts: parts.map((p, i) => ({ id: p.id, template: p.template, start: plan.starts[i], duration: round(p.duration), transition: i ? plan.transitions[i - 1] : null })), renderSeconds: secs, qa,

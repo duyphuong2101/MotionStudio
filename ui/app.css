@@ -262,7 +262,7 @@ p.small{margin:0 0 8px}
 html[data-review] :is(#new-proj, #new-brief, #new-seq, #director, #d-edit, #d-dup, #d-del, [data-act], [data-copy], [data-dir],
   #src-add, [data-del], [data-useshot], .addrow, [data-move], [data-todraft], [data-dup], .savebar, #br-addfont, [data-frm], .uplist,
   #sq-render, .sq-preview, #sq-edit, #sq-del, [data-usetpl], #br-addcolor, #br-vprev, [data-prm], [data-trun], [data-adel], [data-idel], [data-shots],
-  .drop, label:has(#br-replace), label:has(#br-ireplace), #br-gen, h3:has(+ #br-gen), .danger){display:none !important}
+  .drop, label:has(#br-replace), label:has(#br-ireplace), #br-gen, h3:has(+ #br-gen), #br-banner, h3:has(+ #br-banner), .danger){display:none !important}
 
 /* Templates tab: three cards a row, each with a live sample in the project's brand */
 .tcards{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}

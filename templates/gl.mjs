@@ -5,8 +5,8 @@
 import { BACKDROPS, WIPES } from '../engine/brand.mjs';
 
 // Soft layers draw at a fraction of the frame and are scaled up: a gradient loses nothing and SwiftShader draws
-// a quarter of the pixels. Lit shapes keep the full size so their edges stay sharp.
-const SCALE = { mesh: 0.5, aurora: 0.5, flow: 0.75, shapes: 1, liquid: 0.5 };
+// a quarter of the pixels. Lit shapes keep the full size so their edges stay sharp. engine/banner.mjs draws at the same fractions.
+export const SCALE ={ mesh: 0.5, aurora: 0.5, flow: 0.75, shapes: 1, liquid: 0.5 };
 
 /** The WebGL layers a page draws, or null: none on a transparent overlay, and a wipe only where there is a cut. */
 export function glLayers(brand, transparent, sceneCount) {

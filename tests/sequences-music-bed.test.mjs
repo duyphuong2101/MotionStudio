@@ -200,3 +200,15 @@ test('a render file is named after the sequence title with a version, safe on ev
     assert.deepEqual(nextVersionFile(dir, 'Film'), { file: 'Film v11.mp4', version: 11 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// NSC award film, 2026-10-26: v8 existed, the folder was emptied, and the next render came out as "v1". The recorded last
+// version (`lastVersion` in the sequence status) is the floor, so a number never comes back.
+test('the next version never goes below the last recorded one, even when the folder lost its files', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-ver2-'));
+  try {
+    assert.deepEqual(nextVersionFile(dir, 'Film', 9), { file: 'Film v10.mp4', version: 10 });
+    fs.writeFileSync(path.join(dir, 'Film v12.mp4'), '');
+    assert.deepEqual(nextVersionFile(dir, 'Film', 9), { file: 'Film v13.mp4', version: 13 }, 'a higher file wins over the floor');
+    assert.deepEqual(nextVersionFile(dir, 'Film', 0), { file: 'Film v13.mp4', version: 13 });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

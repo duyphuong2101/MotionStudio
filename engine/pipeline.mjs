@@ -12,7 +12,7 @@ import {
 } from './jobs.mjs';
 import { iconsFor } from './icons.mjs';
 import { motionProfile } from './brand.mjs';
-import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts } from './script.mjs';
+import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, MAX_HOLD } from './script.mjs';
 import { estimateTiming, toSrt, sceneGaps, resolvePace } from './timing.mjs';
 import { buildMixed } from './mix.mjs';
 import { ttsProvider, speakScript, voiceFor, voiceProblem, sapiCulture, sameLanguage } from './tts.mjs';
@@ -175,7 +175,7 @@ export async function prepare(project, id, by = 'engine') {
     }
     // Footage clips set their scene's length; a motion scene's clip does only when it plays its own sound.
     const timed = clips.filter((c) => footage || c.hasAudio);
-    const fixed = timed.length ? Object.fromEntries(timed.map((c) => [c.id, c.seconds])) : null;
+    const fixed = timed.length ? Object.fromEntries(timed.map((c) => [c.id, round(c.seconds + (c.hold || 0), 3)])) : null;
     const tts = ttsProvider(brand);
     const beat = brief.cutOnBeat ? await musicBeat(project, brand) : null;
     const snap = beat?.grid ? beatSnap(beat.grid) : null;
@@ -360,7 +360,9 @@ async function sceneVideos(project, script) {
     // A clip that speaks with no voice line over it is captioned: from the typed `caption` when the scene has one
     // (timed on what is heard), else from what is heard.
     const speaks = sc.sound === true && info.hasAudio;
-    out.push({ id: sc.id, asset: sc.video, file, from, seconds: round(to - from, 3), hasAudio: speaks, hasVideo: true, fit: 'contain', text: '',
+    // `hold`: the scene runs this much past the clip, on its last frame (the kit's clip rule), before the cut.
+    const hold = Math.min(MAX_HOLD, Math.max(0, Number(sc.hold) || 0));
+    out.push({ id: sc.id, asset: sc.video, file, from, seconds: round(to - from, 3), hold, hasAudio: speaks, hasVideo: true, fit: 'contain', text: '',
       ...(speaks && !String(sc.vo || '').trim() ? { caption: true, typed: String(sc.caption || '').trim() } : {}) });
   }
   return out;

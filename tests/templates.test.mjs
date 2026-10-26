@@ -81,7 +81,9 @@ const PARTS_BASELINE = {
   // Updated 2026-10-23: a clip seek checks it reached its frame after the fallback wait (only the clip js changed).
   // Updated 2026-10-26: the diagram highlight tweens its colours from node to node (only the diagram js changed); the
   // video, flash and model baselines below moved with it.
-  explainer: { '16:9': '5c667b032386fb5463ddc73f14be2df1308b9d26', '1:1': '715390d823d1c3fb16f098eab580edaa562ffe1a', '9:16': '13421d3c2fd834e95acabb94b694de8aa34294d6', '4:5': '0274c64ecd6bcba1e5117a2c9093875d012fe577', '2:3': '0d99335569c669ec0dd2e8778573202f829e91e7', '21:9': '1ef3d50c62a48f5eaabaad3357b18f5f86a45a2f' },
+  // Updated 2026-10-26: the model scene gets studio lighting, a contact shadow, view/shadow/env fields and the reveal
+  // and detail spins (only MODEL_JS changed; NO_MODEL_BASELINE is untouched).
+  explainer: { '16:9': '96a3de55a13610f781bd6351f8bf81d594a0aee5', '1:1': '00072698000c618c280d6a4ec4a4a824eda88b1d', '9:16': '8d7e4293d57b60ebcb55b84f5c205a9c4ccf64c9', '4:5': 'e1f634022f9f13ba301136833a359a7d1d278ec3', '2:3': 'a42a65c8d7c4b2b0fcaae118dafdb44f2c37856d', '21:9': '60ac5a76a194340d9c7ff7f7fe9cd61bf0b6c6e1' },
   // Updated 2026-10-14 for the race and stripes kinds: the earlier scenes' markup is unchanged, only css and js were added.
   // Updated 2026-10-22: the line's end value sits right of its last point (the plot leaves a column for it) instead of
   // the chart's top-right corner.
@@ -122,7 +124,7 @@ test('explainer: a script without a flash scene builds the same page as before t
 // The explainer pages from before the model kind (PARTS_BASELINE of 2026-10-22): model css, js and three.js are
 // written only when a script holds a model scene, so every existing explainer page stays the same in every format.
 // Updated 2026-10-23: the sample's clip seek changed (see PARTS_BASELINE).
-const NO_MODEL_BASELINE = { '16:9': '1d5881151826564ea30bba80a804df78eb265043', '1:1': '07a7ea2a8514a1bb0ecc69b35c274837fceda52d', '9:16': 'c000b506cce2fc1c029c76cd053d5508b4799525', '4:5': '6d05bf7a8fb42bbcb23ddb6de49263e97e9f6371', '2:3': '40296d01c2ed81112626ccce6440abe999b84094', '21:9': '572379bc2ef593a20a67a46b449651f1ddf65b91' };
+const NO_MODEL_BASELINE = { '16:9': '27ff4df8e16509a76846be5d6ee128f3f28e6dfc', '1:1': '66c7bb3da7289b3c44bd7dacaf4553f21a88693f', '9:16': '0724b68ad0539eb0f491f9bddc57adfe8f4d95bd', '4:5': '22c251dc18dab81f3b619ddbf4062fffbda848d8', '2:3': 'e532a86242de0cba32fb7264a8c58dcb010c75c3', '21:9': 'f00b2a4769ead54f5367063f4f784e53cc355d52' };
 
 test('explainer: a script without a model scene builds the same page as before the model kind', async () => {
   const { dir, beats } = loadTemplate('explainer');

@@ -45,6 +45,59 @@ test('a shot scene needs at least one shot and at most four', () => {
   assert.ok(validateScript(uiStoryScript(b, Array(5).fill(shot())), b, { assets: ASSETS }).errors.includes('orders: at most 4 shots per scene'));
 });
 
+test('a shot cue must be one word of the scene voice line', () => {
+  const b = rules('ui-story');
+  const with3 = (cue, vo = 'Ship now, or skip a shipment.') => {
+    const s = uiStoryScript(b, [shot(), shot({ cue })]);
+    s.scenes[2].vo = vo;
+    return validateScript(s, b, { assets: ASSETS }).errors;
+  };
+  assert.deepEqual(with3('skip'), []);
+  assert.deepEqual(with3('Skip,'), [], 'case and punctuation do not matter');
+  assert.deepEqual(with3('cancel'), ['orders.shots[1]: cue "cancel" is not a word of the voice line']);
+  assert.deepEqual(with3('two words'), ['orders.shots[1]: cue must be one word of the voice line']);
+});
+
+// NSC award film, 2026-10-26: shots split the scene evenly, so a "skip" click came at a fixed third, not on the word.
+test('a cued shot starts as the voice says its word; uncued shots share the gaps; no cue keeps the even slots', async (t) => {
+  const { dir, beats } = loadTemplate('ui-story');
+  const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
+  const vo = 'Customers manage Auto-Ship themselves: ship now, edit a shipment, or skip one, and create a new one from a past order.';
+  const make = (shots) => { const s = uiStoryScript(beats, shots); s.scenes[2].vo = vo; return s; };
+  const plain = make([shot(), shot(), shot()]);
+  const cued = make([shot(), shot({ cue: 'skip' }), shot({ cue: 'create' })]);
+  const page = (script) => build({ brief: { format: '16:9' }, brand: BRAND, script, timing: estimateTiming(script, cfg.timing, 'en', beats.pace), size: sizeFor(beats, '16:9') });
+  const a = page(plain), b = page(cued);
+  assert.ok(!a.includes('const ws = words(sc.id), T = [];') && a.includes('const t0 = s + 0.15 + slot * k'), 'no cue: the even slots, unchanged');
+  assert.ok(b.includes('const ws = words(sc.id), T = [];') && b.includes('const t0 = T[k]'));
+  assert.match(b, /"cue":"skip"/);
+  // Run the scheduling in Node on the estimated words: the cued shots land just before their words.
+  const timing = estimateTiming(cued, cfg.timing, 'en', beats.pace);
+  const sc = timing.scenes.find((x) => x.id === 'orders'), ws = timing.words.filter((w) => w.scene === 'orders');
+  const body = b.slice(b.indexOf('const ws = words(sc.id), T = [];'), b.indexOf('sc.shots.forEach((sh, k) => {\n      const t0'));
+  const T = new Function('sc', 's', 'e', 'n', 'words', `${body}; return T;`)({ shots: [{}, { cue: 'skip' }, { cue: 'create' }] }, sc.start, sc.end, 3, () => ws);
+  const at = (w) => ws.find((x) => x.w.toLowerCase().replace(/[^a-z0-9]/g, '') === w).start;
+  assert.equal(T[0], sc.start + 0.15);
+  assert.ok(Math.abs(T[1] - (at('skip') - 0.3)) < 1e-9, `skip shot at ${T[1]}, word at ${at('skip')}`);
+  // Every shot keeps 1.2 s (here "skip" and "create" are 1.15 s apart, so it starts 0.05 s after its word's mark), and
+  // the last one keeps 1.2 s before the scene ends.
+  assert.ok(Math.abs(T[2] - Math.min(Math.max(at('create') - 0.3, T[1] + 1.2), sc.end - 1.2)) < 1e-9, `create shot at ${T[2]}, word at ${at('create')}`);
+  assert.ok(T[1] - T[0] >= 1.2 - 1e-9 && T[2] - T[1] >= 1.2 - 1e-9, `every shot gets 1.2 s: ${T}`);
+});
+
+// NSC award film, 2026-10-26: with the corner logo off, the title card drew the logo; the film wants it only at the end.
+test('a ui-story title card may leave the brand logo off; by default it keeps it', async () => {
+  const { dir, beats } = loadTemplate('ui-story');
+  const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
+  const brand = { ...BRAND, logo: 'logo.svg' };
+  const page = (more) => { const s = uiStoryScript(beats); Object.assign(s.scenes[0], more); return build({ brief: { format: '16:9' }, brand, script: s, timing: estimateTiming(s, cfg.timing, 'en', beats.pace), size: sizeFor(beats, '16:9') }); };
+  const intro = (html) => html.slice(html.indexOf('id="g-intro"'), html.indexOf('</div>', html.indexOf('class="t"')));
+  assert.match(intro(page({})), /brandlogo/);
+  assert.doesNotMatch(intro(page({ logo: false })), /brandlogo/);
+  const s = uiStoryScript(beats); s.scenes[0].logo = 'no';
+  assert.ok(validateScript(s, beats, { assets: ASSETS }).errors.includes('intro: logo must be true or false'));
+});
+
 test('ui-story adds ui-story.shot to a mix and its shots follow ui-story rules there', () => {
   const c = composeBeats(rules('explainer'), [rules('ui-story')]);
   assert.ok(c.sequence[1].kind.includes('ui-story.shot'));

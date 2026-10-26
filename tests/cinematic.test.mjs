@@ -72,7 +72,8 @@ test('brand.motion takes standard or cinematic; only cinematic is stored', () =>
 // profile refactor (plan motion-presets, T1), re-recorded on 2026-10-26 for the cut veil (every template) and the
 // diagram highlight tween (explainer). The same brand and timing as PARTS_BASELINE in templates.test.mjs.
 const CINE_BASELINE = {
-  explainer: { '16:9': '585f16a40174185b3ed5e447fa623d24e7d3dffc', '1:1': 'edaf7091fa2bf92d7718e36d8860c262edd50c73', '9:16': 'e00154c20ff132c6847635b2f47c9559cf431eb0', '4:5': '4702b65e1d6b9001cd976bbb0880b46112edd8b3', '2:3': '1bb5f103694cc93ef43da7147cd061d25422d626', '21:9': '268becc145c6c02dcd90ac7b5252f0f4cb938f70' },
+  // Explainer re-recorded 2026-10-26 for the model scene's studio lighting, shadow and new spins (MODEL_JS only).
+  explainer: { '16:9': '8d1685ecbaccb20ca75254218cc5eb3441927271', '1:1': '842a3ce6db8aa1a8994811cc2cab1df3a68bd257', '9:16': '0e33e32f41837bdd957afd2d45e1a3441244402a', '4:5': 'f6aa59743678374c8b4ad6e11f7c0fb98a2b759d', '2:3': '90469e5b93ca09d1a70f562dbd3e47a7fa67ba97', '21:9': '3ac6d0b191fc39dd640a36917e86e876a517bda0' },
   'data-story': { '16:9': '13bf0f66c84eef962a92cc935800ccc6f66faff6', '1:1': 'fa48b5c5d3f9fb15e13fd507c2dc09e4ce39743a', '9:16': '1d6f055c098fb2b2ca349f873a91986d983bde36', '4:5': '4011f406bbe8e0adcc9317781f5bb1f49e4204e8', '2:3': '71fcea9aed8bf09d7ec1485e1275be1f772b2df5', '21:9': '47d496c333a80adcb50a1a8594adb191aa97ba92' },
   testimonial: { '9:16': '9c37f912046d00751aefdac80a9881a89fcc34ef', '1:1': '3424e497f1423edb6813bafb2e5c898b7e80039b', '16:9': '50ba7d60ae8656936d93978fe8ee90b2b6e6e2eb', '4:5': '0e61e29c107b9a7e518620ca894b2e8a877cd76c', '2:3': 'cb920da641071558bb124ba76c9f788821219e09', '21:9': 'f2cf16786093965ddce127d939a93f4d4f51338a' },
   event: { '9:16': '3bd7f313bcdf509df98e8d0f6ca400f8b300a708', '1:1': '417fa6d6d66247e8aae26c10135ef7cb93a64595', '16:9': '1076b0cd21779ae0f34fc2434c967508c5f8eae5', '4:5': '514e3e30ce5f426f4ae6c87bdf1bce96dd3409fc', '2:3': 'c4148d58fefb831cb7b7dcd93098c7cfbee273e0', '21:9': 'b22f10e906ba30d39165a4912aa5090e0bceb792' },
@@ -215,6 +216,17 @@ test('flash items are 2-12 strings of at most 40 characters; title and theme are
   assert.match(errs({ title: 'x'.repeat(45) }), /title is 45 chars, limit 44/);
 });
 
+// A radio bite of 1.9 s cut away as soon as it ended (NSC a1 `king`, 2026-10-26): `hold` keeps the last frame a moment.
+test('a sound clip may hold its last frame for up to 3 s after the clip ends', () => {
+  const { beats } = loadTemplate('explainer');
+  const errs = (patch) => validateScript({ scenes: [S('k', 'video', { title: 'King', video: 'king.mp4', sound: true, vo: '', ...patch })] }, beats, { assets: ['king.mp4'] }).errors.filter((e) => !/at position \d/.test(e)).join(' | ');
+  assert.equal(errs({ hold: 0.7 }), '');
+  assert.equal(errs({ hold: '1' }), '');
+  assert.match(errs({ hold: 4 }), /hold must be 0 to 3 seconds/);
+  assert.match(errs({ hold: -1 }), /hold must be 0 to 3 seconds/);
+  assert.ok(beats.fields.video.optional.includes('hold'));
+});
+
 test('flash shows one large item at a time over the voice line, then lands the title; its code is written only when used', async () => {
   for (const brand of [STD_AWARD, AWARD]) {
     const html = await render('explainer', [S('open', 'title', { title: 'Hi' }), FLASH], brand);
@@ -242,8 +254,9 @@ test('a flash item shows as the voice says its first word; items the voice does 
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, 'vendor'));
   for (const f of ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js']) fs.copyFileSync(path.join(gsapDir, f), path.join(dir, 'vendor', f));
-  const named = S('d', 'flash', { kicker: 'Delivered', items: ['Auto-Ship · skip & pause', 'Easy Create Order page', 'USPS API migration'], vo: 'Auto-Ship, from past orders to skip and pause, and now the easy Create Order page, then the USPS API migration.' });
-  const scenes = [S('open', 'title', { title: 'Hi' }), named, FLASH];
+  const named = S('d', 'flash', { kicker: 'Delivered', items: ['Auto-Ship · skip & pause', 'Easy Create Order page', 'USPS API migration'], title: 'Shipped.', vo: 'Auto-Ship, from past orders to skip and pause, and now the easy Create Order page, then the USPS API migration.' });
+  const spoken = S('d2', 'flash', { kicker: 'Delivered', items: ['Auto-Ship', 'Facebook Shop · live'], title: 'Shipped, sprint by sprint.', vo: 'Auto-Ship, skip and pause, and Facebook Shop, live. Shipped, sprint by sprint.' });
+  const scenes = [S('open', 'title', { title: 'Hi' }), named, spoken, FLASH];
   const { beats } = loadTemplate('explainer');
   const sc = { lang: 'en', scenes };
   const timing = estimateTiming(sc, TIMING, 'en', beats.pace);
@@ -261,6 +274,16 @@ test('a flash item shows as the voice says its first word; items the voice does 
     assert.deepEqual(await vis(at('easy') + 0.3), [0, 1, 0], 'on "easy" the second item is in');
     assert.deepEqual(await vis(at('usps') - 0.2), [0, 1, 0]);
     assert.deepEqual(await vis(at('usps') + 0.3), [0, 0, 1], 'on "USPS" the third');
+    // The title is not said: it waits until the line is over (it came in mid-sentence, NSC a3, 2026-10-26).
+    const title = (x) => opened.page.evaluate((v) => { window.seek(v); return Math.round(+getComputedStyle(document.getElementById('d-ft')).opacity * 10) / 10; }, x);
+    const lastEnd = ws[ws.length - 1].end;
+    assert.equal(await title(lastEnd - 0.2), 0, 'no title while the voice still speaks');
+    assert.equal(await title(Math.min(lastEnd + 0.15, timing.scenes.find((x) => x.id === 'd').end - 0.6) + 0.6), 1, 'the title lands after the line');
+    // A title the voice says lands on its first word, after the last item.
+    const w2 = timing.words.filter((w) => w.scene === 'd2'), shipped = w2.find((w) => /^shipped/i.test(w.w)).start;
+    const title2 = (x) => opened.page.evaluate((v) => { window.seek(v); return Math.round(+getComputedStyle(document.getElementById('d2-ft')).opacity * 10) / 10; }, x);
+    assert.equal(await title2(shipped - 0.3), 0, 'not before "Shipped"');
+    assert.equal(await title2(shipped + 0.6), 1, 'in on "Shipped"');
     // The nine workstreams line names none of its items: the beats still spread over the line.
     const nine = timing.words.filter((w) => w.scene === 'work');
     const t4 = nine[Math.floor((4 / 10) * nine.length)].start;

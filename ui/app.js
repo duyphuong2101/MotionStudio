@@ -757,7 +757,7 @@ function paneScript(pane) {
   const pictures = d.assets.filter((a) => /\.(png|jpe?g|webp|svg)$/i.test(a));
   const images = footage ? d.assets.filter((a) => clipRe.test(a)) : pictures;
   const uploadHint = ` ${footage ? 'Upload clips' : 'Upload images'} in the Brand tab → Assets.`;
-  const JSON_FIELDS = new Set(['data', 'assistant', 'shots', 'items', 'parts', 'people', 'points', 'labels', 'before', 'after', 'periods', 'series', 'values', 'lines', 'files', 'highlight', 'band', 'ref', 'photos']);
+  const JSON_FIELDS = new Set(['data', 'assistant', 'shots', 'items', 'parts', 'people', 'points', 'labels', 'before', 'after', 'periods', 'series', 'values', 'lines', 'files', 'highlight', 'band', 'ref', 'photos', 'view']);
   // Code listings keep their line breaks and indentation, so they get a monospace text area.
   const BLOCK_FIELDS = new Set(['code', 'before', 'after']);
 
@@ -860,6 +860,7 @@ function paneScript(pane) {
     if (f === 'asset') return `<div class="f">${label}<select ${attrs}><option value="">(none)</option>${images.map((a) => `<option ${s.asset === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>${tip}</div>`;
     if (f === 'video') return `<div class="f">${label}<select ${attrs}><option value="">(none)</option>${d.assets.filter((a) => /\.(mp4|webm|mov)$/i.test(a)).map((a) => `<option ${s.video === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>${tip}</div>`;
     if (f === 'sound') return `<div class="f">${label}<label class="chk"><input ${attrs} type="checkbox" ${s.sound ? 'checked' : ''}> Play the clip's own sound</label>${tip}</div>`;
+    if (f === 'shadow') return `<div class="f">${label}<label class="chk"><input ${attrs} type="checkbox" ${s.shadow === false ? '' : 'checked'}> Soft shadow under the model</label>${tip}</div>`;
     if (f === 'image') return `<div class="f">${label}<select ${attrs}><option value="">(none)</option>${pictures.map((a) => `<option ${s.image === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>${tip}</div>`;
     if (f === 'source') return `<div class="f">${label}${sourceSelect(s, attrs)}${shotNote(s)}${tip}</div>`;
     if (enums[f]) return `<div class="f">${label}<select ${attrs}><option value="">(default)</option>${enums[f].map((n) => `<option value="${esc(n)}"${s[f] === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>${tip}</div>`;
@@ -1001,6 +1002,7 @@ function paneScript(pane) {
     else if (f === 'stat.unit') s.stat = { ...(s.stat || {}), unit: el.value };
     else if (f === 'check') { if (el.checked) s.check = true; else delete s.check; }
     else if (f === 'sound') { if (el.checked) s.sound = true; else delete s.sound; }
+    else if (f === 'shadow') s.shadow = el.checked;
     else if (f === 'in' || f === 'out') { if (el.value === '') delete s[f]; else s[f] = Number(el.value); }
     else if (f === 'icon') {
       if (el.value) s.icon = el.value; else delete s.icon;
@@ -2392,6 +2394,8 @@ async function renderBrand() {
     return [...SUB_LOOKS, ...(s && !s.style ? [['custom', 'Custom box (brand.json)']] : [])]
       .map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('');
   };
+  const BACKDROP_NAMES = { mesh: 'Mesh gradient', aurora: 'Aurora', flow: 'Contour lines', shapes: '3D shapes' };
+  const bn = opts.banner;
   const subValue = (s, style, font) => style === 'custom' ? s : style ? { ...(s?.style ? s : {}), style, font } : undefined;
   const musicOptions = (sel) => `<option value="">(none)</option>
     <optgroup label="Built-in tracks">${opts.music.map((m) => `<option value="${esc(m.id)}" ${sel === m.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</optgroup>
@@ -2441,7 +2445,7 @@ async function renderBrand() {
       <span class="muted hint" id="br-carryhint">A short bar in the accent colour sits under each scene's kicker or heading and glides to the next one at every cut, so the film reads as one piece. Applies on the next prepare.</span></div>
     <div class="f"><label class="chk"><input type="checkbox" id="br-leaks" ${b.leaks ? 'checked' : ''} aria-describedby="br-leakshint"> Light leaks at cuts</label>
       <span class="muted hint" id="br-leakshint">A warm glow, with a touch of the accent colour, flares across the frame at every scene change and fades. Applies on the next prepare.</span></div>
-    <div class="grid2"><div class="f"><label for="br-backdrop">Backdrop (WebGL)</label><select id="br-backdrop" aria-describedby="br-gfxhint">${[['', 'None'], ['mesh', 'Mesh gradient'], ['aurora', 'Aurora'], ['flow', 'Contour lines'], ['shapes', '3D shapes']].map(([v, l]) => `<option value="${v}"${(b.backdrop || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="grid2"><div class="f"><label for="br-backdrop">Backdrop (WebGL)</label><select id="br-backdrop" aria-describedby="br-gfxhint">${[['', 'None'], ...Object.entries(BACKDROP_NAMES)].map(([v, l]) => `<option value="${v}"${(b.backdrop || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="f"><label for="br-wipe">Cut wipe (WebGL)</label><select id="br-wipe" aria-describedby="br-gfxhint">${[['', 'None'], ['liquid', 'Liquid wipe']].map(([v, l]) => `<option value="${v}"${(b.wipe || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
     <span class="muted hint" id="br-gfxhint">Drawn in the brand colours. The backdrop moves slowly behind every scene that has no background of its own; the wipe sweeps a band across the frame at every scene change. Applies on the next prepare.</span>
     <div class="grid2"><div class="f"><label for="br-substyle">Subtitles</label><select id="br-substyle" aria-describedby="br-subhint">${subOptions(b.subtitles)}</select></div>
@@ -2509,6 +2513,19 @@ async function renderBrand() {
     <div class="row"><button class="btn p" type="button" id="gen-go">Generate</button><span class="small" id="gen-status" role="status"></span></div>
     <div class="err" role="alert" id="gen-err"></div>` : '<p class="muted" style="margin:0">Restart npm run ui to enable generation.</p>'}</div>
 
+  <h3 style="margin-top:22px">Hero banner</h3>
+  <div class="gen" id="br-banner">
+    <p class="muted small" style="margin:0">A standalone web page with the backdrop moving in the saved brand colours, for a website hero. It opens in a new tab and is saved under out/${esc(project)}/_banner/. The button links to # until you set its link on your site.</p>
+    <div class="grid2"><div class="f"><label for="hb-backdrop">Backdrop</label><select id="hb-backdrop">${bn.backdrops.map((v) => `<option value="${esc(v)}"${(b.backdrop || 'mesh') === v ? ' selected' : ''}>${esc(BACKDROP_NAMES[v] || v)}</option>`).join('')}</select></div>
+      <div class="f"><label for="hb-size">Size</label><select id="hb-size">${bn.sizes.map((v) => `<option value="${esc(v)}">${esc(v.replace('x', ' × '))}</option>`).join('')}</select></div></div>
+    <div class="f"><label for="hb-headline">Headline (optional)</label><input id="hb-headline" maxlength="${bn.limits.headline}"></div>
+    <div class="f"><label for="hb-subline">Subline (optional)</label><input id="hb-subline" maxlength="${bn.limits.subline}"></div>
+    <div class="grid2"><div class="f"><label for="hb-button">Button text (optional)</label><input id="hb-button" maxlength="${bn.limits.button}"></div>
+      <div class="f" style="align-self:flex-end"><label class="chk"><input type="checkbox" id="hb-parallax"> Follow the pointer (parallax)</label></div></div>
+    <div class="row"><button class="btn p" type="button" id="hb-go">Export hero banner</button><span class="small" id="hb-status" role="status"></span></div>
+    <div class="err" role="alert" id="hb-err"></div>
+  </div>
+
   <h3 style="margin-top:22px">Icons · profiles/${esc(project)}/icons.json</h3>
   <p class="muted" style="margin:0 0 8px;max-width:80ch">Upload filled (solid) SVG icons. Each file becomes one shape that morphs into the others in beat, step, offer and CTA scenes. Outline-only icons are refused: outline the strokes before export. The file name becomes the icon name.</p>
   <div class="drop" id="br-idrop" tabindex="0" role="button" aria-label="Upload icons">
@@ -2529,6 +2546,25 @@ async function renderBrand() {
   </div>`;
 
   $('#br-del').addEventListener('click', () => openDeleteProject(project, b.name, assets.length));
+  $('#hb-go').addEventListener('click', async () => {
+    const go = $('#hb-go');
+    go.disabled = true;
+    $('#hb-err').textContent = '';
+    $('#hb-status').textContent = 'Building…';
+    try {
+      const r = await api(`/projects/${P}/banner`, { method: 'POST', body: {
+        backdrop: $('#hb-backdrop').value, size: $('#hb-size').value, headline: $('#hb-headline').value,
+        subline: $('#hb-subline').value, button: $('#hb-button').value, parallax: $('#hb-parallax').checked,
+      } });
+      if (!box.isConnected) return;
+      window.open(r.url, '_blank', 'noopener');
+      $('#hb-status').innerHTML = `Saved to <code>${esc(r.path)}</code> · <a href="${esc(r.url)}" target="_blank" rel="noopener">Open</a>`;
+    } catch (e) {
+      if (!box.isConnected) return;
+      $('#hb-status').textContent = '';
+      $('#hb-err').textContent = e.message;
+    } finally { go.disabled = false; }
+  });
   const markDirty = () => { if (S.brandDirty) return; S.brandDirty = true; $('#br-state').textContent = 'Unsaved changes'; };
   $('#brf').addEventListener('input', markDirty);
   $('#brf').addEventListener('change', markDirty);

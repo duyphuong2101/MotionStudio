@@ -40,6 +40,7 @@ import {
 import { clearPause as clearPauseFile } from './caps.mjs';
 import { keyEnvNames, loadKeysFromEnvFile } from './keys.mjs';
 import { templatePreview, previewFile } from '../engine/template-preview.mjs';
+import { writeBanner, bannerFile, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES, BANNER_LIMITS } from '../engine/banner.mjs';
 import { transitionPreview, transitionPreviewFile } from '../engine/transition-preview.mjs';
 import { COOKIE, lanInterface, newCode, codeMatches, cookieCode, reviewRoute, reviewPage } from './review.mjs';
 import {
@@ -269,6 +270,11 @@ function sendError(req, res, err, generic) {
 
 // Uploaded files are shown in the UI's own origin: never let one run script or be sniffed as HTML.
 const ASSET_HEADERS = { 'Content-Security-Policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox", 'X-Content-Type-Options': 'nosniff' };
+// A hero banner runs its own inline script, sandboxed to an opaque origin: it can draw, never reach /api.
+const BANNER_HEADERS = {
+  'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; sandbox allow-scripts",
+  'X-Content-Type-Options': 'nosniff',
+};
 
 function serveFile(req, res, file, extra = {}) {
   if (!exists(file) || !fs.statSync(file).isFile()) { res.writeHead(404).end(); return; }
@@ -430,6 +436,7 @@ async function api(req, res, url, review = false) {
       music: MUSIC.map(({ id, label }) => ({ id: `library:${id}`, label, url: `/api/music/${id}` })),
       sfx: SFX.map(({ id, label }) => ({ id, label, url: `/api/sfx/${id}` })),
       assetTypes: Object.keys(ASSET_TYPES), maxAssetMB: MAX_ASSET_BYTES / 1024 / 1024, maxVideoMB: MAX_VIDEO_BYTES / 1024 / 1024,
+      banner: { backdrops: BANNER_BACKDROPS, sizes: BANNER_SIZES, limits: BANNER_LIMITS },
     });
   }
   if (m === 'GET' && parts[0] === 'tts' && parts[1] === 'preview') {
@@ -650,6 +657,15 @@ async function api(req, res, url, review = false) {
       deleteIcon(project, decodeURIComponent(parts[3]));
       return send(res, 200, { ok: true });
     }
+    // Hero banner: a standalone WebGL page in the brand colours, built in this process. No child, no model.
+    if (m === 'POST' && parts[2] === 'banner' && parts.length === 3) {
+      const body = await readBody(req);
+      const file = writeBanner(project, {
+        backdrop: body.backdrop, ...(body.size ? parseBannerSize(body.size) : {}),
+        headline: body.headline, subline: body.subline, button: body.button, parallax: body.parallax,
+      });
+      return send(res, 201, { path: path.relative(ROOT, file).split(path.sep).join('/'), url: `/banner/${encodeURIComponent(project)}/${encodeURIComponent(path.basename(file))}` });
+    }
     if (m === 'PUT' && parts[2] === 'brand') {
       const body = await readBody(req);
       const brand = validateBrand(body.brand);
@@ -692,6 +708,10 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/files/')) return serveJobFile(req, res, url);
     if (url.pathname.startsWith('/tpreview/')) return servePreviewFile(req, res, url);
     if (url.pathname.startsWith('/xpreview/')) return serveTransitionPreview(req, res, url);
+    if (url.pathname.startsWith('/banner/')) {
+      const [, , project, ...rest] = url.pathname.split('/');
+      return serveFile(req, res, bannerFile(project, decodeURIComponent(rest.join('/'))), BANNER_HEADERS);
+    }
     if (url.pathname.startsWith('/assets/')) {
       const [, , project, name] = url.pathname.split('/');
       return serveFile(req, res, within(path.join(profileDir(project), 'assets'), decodeURIComponent(name || '')), ASSET_HEADERS);

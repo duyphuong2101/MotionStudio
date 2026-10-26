@@ -92,6 +92,14 @@ test('a bars unit sits after each value; without a unit the markup is unchanged'
   assert.doesNotMatch(plain, /<small/);
 });
 
+// NSC award film, 2026-10-26: the "%" after a green PEX value stayed black.
+test('a toned bars value colours its unit too; without a tone the unit markup is unchanged', () => {
+  const toned = parts({ brand: {}, script: { lang: 'en', scenes: [pex({ unit: '%', format: 'dec' })] }, size: { width: 1920, height: 1080 } }).body;
+  assert.match(toned, /<span class="tup"><b id="pex-bv0" class="tup" data-count="295"[^>]*>0<\/b><small[^>]*>%<\/small><\/span>/);
+  const plain = parts({ brand: {}, script: { lang: 'en', scenes: [pex({ unit: '%', format: 'dec', tone: undefined })] }, size: { width: 1920, height: 1080 } }).body;
+  assert.match(plain, /<span><b id="pex-bv0" data-count="295"[^>]*>0<\/b><small[^>]*>%<\/small><\/span>/);
+});
+
 const pex = (o) => ({ id: 'pex', kind: 'bars', vo: 'Both indices lead with My Account.', title: 'Commercial and Delivery PEX', format: 'pct', series: ['Commercial PEX', 'Delivery PEX'], tone: 'up', source: 'bullets[0]',
   items: [{ label: 'My Account', value: 295, value2: 210.5 }, { label: 'Klaviyo', value: 196.1, value2: 123.7 }, { label: 'AMAD, to end of August', value: 164.7, value2: 108.6 }], ...o });
 

@@ -26,6 +26,9 @@ function draftErrors(s) {
 }
 
 /** Returns { errors, warnings } for a script against a template's beats.json. */
+// A sound clip's scene may keep the last frame this long after the clip ends, so a short bite does not cut away at once.
+export const MAX_HOLD = 3;
+
 export function validateScript(script, beats, { assets = [], icons = ICON_NAMES } = {}) {
   const errors = [];
   const warnings = [];
@@ -102,6 +105,8 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
     }
     for (const f of ['in', 'out']) if (s[f] !== undefined && s[f] !== '' && !(Number(s[f]) >= 0)) errors.push(`${s.id}: ${f} must be a number of seconds`);
     if (s.sound !== undefined && typeof s.sound !== 'boolean') errors.push(`${s.id}: sound must be true or false`);
+    if (s.logo !== undefined && typeof s.logo !== 'boolean') errors.push(`${s.id}: logo must be true or false`);
+    if (s.hold !== undefined && s.hold !== '' && !(Number(s.hold) >= 0 && Number(s.hold) <= MAX_HOLD)) errors.push(`${s.id}: hold must be 0 to ${MAX_HOLD} seconds`);
     if (s.video && s.sound === true && wordsOf(s.vo).length) warnings.push(`${s.id}: the clip plays its own sound under the voice line; if the voice runs longer than the clip, the scene holds the clip's last frame until the voice ends`);
     if (s.shots !== undefined) errors.push(...validateShots(s, rules, assets));
     if (rules.data?.[kind]) errors.push(...validateData(s, kind, rules.data[kind]));
@@ -181,6 +186,12 @@ export function validateData(s, kind, d) {
     if (!Array.isArray(I) || I.length < d.items[0] || I.length > d.items[1]) errs.push(`${s.id}: items must list ${d.items[0]}-${d.items[1]} words or short phrases`);
     else I.forEach((x, i) => { if (!shortText(x, d.chars)) errs.push(`${s.id}.items[${i}]: text is required, at most ${d.chars} characters`); });
   }
+  // explainer model: an optional start pose, each number inside its range (templates/model3d.mjs VIEW_RANGE).
+  if (kind === 'model' && s.view !== undefined) {
+    const v = s.view, keys = Object.keys(d.view);
+    if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some((k) => !keys.includes(k))) errs.push(`${s.id}: view must be { "azimuth": 30, "elevation": 12, "zoom": 1 }, each key optional`);
+    else for (const [k, [lo, hi]] of Object.entries(d.view)) if (v[k] !== undefined && !(finite(v[k]) && v[k] >= lo && v[k] <= hi)) errs.push(`${s.id}: view.${k} must be a number from ${lo} to ${hi}`);
+  }
   // lifestyle gallery: a few photos dropped as prints, each with an optional short caption.
   if (kind === 'gallery') {
     const P = s.photos;
@@ -246,6 +257,11 @@ function validateShots(s, beats, assets) {
     }
     if (sh.cursor != null && (!num(sh.cursor.x) || !num(sh.cursor.y) || sh.cursor.x < 0 || sh.cursor.y < 0 || sh.cursor.x > W || sh.cursor.y > H)) errs.push(`${at}: cursor must be {x,y} inside the image`);
     if (sh.click && !sh.cursor) errs.push(`${at}: click needs a cursor position`);
+    if (sh.cue !== undefined) {
+      const key = (w) => String(w).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (typeof sh.cue !== 'string' || !key(sh.cue) || /\s/.test(sh.cue.trim())) errs.push(`${at}: cue must be one word of the voice line`);
+      else if (!wordsOf(s.vo).some((w) => key(w) === key(sh.cue))) errs.push(`${at}: cue "${sh.cue}" is not a word of the voice line`);
+    }
   });
   return errs;
 }

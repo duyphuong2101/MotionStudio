@@ -198,7 +198,7 @@ test('a brief takes a new format only where template and platform both allow it'
   assert.equal(validateBrief({ ...base, format: '2:3', platform: 'pinterest' }).platform, 'pinterest');
   assert.equal(validateBrief({ ...base, format: '21:9', platform: 'web' }).format, '21:9');
   assert.throws(() => validateBrief({ ...base, platform: 'tiktok' }), /TikTok takes 9:16, not 4:5/);
-  assert.throws(() => validateBrief({ ...base, template: 'product-demo' }), /supports formats: 9:16/);
+  assert.throws(() => validateBrief({ ...base, template: 'social-teaser' }), /supports formats: 9:16/);
 });
 
 test('geometry draws 4:5 square, 2:3 short portrait and 21:9 inside a centred 16:9 area', () => {

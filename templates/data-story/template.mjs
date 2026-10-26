@@ -90,7 +90,8 @@ export function parts({ brand, script, size }) {
       const max = Math.max(1, ...items.flatMap((x) => (two ? [num(x.value), num(x.value2)] : [num(x.value)])));
       const val = (bid, v) => {
         const b = `<b id="${bid}"${toneClass(sc) ? ` class="${toneClass(sc).trim()}"` : ''} data-count="${v}" data-format="${h(f)}" data-dec="${dec}">0</b>`;
-        return sc.unit ? `<span>${b}<small style="font-size:.7em;margin-left:.2em">${h(sc.unit)}</small></span>` : b;
+        // A toned value colours its unit too (the wrapper carries the tone), so "295.0%" reads as one green number.
+        return sc.unit ? `<span${toneClass(sc) ? ` class="${toneClass(sc).trim()}"` : ''}>${b}<small style="font-size:.7em;margin-left:.2em">${h(sc.unit)}</small></span>` : b;
       };
       // Two series: one colour per series, each item a pair of bars with its own value, and a legend above.
       // The label sits left of its pair, so three items take the height of three rows, not six.

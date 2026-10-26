@@ -5,7 +5,7 @@ import path from 'node:path';
 import { DIRS, readJson } from '../engine/core.mjs';
 import { ffmpeg, probeMedia, videoInfo } from '../engine/media.mjs';
 import {
-  validateClipOptions, clipName, cutTimes, shotsFromCuts, lastCrop, barsFrom, maskFrame, maskExpr, maskArgs, clipGraph, clipArgs, searchWords,
+  validateClipOptions, clipName, cutTimes, shotsFromCuts, lastCrop, barsFrom, maskFrame, maskExpr, maskArgs, clipGraph, clipArgs, tempo, searchWords,
   footageDir, footageImage, clipSidecar, analyseFootage, findWords, makeClip, previewFrame, forgetFootage, rhythmOf,
 } from '../engine/footage.mjs';
 
@@ -22,7 +22,7 @@ const opts = (o = {}) => validateClipOptions({ in: 1, out: 4, ...o }, INFO, 120)
 
 test('clip options get defaults and their stored shape', () => {
   assert.deepEqual(opts(), {
-    in: 1, out: 4, crop: null, band: null, fill: 'cover', blurRegions: [], keep: null, gainDb: 0, mute: false, width: 1920, height: 1080,
+    in: 1, out: 4, crop: null, band: null, fill: 'cover', blurRegions: [], keep: null, gainDb: 0, mute: false, speed: 1, width: 1920, height: 1080,
   });
   const o = opts({ in: '2.5', out: '10.03', band: { bottom: '12' }, gainDb: -4.5, mute: true, width: 1080, height: 1920, fill: 'blur-fill' });
   assert.equal(o.in, 2.5);
@@ -43,7 +43,7 @@ test('clip options outside the source are refused with a message that says what 
     [{ blurRegions: Array.from({ length: 9 }, () => ({ x: 0, y: 0, w: 10, h: 10 })) }, /At most 8 blur regions/],
     [{ blurRegions: 'all' }, /list of rectangles/],
     [{ keep: { cx: 2000, cy: 500, rx: 100, ry: 100 } }, /kept ellipse/], [{ keep: { cx: 960, cy: 500, rx: 2, ry: 100 } }, /kept ellipse/],
-    [{ gainDb: 13 }, /Gain must be from -24 to \+12 dB/], [{ gainDb: -25 }, /Gain/],
+    [{ gainDb: 13 }, /Gain must be from -24 to \+12 dB/], [{ gainDb: -25 }, /Gain/], [{ speed: 5 }, /Speed must be from 0.25 to 4/], [{ speed: 0.1 }, /Speed/], [{ speed: 'fast' }, /speed must be a number/],
     [{ band: { bottom: 50 } }, /percentages from 0 to 45/], [{ width: 1919 }, /width must be an even number/], [{ height: 4000 }, /height/],
   ];
   for (const [o, re] of bad) assert.throws(() => opts(o), re, JSON.stringify(o));
@@ -118,6 +118,22 @@ test('clip graphs: cover with a caption band, blur-fill, masked blur, sound', ()
   assert.ok(masked.startsWith('[0:v]split[src][soft];[soft]boxblur=24:3[bl];[bl][1:v]alphamerge[bm];[src][bm]overlay=0:0:shortest=1[sharp];[sharp]scale='), masked);
   assert.ok(masked.endsWith('[0:a:0]volume=-4.5dB[a]'));
   assert.ok(!clipGraph(opts({ mute: true }), INFO).includes('[a]'), 'muted: no audio chain');
+});
+
+// A faster clip: setpts drops frames and atempo keeps the pitch; the output lasts the span over the speed (11 s at 2x is 5.5 s).
+test('clip speed: setpts and atempo in the graph, the output length divided by the speed', () => {
+  assert.equal(tempo(1), '');
+  assert.equal(tempo(2), ',atempo=2');
+  assert.equal(tempo(4), ',atempo=2,atempo=2');
+  assert.equal(tempo(3), ',atempo=2,atempo=1.5');
+  assert.equal(tempo(0.25), ',atempo=0.5,atempo=0.5');
+  const fast = opts({ in: 1, out: 10, speed: 2 });
+  assert.ok(clipGraph(fast, INFO).includes('crop=1920:1080,setpts=PTS/2,setsar=1,format=yuv420p[v]'));
+  assert.ok(clipGraph(fast, INFO).endsWith('[0:a:0]volume=0dB,atempo=2[a]'));
+  const a = clipArgs(fast, INFO, { src: 's.mp4', out: 'o.mp4' });
+  assert.deepEqual(a.slice(0, 6), ['-y', '-ss', '1', '-t', '9', '-i'], 'the source span is read in full');
+  assert.equal(a[a.lastIndexOf('-t') + 1], '4.5', 'the output lasts half the span');
+  assert.ok(!clipGraph(opts(), INFO).includes('setpts') && !clipGraph(opts(), INFO).includes('atempo'), 'speed 1 changes nothing');
 });
 
 test('clip arguments: seek, encode settings, sound or -an, one-frame preview', () => {

@@ -29,7 +29,8 @@
 | `loudness.mjs` | Loudness match for clip sound: `LOUDNESS_DEFAULTS`, `voicedSpans` (words → spans), `measureFilter`, `parseEbur128`, `measureLoudness` (ebur128 on voiced spans), `matchGains` (gain toward the voice-over or the clips' median; tolerance, clamp, peak headroom), `clipGains` |
 | `media.mjs` | `BT709_VF` / `BT709_TAGS` (colour for every encode), `ffmpeg`, `ffmpegReport`, `probeMedia` (duration, sound, `width`/`height`/`fps` via `videoInfo`), `openComposition` (headless Chrome; SwiftShader for a page with `data-gl`, `usesGl`; `inject` serves a render script inside the page, `injectScript`), `lintInPage` |
 | `glb.mjs` | `sampleGlb` (a torus as a glTF 2.0 binary, for previews and tests), `isGlb` (upload check) |
-| `vendor.mjs` | `copyThree`: three.js and its GLTFLoader into a job's `vendor/`, flat, imports pointed at the same folder |
+| `vendor.mjs` | `copyThree`: three.js, its GLTFLoader and RoomEnvironment into a job's `vendor/`, flat, imports pointed at the same folder |
+| `banner.mjs` | Hero banner export: `buildBanner` (one standalone HTML page with a `templates/gl.mjs` backdrop on a rAF clock, escaped headline/subline/button, reduced-motion still, optional parallax), `writeBanner` into `out/<project>/_banner/`, `BANNER_BACKDROPS`, `BANNER_SIZES`, `BANNER_LIMITS` |
 | `frames.mjs` | Parallel render: `openWorkers` (one Chrome per worker), `renderWorkers`, `splitFrames`, `renderFrames` (one ffmpeg segment per worker, joined by the concat demuxer), `cutClipFrames` (clips cut into `frames/` for a render, returns the `CLIP_FRAMES_JS` script to inject; `CLIP_FPS`) |
 | `footage.mjs` | Footage import and shot finder: `analyseFootage` (scene cuts, thumbnails, letterbox bars → `out/_footage/<p>/<asset>/`), `loadShots` (with `rhythm`), `rhythmOf` (shots, average and median shot, cuts a minute), `assetRhythms` (every analysed video asset, for the Director), `findWords`/`searchWords` (transcript search), `validateClipOptions`, `clipGraph`/`clipArgs`/`maskExpr` (pure ffmpeg graphs), `previewFrame`, `makeClip` (new asset + `profiles/<p>/clips/<name>.clip.json`), `forgetFootage` |
 | `stt.mjs` | `transcribeAsset`, `loadTranscript`, `clipWords`, `decode` (asset → 16 kHz mono floats), `stamp` (size + mtime fingerprint for caches) |
@@ -64,7 +65,7 @@
 | `social-teaser` | extends `product-demo` |
 | `talking-head` | own (footage clips) |
 | `testimonial` | own, `parts()`, mixable |
-| `ui-story` | own on the kit, `parts()`, mixable, lead subtitle style (animated UI redrawn as HTML/SVG, raw 1920×1080 px) |
+| `ui-story` | own on the kit, `parts()`, mixable, lead subtitle style (animated UI redrawn as HTML/SVG, raw 1920×1080 px); `shot` scenes take screenshots, a shot may `cue` a spoken word |
 | `gl.mjs` | WebGL layers for `page`: `brand.backdrop` (mesh, aurora, flow, 3D shapes) behind the scenes and `brand.wipe` (liquid) over the cuts, each a pure function of `seek(t)` |
 | `model3d.mjs` | 3D model scenes: `modelCanvas`, the importmap and the module that loads each `.glb` with three.js and draws it at every seek |
 | `kit.mjs` | Shared shell: `page` (incl. `tpl` lookups for a mix, `particles`, lead `subs` style, per-scene `dark`, the motion profile: `ENTRANCE` rows through `entranceJs`, `CINE_HELPERS`, `EDITORIAL_HELPERS`, `CUTS` (fade, blur, panel, zoom), the `#cutpanel` sweep, the `#cutveil` (`VEIL_JS`: a blur cut between two colours or to/from a full-frame picture turns through the new scene's colour), the `#carrier` (`CARRY_JS`, `brand.carry`: an accent bar glides from anchor to anchor over every cut), the parallax `CAMERA` and `layerDrift`; `layers: false` keeps a renderer out of the drift), `geometry`, `checkBrand`, `asset`, `camera` (screenshot focus framing), `num`, `h`, `hasLogoBug`, `UNDER_BUG`, `contentArea` (block clear of the corner logo and subtitles), `themeClass` + `ACCENT_CSS` (scene themes); in `page`, text marks (drawn at the spoken word), `brand.shine` on `.btn` and the `pill`/`pop` subtitle presets |
@@ -104,6 +105,10 @@
 |---|---|
 | `tests/engine.test.mjs` | ids/paths, escaping, script/source validation, locks, timing, brand validation |
 | `tests/templates.test.mjs` | Every template builds a valid sample script in every format; `PARTS_BASELINE` hashes; `build() === page(parts())`; kit subtitle style and per-scene `dark` |
+| `tests/model3d.test.mjs` | Model scene: spins and view ranges agree with explainer beats; `view`/`shadow`/`env` validation; canvas data attributes; a SwiftShader render shows the contact shadow and gives the same frames twice |
+| `tests/banner.test.mjs` | Hero banner page content, caps and 400s, path stays in `out/<project>/_banner`, review link refuses it, a headless Chrome draw check |
+| `tests/server-banner.test.mjs` | `POST /api/projects/:project/banner` and `GET /banner/...`: cross-site and bad input refused, sandboxed headers |
+| `tests/product-demo.test.mjs` | product-demo formats: 9:16 without a model byte for byte against `tests/fixtures/product-demo-9x16.mjs` (the frozen pre-format renderer), side-by-side vs stacked hero, logo and caption-band rows, the hero's 3D model and three.js wiring, 2-5 benefits, `spin` = `SPINS`; social-teaser keeps 9:16 |
 | `tests/scene-captions.test.mjs` | Captions for a motion scene's clip that plays its own sound: `typedWords` (typed `caption` timed on heard speech), `heardWords`, the explainer `caption` limit |
 | `tests/mix.test.mjs` | Mixed briefs: `composeBeats`, `scopeCss`, per-source script rules, pace per kind, brief `mix` rules, `buildMixed` page shape, ui-story as lead |
 | `tests/ui-story-shot.test.mjs` | ui-story `shot` scenes: missing asset, bad focus, shot count, `ui-story.shot` in a mix, screenshot markup and camera |

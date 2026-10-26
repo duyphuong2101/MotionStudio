@@ -174,7 +174,7 @@ test('inlinePage inlines assets in attributes, vendor scripts and the three.js m
     assert.ok(out.includes('"caption":"see assets/photo.png"'), 'JSON text is left as it is');
     assert.ok(out.includes("from 'studio-vendor/GLTFLoader.js'"));
     const map = JSON.parse(/<script type="importmap">(.*?)<\/script>/s.exec(out)[1]).imports;
-    assert.deepEqual(Object.keys(map).sort(), ['studio-vendor/BufferGeometryUtils.js', 'studio-vendor/GLTFLoader.js', 'studio-vendor/SkeletonUtils.js', 'studio-vendor/three.core.js', 'three']);
+    assert.deepEqual(Object.keys(map).sort(), ['studio-vendor/BufferGeometryUtils.js', 'studio-vendor/GLTFLoader.js', 'studio-vendor/RoomEnvironment.js', 'studio-vendor/SkeletonUtils.js', 'studio-vendor/three.core.js', 'three']);
     for (const [k, v] of Object.entries(map)) {
       assert.match(v, /^data:text\/javascript;base64,/, k);
       assert.doesNotMatch(Buffer.from(v.split(',')[1], 'base64').toString('utf8'), /from\s*['"]\.\.?\//, `${k} keeps a relative import`);

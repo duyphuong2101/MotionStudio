@@ -11,6 +11,8 @@ import { loadTranscript, stamp } from './stt.mjs';
 
 const FILLS = ['cover', 'blur-fill'];
 const GAIN_DB = [-24, 12];
+// Playback speed of a clip: 2 plays the source twice as fast, so an 11 s span becomes a 5.5 s clip.
+const SPEED = [0.25, 4];
 const MAX_REGIONS = 8;
 const MAX_BAND = 45;
 const MIN_CLIP_SECONDS = 0.2;
@@ -231,13 +233,15 @@ export function validateClipOptions(raw, info, maxSeconds) {
   if (regions.length > MAX_REGIONS) throw new StudioError(`At most ${MAX_REGIONS} blur regions`, 400);
   const gainDb = o.gainDb === undefined || o.gainDb === null || o.gainDb === '' ? 0 : round(num(o.gainDb, 'gainDb'), 1);
   if (gainDb < GAIN_DB[0] || gainDb > GAIN_DB[1]) throw new StudioError(`Gain must be from ${GAIN_DB[0]} to +${GAIN_DB[1]} dB`, 400);
+  const speed = o.speed === undefined || o.speed === null || o.speed === '' ? 1 : round(num(o.speed, 'speed'), 2);
+  if (speed < SPEED[0] || speed > SPEED[1]) throw new StudioError(`Speed must be from ${SPEED[0]} to ${SPEED[1]}`, 400);
   return {
     in: start, out: end,
     crop: o.crop ? box(o.crop, W, H, 'crop') : null,
     band, fill,
     blurRegions: regions.map((r, i) => box(r, W, H, `blur region ${i + 1}`)),
     keep: o.keep ? ellipse(o.keep, W, H) : null,
-    gainDb, mute: Boolean(o.mute),
+    gainDb, mute: Boolean(o.mute), speed,
     width: evenSize(o.width, 1920, 'width'), height: evenSize(o.height, 1080, 'height'),
   };
 }
@@ -274,6 +278,16 @@ export function maskExpr({ W, H, blurRegions, keep }) {
 
 export const maskArgs = (m, out) => ['-y', '-f', 'lavfi', '-i', `color=black:s=${m.W}x${m.H},format=gray`, '-frames:v', '1', '-vf', `geq=lum='${maskExpr(m)}'`, out];
 
+/** atempo filters for a speed: each one takes 0.5-2, so 4x is two steps of 2. Nothing at speed 1. */
+export function tempo(speed) {
+  const steps = [];
+  let left = speed;
+  while (left > 2) { steps.push(2); left /= 2; }
+  while (left < 0.5) { steps.push(0.5); left /= 0.5; }
+  if (round(left, 4) !== 1) steps.push(round(left, 4));
+  return steps.map((x) => `,atempo=${x}`).join('');
+}
+
 /** The filter_complex of a clip: crop rect, optional masked blur, crop band, then cover or blur-fill to the output size. */
 export function clipGraph(o, info) {
   const { width: ow, height: oh } = o;
@@ -289,24 +303,25 @@ export function clipGraph(o, info) {
   } else if (crop) pre.push(crop);
   if (o.band) pre.push(`crop=iw:ih*${round(1 - (o.band.top + o.band.bottom) / 100, 4)}:0:ih*${round(o.band.top / 100, 4)}`);
   const cover = `scale=${ow}:${oh}:force_original_aspect_ratio=increase,crop=${ow}:${oh}`;
-  const tail = 'setsar=1,format=yuv420p';
+  // A faster clip drops frames (setpts, then the 30 fps output rate); a slower one repeats them.
+  const tail = `${o.speed !== 1 ? `setpts=PTS/${o.speed},` : ''}setsar=1,format=yuv420p`;
   if (o.fill === 'blur-fill') {
     g.push(`[${cur}]${[...pre, 'split'].join(',')}[a][b]`, `[a]${cover},${FILL_BG}[bg]`, `[b]scale=${ow}:${oh}:force_original_aspect_ratio=decrease[fg]`, `[bg][fg]overlay=(W-w)/2:(H-h)/2,${tail}[v]`);
   } else {
     g.push(`[${cur}]${[...pre, cover, tail].join(',')}[v]`);
   }
-  if (!o.mute && info.hasAudio) g.push(`[0:a:0]volume=${o.gainDb}dB[a]`);
+  if (!o.mute && info.hasAudio) g.push(`[0:a:0]volume=${o.gainDb}dB${tempo(o.speed)}[a]`);
   return g.join(';');
 }
 
 /** ffmpeg arguments for the clip, or (frame) for one JPEG at the in point. */
 export function clipArgs(o, info, { src, mask = null, out, frame = false }) {
-  const len = String(round(o.out - o.in, 3));
+  const len = String(round(o.out - o.in, 3)), outLen = String(round((o.out - o.in) / o.speed, 3));
   const args = ['-y', '-ss', String(o.in), ...(frame ? [] : ['-t', len]), '-i', src, ...(mask ? ['-loop', '1', '-i', mask] : [])];
   args.push('-filter_complex', clipGraph(frame ? { ...o, mute: true } : o, info), '-map', '[v]');
   if (frame) return [...args, '-frames:v', '1', '-q:v', '3', out];
   const sound = !o.mute && info.hasAudio;
-  return [...args, ...(sound ? ['-map', '[a]'] : []), ...ENCODE, ...(sound ? AUDIO : ['-an']), '-t', len, ...BT709_TAGS, '-movflags', '+faststart', out];
+  return [...args, ...(sound ? ['-map', '[a]'] : []), ...ENCODE, ...(sound ? AUDIO : ['-an']), '-t', outLen, ...BT709_TAGS, '-movflags', '+faststart', out];
 }
 
 /** The asset name of a new clip: always .mp4, a clean file name. */

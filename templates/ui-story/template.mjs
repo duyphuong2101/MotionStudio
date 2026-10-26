@@ -212,7 +212,29 @@ export function build(args) {
 
 // Runs inside uiStory() (written only when the script has a shot scene): a screenshot covers the drawn UI inside the
 // window; camera, cursor, click and highlight follow app-walkthrough's screen scenes, in image px inside #shcam.
-const SHOT_JS = `
+// With `cued` (a shot of the script names a `cue` word) a cued shot starts as the voice says that word, and the
+// shots between two known starts share the time evenly; without it every shot gets an even slot, as before. A cued
+// shot too short for its highlight to fade in and out shows none (two tweens would overlap on #shhl).
+const CUE_TIMES = `
+    // A cued shot starts just before the voice says its word (after the previous shot's word); the rest share the gaps.
+    const ws = words(sc.id), T = [];
+    let from = 0;
+    sc.shots.forEach((sh) => {
+      const hit = sh.cue ? ws.findIndex((w, i) => i >= from && w.w.toLowerCase().replace(/[^a-z0-9]/g, '') === sh.cue) : -1;
+      if (hit >= 0) from = hit + 1;
+      T.push(hit >= 0 ? ws[hit].start - 0.3 : null);
+    });
+    if (T[0] === null || T[0] < s + 0.15) T[0] = s + 0.15;
+    for (let k = 1; k < n; k++) {
+      if (T[k] !== null) continue;
+      let j = k; while (j < n && T[j] === null) j++;
+      const tb = j < n ? T[j] : e, ta = T[k - 1];
+      for (let m = k; m < j; m++) T[m] = ta + ((tb - ta) * (m - k + 1)) / (j - k + 1);
+      k = j - 1;
+    }
+    // At least 1.2 s per shot, so a click and its highlight can play before the next shot comes in.
+    for (let k = 1; k < n; k++) T[k] = Math.min(Math.max(T[k], T[k - 1] + 1.2), e - 1.2 * (n - k));`;
+const shotJs = (cued) => `
   const SHOT_MOVE = { quick: 0.55, normal: 0.9, focus: 1.1 };
   let shotUp = false, shotLayer = null, shCur = { x: 960, y: 620 };
   const hideShots = (t) => {
@@ -224,9 +246,9 @@ const SHOT_JS = `
     const prev = idx > 0 ? D.scenes[idx - 1] : null;
     if (!prev || (prev.kind !== 'ui' && prev.kind !== 'shot')) tl.to('#app', { opacity: 1, scale: 1, x: 0, y: 0, duration: 0.8 }, s - 0.2);
     else if (prev.zoom === 'assistant') tl.to('#app', { scale: 1, x: 0, y: 0, duration: 0.8, ease: XIO }, s + 0.15);
-    const n = sc.shots.length, slot = (e - s - 0.15) / n, move = SHOT_MOVE[sc.pace] || SHOT_MOVE.normal;
+    const n = sc.shots.length, slot = (e - s - 0.15) / n, move = SHOT_MOVE[sc.pace] || SHOT_MOVE.normal;${cued ? CUE_TIMES : ''}
     sc.shots.forEach((sh, k) => {
-      const t0 = s + 0.15 + slot * k, layer = $(sh.layer);
+      ${cued ? 'const t0 = T[k], slot = (k + 1 < n ? T[k + 1] : e) - t0, layer = $(sh.layer);' : 'const t0 = s + 0.15 + slot * k, layer = $(sh.layer);'}
       if (!shotUp) {
         tl.set(layer, { opacity: 1 }, t0).set('#shcam', { x: 0, y: 0, scale: 1 }, t0)
           .fromTo('#shots', { opacity: 0 }, { opacity: 1, duration: 0.35, immediateRender: false }, t0);
@@ -241,7 +263,7 @@ const SHOT_JS = `
         const z2 = sh.cam.z * 1.025;
         tl.to('#shcam', { scale: z2, x: sh.cam.x - (z2 - sh.cam.z) * 960, y: sh.cam.y - (z2 - sh.cam.z) * 540, duration: hold, ease: 'none' }, t0 + move);
       }
-      if (sh.highlight) {
+      if (sh.highlight${cued ? ' && slot > move * 0.7 + 0.8' : ''}) {
         const f = sh.focus, pad = 10;
         tl.set('#shhl', { left: f.x - pad, top: f.y - pad, width: f.w + pad * 2, height: f.h + pad * 2, borderWidth: 4 / sh.cam.z }, t0)
           .fromTo('#shhl', { opacity: 0 }, { opacity: 1, duration: 0.4, immediateRender: false }, t0 + move * 0.7)
@@ -289,11 +311,12 @@ export function parts({ brand, script, icons }) {
     ...(sc.kind === 'shot' ? { shots: (sc.shots || []).map((sh, k) => ({
       layer: `shot-${sc.id}-${k}`, cam: camera(sh.focus, IMG), focus: sh.focus || null,
       cursor: sh.cursor || null, click: !!sh.click && !!sh.cursor, highlight: !!sh.highlight && !!sh.focus,
+      ...(sh.cue ? { cue: String(sh.cue).toLowerCase().replace(/[^a-z0-9]/g, '') } : {}),
     })) } : {}),
   }));
   // Everything a shot scene adds to the page is written only when the script has one, so other pages stay byte for byte the same.
   const shotScenes = script.scenes.filter((s) => s.kind === 'shot');
-  const hasShots = shotScenes.length > 0;
+  const hasShots = shotScenes.length > 0, hasCue = shotScenes.some((s) => (s.shots || []).some((sh) => sh.cue));
   const shotLayer = hasShots ? `
     <div id="shots"><div id="shview"><div id="shcam">${shotScenes.flatMap((s) => (s.shots || []).map((sh, k) =>
     `<img class="shimg" id="shot-${s.id}-${k}" src="${asset(sh.asset)}" alt="">`)).join('')}<div id="shhl"></div><div id="shring"></div>
@@ -311,7 +334,8 @@ export function parts({ brand, script, icons }) {
   // the js lifts it above the kit's subtitle pill.
   const cap = (s) => (s.kind === 'ui' || s.kind === 'shot' ? `<div class="ui-cap" data-lint>${h(s.kicker ? `${s.kicker} · ${s.title}` : s.title)}</div>` : '');
   const group = (s) => {
-    if (s.kind === 'title') return `<div class="sc full" id="g-${s.id}">${lg}<div class="t" data-lint>${h(s.title)}</div>${s.subtitle ? `<div class="s" data-lint>${h(s.subtitle)}</div>` : ''}</div>`;
+    // `logo: false` keeps the brand logo off a title card (e.g. a film that shows its logo only at the end).
+    if (s.kind === 'title') return `<div class="sc full" id="g-${s.id}">${s.logo === false ? '' : lg}<div class="t" data-lint>${h(s.title)}</div>${s.subtitle ? `<div class="s" data-lint>${h(s.subtitle)}</div>` : ''}</div>`;
     if (s.kind === 'cta') return `<div class="sc full${s.icon ? ' withicon' : ''}" id="g-${s.id}">${lg}<div class="t" data-lint>${h(s.title)}</div><div class="b" data-lint>${h(s.button)}</div>${s.url ? `<div class="u" data-lint>${h(s.url)}</div>` : ''}</div>`;
     return `<div class="sc capg" id="g-${s.id}">${s.kind === 'ui' || s.kind === 'shot' ? '<div class="ui-band"></div>' : ''}${cap(s)}</div>`;
   };
@@ -536,7 +560,7 @@ function uiStory() {
     const bottom = el.offsetTop + el.offsetHeight + 16;
     const want = Math.min(0, logH - bottom);
     if (want < logY) { tl.to('#log', { y: want, duration: 0.45, ease: XIO }, at); logY = want; }
-  };${hasShots ? SHOT_JS : ''}
+  };${hasShots ? shotJs(hasCue) : ''}
 
   return (sc, s, e, { last, i: idx, g }) => {
     if (sc.kind === 'ui') liftCap(sc);

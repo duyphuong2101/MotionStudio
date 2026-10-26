@@ -68,7 +68,8 @@
         "subtitle",
         "source",
         "pace",
-        "sfx"
+        "sfx",
+        "logo"
       ]
     },
     "ui": {
@@ -235,7 +236,7 @@
   "shots": {
     "max": 4,
     "imageSize": { "width": 1920, "height": 1080 },
-    "fields": "asset (png in project assets), focus {x,y,w,h} in image pixels or null for the full screen, cursor {x,y} optional, click true|false, highlight true|false"
+    "fields": "asset (png in project assets), focus {x,y,w,h} in image pixels or null for the full screen, cursor {x,y} optional, click true|false, highlight true|false, cue (optional: one word of the voice line; the shot starts as the voice says it, e.g. \"skip\")"
   },
   "pace": {
     "quick": {

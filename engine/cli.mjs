@@ -9,6 +9,7 @@ import { transcribeAsset } from './stt.mjs';
 import { analyseFootage, findWords, makeClip } from './footage.mjs';
 import { reviewOf, pacingTable, FLAG_TEXT } from './review.mjs';
 import { gitEvidence, aliasForPath, csvEvidence, readCsvFile } from './evidence.mjs';
+import { writeBanner, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES } from './banner.mjs';
 
 const USAGE = `Motion Studio engine
 
@@ -32,7 +33,7 @@ const USAGE = `Motion Studio engine
   node engine/cli.mjs find    <project> <asset> "<words>"   where the words are said, from the asset's stored transcript
   node engine/cli.mjs clip    <project> <asset> --in <s> --out <s> --name <new.mp4> [--fill cover|blur-fill]
         [--crop-top <%>] [--crop-bottom <%>] [--crop x:y:w:h] [--blur x:y:w:h ...] [--keep cx:cy:rx:ry]
-        [--gain <dB>] [--mute] [--size 1920x1080] [--replace]   cut a new brand asset from a video asset
+        [--gain <dB>] [--mute] [--speed <x>] [--size 1920x1080] [--replace]   cut a new brand asset from a video asset
   node engine/cli.mjs qa      <project> <job>       check a done job's final.mp4 again: loudness, black/frozen picture, size, captions
   node engine/cli.mjs sequence <project> <sequence>  join the parts' final.mp4 files into out/<project>/<sequence>/final.mp4
   node engine/cli.mjs sequence-preview <project> <sequence>  a quick low-resolution preview.mp4 of the same joins
@@ -40,7 +41,19 @@ const USAGE = `Motion Studio engine
         read-only git: commits, merge PR and first release branch per ticket, as fact lines (repo = an alias in config/studio.json → evidence.repos)
   node engine/cli.mjs evidence csv <file.csv> --date <col> --value <col>[,<col>] [--group <col>] --range 2025-01..2025-09 [--range 2026-01..2026-09] [--prefix $] [--json]
         period totals and growth from a CSV export (e.g. GA4), as fact lines naming the file, column and ranges
+  node engine/cli.mjs banner  <project> [--backdrop ${BANNER_BACKDROPS.join('|')}] [--size ${BANNER_SIZES.join('|')}] [--headline "<text>"]
+        [--subline "<text>"] [--button "<text>"] [--parallax]   a standalone WebGL hero banner page in the brand colours,
+        written to out/<project>/_banner/<backdrop>-<size>.html (no render, no model)
 `;
+
+/** `banner` flags, in the shape writeBanner takes (it validates them). */
+function bannerArgs(args) {
+  const size = flag(args, 'size');
+  return {
+    backdrop: flag(args, 'backdrop'), headline: flag(args, 'headline'), subline: flag(args, 'subline'), button: flag(args, 'button'),
+    parallax: args.includes('--parallax'), ...(size === undefined ? {} : parseBannerSize(size)),
+  };
+}
 
 /** `evidence git|csv`: rows and paste-ready fact lines. Gathered by a person; the Director has no access to it. */
 async function evidence(args) {
@@ -110,7 +123,7 @@ function clipOptions(args) {
   const top = flag(args, 'crop-top'), bottom = flag(args, 'crop-bottom'), crop = flag(args, 'crop'), keep = flag(args, 'keep'), size = flag(args, 'size');
   const [width, height] = size ? size.split('x').map(Number) : [];
   return {
-    in: flag(args, 'in'), out: flag(args, 'out'), name: flag(args, 'name'), fill: flag(args, 'fill'), gainDb: flag(args, 'gain'),
+    in: flag(args, 'in'), out: flag(args, 'out'), name: flag(args, 'name'), fill: flag(args, 'fill'), gainDb: flag(args, 'gain'), speed: flag(args, 'speed'),
     mute: args.includes('--mute'), replace: args.includes('--replace'), blurRegions, width, height,
     ...(top || bottom ? { band: { top, bottom } } : {}),
     ...(crop ? { crop: tuple(crop, ['x', 'y', 'w', 'h'], 'crop') } : {}),
@@ -129,6 +142,7 @@ async function main(argv) {
   const reason = flag(args, 'reason', '');
   const queuedOnly = args.includes('--queued');
   const bench = cmd === 'bench' ? benchOptions(flag(args, 'seconds'), flag(args, 'workers')) : null;
+  const banner = cmd === 'banner' ? bannerArgs(args) : null;
   const [project, id, extra] = args.filter((a) => !a.startsWith('--'));
 
   switch (cmd) {
@@ -232,6 +246,7 @@ async function main(argv) {
       return;
     }
     case 'evidence': return evidence(args);
+    case 'banner': console.log(writeBanner(project, banner)); return;
     case 'reset-dirty': {
       const st = markDirty(project, id, extra, { force: args.includes('--force'), by });
       console.log(`${st.status} from step ${st.dirty_from}`);

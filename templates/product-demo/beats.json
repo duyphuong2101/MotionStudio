@@ -3,29 +3,37 @@
   "label": "Product demo",
   "help": {
     "kinds": {
-      "hero": "Opening shot: the product name and its pack image.",
+      "hero": "Opening shot: the product name with its pack image, or the product as a turning 3D model.",
       "stat": "A benefit told as a number, with the morphing icon.",
       "benefit": "A benefit told in words, with the morphing icon.",
       "cta": "Closing card: the one action viewers should take, with a button."
     },
     "fields": {
-      "asset": "The product pack image.",
+      "asset": "The product pack image. Not shown when a 3D model is set.",
+      "model": "A 3D model of the product (.glb, glTF 2.0 binary) from the project assets, turning in the pack window instead of the pack image.",
+      "spin": "How the 3D model moves: turn (default) turns it on its axis; orbit circles the camera round it; hero sways it while the camera eases in; reveal rises and grows in, then turns; detail pushes the camera in for a close-up.",
       "kicker": "A short label for the benefit, e.g. \"Absorbency\".",
       "cta.icon": "The icon the closing card ends on; it morphs from the last benefit."
     }
   },
-  "description": "Hero with the product pack, two or three benefits (stat or icon), then a call to action. One SVG icon morphs through every benefit and carries into the CTA.",
-  "formats": ["9:16"],
+  "description": "Introduces a product in 10 to 60 seconds: a hero with the product pack or a turning 3D model, two to five benefits (stat or icon), then a call to action. One SVG icon morphs through every benefit and carries into the CTA. Landscape puts the pack beside the text; portrait and square stack them.",
+  "formats": ["16:9", "1:1", "9:16", "4:5"],
+  "sizes": {
+    "16:9": [1920, 1080],
+    "1:1": [1080, 1080],
+    "9:16": [1080, 1920],
+    "4:5": [1080, 1350]
+  },
   "marks": true,
-  "durations": [10, 40],
+  "durations": [10, 60],
   "directors": ["seat", "claude", "gemini"],
   "sequence": [
     { "kind": ["hero"], "min": 1, "max": 1 },
-    { "kind": ["stat", "benefit"], "min": 2, "max": 3 },
+    { "kind": ["stat", "benefit"], "min": 2, "max": 5 },
     { "kind": ["cta"], "min": 1, "max": 1 }
   ],
   "fields": {
-    "hero": { "required": ["vo", "title", "source"], "optional": ["subtitle", "asset", "packLine"] },
+    "hero": { "required": ["vo", "title", "source"], "optional": ["subtitle", "asset", "packLine", "model", "spin"] },
     "stat": { "required": ["vo", "kicker", "stat", "text", "chip", "icon", "source"], "optional": [] },
     "benefit": { "required": ["vo", "kicker", "text", "chip", "icon", "source"], "optional": ["decor", "check"] },
     "cta": { "required": ["vo", "title", "button"], "optional": ["url", "icon", "source"] }
@@ -42,7 +50,8 @@
     "voWords": 24
   },
   "enums": {
-    "decor": ["walls", "waves", "none"]
+    "decor": ["walls", "waves", "none"],
+    "spin": ["turn", "orbit", "hero", "reveal", "detail"]
   },
   "defaults": {
     "hero": { "title": "Product name" },

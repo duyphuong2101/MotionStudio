@@ -84,7 +84,7 @@ export function parts({ brand, script, timing, size, icons }) {
         ${items.map((t, k) => `<div class="fl" id="${id}-f${k}"><div class="fi" data-lint style="font-size:${px(fit(t, fmax))}">${h(t)}</div></div>`).join('')}
         ${sc.title ? `<div class="flw"><div class="hd fi flt" id="${id}-ft" data-lint style="font-size:${px(fit(sc.title, Math.round(fmax * 0.85)))}">${h(sc.title)}</div></div>` : ''}</div></div>`);
       // Each item's first word, so the page can flash it as the voice says that word (`nine workstreams` names none: even beats).
-      scenes.push({ id, kind: 'flash', n: items.length, title: !!sc.title, heads: items.map((t) => wordKey(t.split(/\s+/)[0])), ...tone(sc) });
+      scenes.push({ id, kind: 'flash', n: items.length, title: !!sc.title, heads: items.map((t) => wordKey(t.split(/\s+/)[0])), ...(sc.title ? { titleHead: wordKey(String(sc.title).split(/\s+/)[0]) } : {}), ...tone(sc) });
     } else if (sc.kind === 'video') {
       // Footage in a window: prepare cut it to clips/<id>.mp4; the kit seeks it with the page clock.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
@@ -104,7 +104,7 @@ export function parts({ brand, script, timing, size, icons }) {
       // A 3D model (a .glb asset) on the scene's own background; templates/model3d.mjs draws it at every seek.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
       blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="mod">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd vt" data-lint>${h(sc.title)}</div>
-        <div class="mwin" id="${id}-win">${modelCanvas(sc.model, t, sc.spin)}</div>
+        <div class="mwin" id="${id}-win">${modelCanvas(sc.model, t, sc.spin, sc)}</div>
         ${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
       scenes.push({ id, kind: 'model', ...tone(sc) });
     } else if (sc.kind === 'cta') {
@@ -258,7 +258,11 @@ ${hasFlash ? `  flash(sc, s, e) {
     for (let k = 0; k < beats; k++) {
       const hit = k < sc.n && sc.heads[k] ? ws.findIndex((w, i) => i >= from && key(w.w) === sc.heads[k]) : -1;
       if (hit >= 0) from = hit + 1;
-      T.push(Math.max(hit >= 0 ? ws[hit].start - 0.08 : cue(sc, k / beats), k ? T[k - 1] + 0.3 : s + 0.05));
+      // When the items followed the spoken words, the title lands on its own first word if the voice says it after the
+      // items, else once the line is over.
+      const said = k === sc.n && from > 0 && sc.titleHead ? ws.findIndex((w, i) => i >= from && key(w.w) === sc.titleHead) : -1;
+      const t = said >= 0 ? ws[said].start - 0.08 : k === sc.n && from > 0 && ws.length ? Math.min(ws[ws.length - 1].end + 0.15, e - 0.6) : hit >= 0 ? ws[hit].start - 0.08 : cue(sc, k / beats);
+      T.push(Math.max(t, k ? T[k - 1] + 0.3 : s + 0.05));
     }
     if (T[beats - 1] > e - 0.5) T.forEach((t, k) => { T[k] = s + 0.05 + (k * (e - s - 0.55)) / Math.max(1, beats - 1); });
     for (let k = 0; k < sc.n; k++) {
