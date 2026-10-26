@@ -1,0 +1,46 @@
+{
+  "id": "lifestyle",
+  "label": "Lifestyle slideshow",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "photo": "A full-bleed brand photo with a big headline.",
+      "gallery": "2-4 photos dropped one by one onto a table as instant prints, each with an optional handwritten-size caption, e.g. moments from a project or an event.",
+      "cta": "Closing call to action over a photo."
+    },
+    "fields": {
+      "photo.asset": "The full-bleed photo for this scene.",
+      "cta.asset": "The photo behind the call to action.",
+      "gallery.photos": "JSON list of 2-4 photos from the project assets, each { \"asset\": \"kickoff.jpg\", \"caption\": \"Kick-off day\" }; caption optional, at most 24 characters. They land in this order, spread over the voice line.",
+      "gallery.title": "Optional headline above the prints, e.g. \"A year of building\"."
+    }
+  },
+  "description": "Photo-led social video: full-bleed brand photos with a slow Ken Burns move, big headlines that rise into place, galleries of instant prints dropped onto a table, soft cross-fades between shots, then the call to action over a photo.",
+  "formats": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
+  "sizes": { "9:16": [1080, 1920], "1:1": [1080, 1080], "16:9": [1920, 1080], "4:5": [1080, 1350], "2:3": [1080, 1620], "21:9": [2520, 1080] },
+  "durations": [8, 60],
+  "directors": ["seat", "claude", "gemini", "grok"],
+  "mixable": ["gallery"],
+  "sequence": [
+    { "kind": ["photo", "gallery"], "min": 1, "max": 10 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "photo": { "required": ["vo", "asset", "title"], "optional": ["kicker", "subtitle", "move", "align", "source", "pace"] },
+    "gallery": { "required": ["vo", "photos", "source"], "optional": ["title", "kicker", "pace"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["asset", "url", "source", "pace"] }
+  },
+  "limits": { "title": 44, "kicker": 24, "subtitle": 70, "button": 24, "url": 40, "voWords": 26 },
+  "data": { "gallery": { "photos": [2, 4], "caption": 24 } },
+  "enums": { "pace": ["quick", "normal", "focus"], "move": ["in", "out", "left", "right"], "align": ["bottom", "center", "top"] },
+  "defaults": {
+    "photo": { "title": "A line about this moment", "move": "in", "align": "bottom" },
+    "gallery": { "title": "A year of building", "photos": [{ "asset": "photo.jpg", "caption": "Kick-off" }, { "asset": "photo.jpg", "caption": "First release" }, { "asset": "photo.jpg", "caption": "Launch day" }] },
+    "cta": { "title": "Find yours", "button": "Shop now" }
+  },
+  "pace": {
+    "quick": { "perShot": 1.8, "minScene": 2.2, "tail": 0.2 },
+    "normal": { "perShot": 3.0, "minScene": 3.2 },
+    "focus": { "perShot": 4.2, "minScene": 4.8, "tail": 0.8 }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "type": "commonjs",
+  "//": "Forces CommonJS for check-propagation.js / spec-lint.js / generate-mirrors.js regardless of the root package.json. They use require(); without this, a project whose root package.json has \"type\":\"module\" makes Node treat these as ESM and they crash with 'require is not defined' — breaking the propagation gate + mirror generation. Do not remove."
+}

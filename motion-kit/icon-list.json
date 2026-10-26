@@ -1,0 +1,36 @@
+{
+  "source": "@phosphor-icons/core",
+  "weight": "fill",
+  "groups": {
+    "Shopping": {
+      "cart": "shopping-cart", "bag": "shopping-bag", "store": "storefront", "tag": "tag",
+      "percent": "percent", "gift": "gift", "card": "credit-card", "wallet": "wallet",
+      "coins": "coins", "receipt": "receipt", "barcode": "barcode", "basket": "basket"
+    },
+    "Delivery": {
+      "truck": "truck", "box": "package", "return": "arrow-u-up-left", "pin": "map-pin",
+      "globe": "globe-hemisphere-west", "clock": "clock", "timer": "timer", "calendar": "calendar-blank"
+    },
+    "Trust": {
+      "badge": "seal-check", "shield-check": "shield-check", "medal": "medal", "trophy": "trophy",
+      "crown": "crown-simple", "thumbs-up": "thumbs-up", "handshake": "handshake", "check": "check-circle",
+      "users": "users-three", "headset": "headset"
+    },
+    "Product": {
+      "shirt": "t-shirt", "sneaker": "sneaker", "hanger": "coat-hanger", "ruler": "ruler",
+      "diamond": "diamond", "sparkle": "sparkle", "palette": "palette", "scissors": "scissors",
+      "phone": "device-mobile", "laptop": "laptop", "headphones": "headphones", "camera": "camera",
+      "battery": "battery-high", "plug": "plug"
+    },
+    "Life": {
+      "home": "house", "sun": "sun", "snowflake": "snowflake", "fire": "fire", "plant": "plant",
+      "recycle": "recycle", "paw": "paw-print", "baby": "baby", "coffee": "coffee", "food": "fork-knife",
+      "dumbbell": "barbell", "pill": "pill", "flask": "flask", "car": "car", "plane": "airplane"
+    },
+    "General": {
+      "rocket": "rocket-launch", "target": "target", "chart": "chart-bar", "trend-up": "trend-up",
+      "search": "magnifying-glass", "gear": "gear", "bell": "bell", "mail": "envelope-simple",
+      "eye": "eye", "smile": "smiley", "info": "info"
+    }
+  }
+}

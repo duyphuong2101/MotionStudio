@@ -1,0 +1,33 @@
+---
+name: refactor-guide
+description: Guide safe refactoring of code — when CHANGING structure (you will edit files); for read-only critique use code-review. Use when restructuring, extracting, renaming, or simplifying code while preserving behavior.
+user-invocable: false
+allowed-tools: Read, Grep, Glob
+---
+
+## Refactoring Principles
+
+- **Preserve behavior**: Every refactoring step must keep existing tests passing
+- **Small steps**: Make one change at a time, verify, then proceed
+- **Test first**: Ensure adequate test coverage before refactoring; add tests if missing
+- **No feature changes**: Refactoring and feature work are separate activities
+
+## Common Refactoring Patterns
+
+| Smell | Refactoring |
+|-------|-------------|
+| Long function | Extract method/function |
+| Duplicate code | Extract shared helper |
+| Deep nesting | Early returns, guard clauses |
+| Large class/module | Extract class, split module |
+| Primitive obsession | Introduce value objects |
+| Feature envy | Move method to the right class |
+| Long parameter list | Introduce parameter object |
+
+## Process
+
+1. Identify the code smell or improvement target
+2. Verify test coverage exists (add if not)
+3. Apply the appropriate refactoring pattern
+4. Run tests after each step
+5. Verify the diff only contains structural changes, not behavior changes

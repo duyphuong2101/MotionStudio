@@ -1,0 +1,44 @@
+# ============================================================
+# Recommended .gitignore policy for the AI-config kit
+# Policy (2026-09-03): the AI config is NEVER committed. It moves
+# between machines only through the export zip + install.sh.
+# Append the IGNORE section to your project's .gitignore.
+# ============================================================
+
+# ---- IGNORE: the whole AI config (distributed via the export zip) ----
+.claude/
+.ai/
+.cursor/
+CLAUDE.md
+AGENTS.md
+.mcp.json
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
+.github/agents/
+.vscode/mcp.json
+
+# ---- IGNORE: machine-local / runtime / secrets (covered above, listed for clarity) ----
+.claude/settings.local.json
+.claude/CLAUDE.local.md
+.claude/state/
+.claude/agent-memory/
+.claude/plans/
+.claude/tmp/
+.claude/worktrees/
+.claude/logs/
+.cursor/memory/
+.ai/export/*.zip
+.ai/export/*.tar.gz
+.ai-backup-*/
+
+# ---- IGNORE: keys. Only .env.example (empty values) is tracked ----
+.env
+
+# Verify nothing leaked (must print nothing):
+#   git ls-files .claude .ai .cursor .github/copilot-instructions.md AGENTS.md CLAUDE.md
+#
+# Consequence: github.com Copilot (PR review, coding agent) reads only committed
+# files, so it will NOT see these rules. Copilot inside VS Code still reads the
+# local .github/copilot-instructions.md and AGENTS.md; Claude Code and Cursor are
+# unaffected.

@@ -1,0 +1,47 @@
+{
+  "id": "testimonial",
+  "label": "Testimonial",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "quote": "A customer's own words with their name, role and star rating.",
+      "product": "Shows the product the reviews are about.",
+      "stat": "An overall figure, e.g. the average rating from all reviews.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": {
+      "quote.asset": "The reviewer's photo. Without one, their initials show.",
+      "product.asset": "A product image.",
+      "stat.text": "What the number means, e.g. \"average from verified reviews\"."
+    }
+  },
+  "description": "Customer reviews as video: a quote that appears word by word with the voice, star rating filling in, the reviewer's photo or initials, the product, an aggregate rating, then the call to action.",
+  "formats": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
+  "sizes": { "9:16": [1080, 1920], "1:1": [1080, 1080], "16:9": [1920, 1080], "4:5": [1080, 1350], "2:3": [1080, 1620], "21:9": [2520, 1080] },
+  "durations": [10, 60],
+  "directors": ["seat", "claude", "gemini"],
+  "mixable": ["quote", "product", "stat"],
+  "sequence": [
+    { "kind": ["quote", "product", "stat"], "min": 1, "max": 6 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "quote": { "required": ["vo", "quote", "author", "source"], "optional": ["role", "rating", "asset", "pace", "sfx"] },
+    "product": { "required": ["vo", "title"], "optional": ["kicker", "asset", "text", "source", "pace", "sfx"] },
+    "stat": { "required": ["vo", "value", "text", "source"], "optional": ["kicker", "unit", "format", "pace", "sfx"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["kicker", "url", "source", "pace", "sfx"] }
+  },
+  "limits": { "quote": 160, "author": 32, "role": 40, "title": 40, "kicker": 24, "text": 80, "unit": 12, "button": 24, "url": 40, "voWords": 34 },
+  "enums": { "pace": ["quick", "normal", "focus"], "format": ["int", "dec", "pct"], "sfx": ["whoosh", "hit", "riser", "click", "none"] },
+  "defaults": {
+    "quote": { "quote": "It just works, every night.", "author": "Verified buyer", "rating": 5 },
+    "product": { "title": "Product name" },
+    "stat": { "value": 4.8, "format": "dec", "unit": "★", "text": "average from verified reviews" },
+    "cta": { "title": "Read more reviews", "button": "Shop now" }
+  },
+  "pace": {
+    "quick": { "perShot": 1.8, "minScene": 2.2, "tail": 0.25 },
+    "normal": { "perShot": 3.0, "minScene": 3.5 },
+    "focus": { "perShot": 4.0, "minScene": 5.0, "tail": 1.0 }
+  }
+}

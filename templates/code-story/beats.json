@@ -1,0 +1,71 @@
+{
+  "id": "code-story",
+  "label": "Code story",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "title": "Opening card on a dark terminal-style frame.",
+      "code": "A code listing in an editor window; chosen lines light up while the voice talks about them.",
+      "diff": "Before and after code: removed lines strike through, added lines open in place, like a pull request.",
+      "tree": "The files a change touched, each with green and red bars for lines added and removed.",
+      "terminal": "Commands typed into a terminal, then their output: test runs, builds, installs.",
+      "checklist": "A checklist that types itself and ticks each item: release notes, steps done.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": {
+      "code": "The code, as it appears in the source. Up to 18 lines of 72 characters.",
+      "lang": "The language or file name shown on the window bar, e.g. \"app.js\".",
+      "highlight": "JSON list of line numbers to light up, e.g. [3, 4].",
+      "before": "The code before the change, copied from the source diff.",
+      "after": "The code after the change, copied from the source diff.",
+      "file": "The file name shown on the window bar.",
+      "files": "JSON list of changed files: [{ \"path\": \"src/app.js\", \"added\": 12, \"removed\": 3 }]. Up to 12.",
+      "lines": "JSON list of terminal lines: [{ \"cmd\": \"npm test\" }, { \"out\": \"✓ 42 passed\" }]. Up to 14.",
+      "items": "JSON list of checklist items: [\"Faster start-up\", { \"text\": \"Dark mode\", \"done\": false }]. Up to 8.",
+      "text": "One supporting sentence under the panel."
+    }
+  },
+  "description": "Software changes told on screen: code listings with lines that light up, before and after diffs, the files a pull request touched, terminal sessions that type themselves, and checklists that tick off, then the call to action. For release notes, pull request videos, bug reports and agent session recaps.",
+  "formats": ["16:9", "1:1", "9:16", "4:5"],
+  "sizes": { "16:9": [1920, 1080], "1:1": [1080, 1080], "9:16": [1080, 1920], "4:5": [1080, 1350] },
+  "durations": [10, 120],
+  "directors": ["seat", "claude", "gemini"],
+  "mixable": ["code", "diff", "tree", "terminal", "checklist"],
+  "sequence": [
+    { "kind": ["title"], "min": 0, "max": 1 },
+    { "kind": ["code", "diff", "tree", "terminal", "checklist"], "min": 1, "max": 10 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "title": { "required": ["vo", "title"], "optional": ["kicker", "subtitle", "source", "pace", "sfx"] },
+    "code": { "required": ["vo", "title", "code", "source"], "optional": ["kicker", "lang", "highlight", "text", "pace", "sfx"] },
+    "diff": { "required": ["vo", "title", "before", "after", "source"], "optional": ["kicker", "file", "text", "pace", "sfx"] },
+    "tree": { "required": ["vo", "title", "files", "source"], "optional": ["kicker", "text", "pace", "sfx"] },
+    "terminal": { "required": ["vo", "lines", "source"], "optional": ["title", "kicker", "pace", "sfx"] },
+    "checklist": { "required": ["vo", "title", "items", "source"], "optional": ["kicker", "text", "pace", "sfx"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["kicker", "url", "source", "pace", "sfx"] }
+  },
+  "limits": { "title": 44, "subtitle": 70, "kicker": 24, "text": 90, "button": 24, "url": 40, "lang": 30, "file": 40, "voWords": 34 },
+  "enums": { "pace": ["quick", "normal", "focus"], "sfx": ["whoosh", "hit", "riser", "click", "none"] },
+  "data": {
+    "code": { "lines": 18, "chars": 72 },
+    "diff": { "lines": 16, "chars": 72 },
+    "tree": { "files": 12, "chars": 60 },
+    "terminal": { "lines": 14, "chars": 80 },
+    "checklist": { "items": 8, "chars": 60 }
+  },
+  "defaults": {
+    "title": { "title": "What changed in 2.4" },
+    "code": { "title": "The new option", "lang": "config.js", "code": "export default {\n  // Retry failed uploads three times\n  retries: 3,\n  timeout: 30_000,\n};", "highlight": [3] },
+    "diff": { "title": "One line fixes it", "file": "upload.js", "before": "if (res.status = 200) {\n  done();\n}", "after": "if (res.status === 200) {\n  done();\n}" },
+    "tree": { "title": "Files changed", "files": [{ "path": "src/upload.js", "added": 12, "removed": 3 }, { "path": "tests/upload.test.js", "added": 40, "removed": 0 }] },
+    "terminal": { "title": "Tests pass", "lines": [{ "cmd": "npm test" }, { "out": "✓ 42 passed" }] },
+    "checklist": { "title": "In this release", "items": ["Retries on upload", "Clearer errors", { "text": "Offline mode", "done": false }] },
+    "cta": { "title": "Read the release notes", "button": "Open changelog" }
+  },
+  "pace": {
+    "quick": { "perShot": 2.0, "minScene": 2.5, "tail": 0.3 },
+    "normal": { "perShot": 3.2, "minScene": 3.8 },
+    "focus": { "perShot": 4.5, "minScene": 5.5, "tail": 1.0 }
+  }
+}

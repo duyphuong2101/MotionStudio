@@ -1,0 +1,4 @@
+{
+  "type": "commonjs",
+  "//": "Forces CommonJS for the hook scripts regardless of the root package.json. The hooks use require(); without this, a project whose root package.json has \"type\":\"module\" (Vite/Next/modern Node) makes Node treat these .js files as ESM and every hook crashes with 'require is not defined'. Do not remove."
+}

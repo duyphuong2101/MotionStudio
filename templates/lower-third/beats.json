@@ -1,0 +1,46 @@
+{
+  "id": "lower-third",
+  "label": "Lower third / overlay",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "lower": "A name and role card that slides in at the bottom left, holds, and slides out.",
+      "caption": "A short line of text on a dark band at the bottom centre.",
+      "bug": "The brand logo, with an optional short text, in the top right corner."
+    },
+    "fields": {
+      "name": "The person's name.",
+      "role": "Their role or company.",
+      "caption.text": "One short line, e.g. the place or the date.",
+      "bug.text": "Optional short text next to the logo, e.g. \"LIVE\".",
+      "theme": "light: a white card; dark: a dark card for bright footage.",
+      "vo": "Usually empty: overlays sit on footage that has its own sound."
+    }
+  },
+  "description": "Overlays to lay over footage in any editor: a name and role lower third, a caption band and a logo bug, each sliding in and out on a transparent background. Renders a .mov with an alpha channel (ProRes 4444) next to the usual MP4.",
+  "alpha": true,
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "sizes": { "16:9": [1920, 1080], "9:16": [1080, 1920], "1:1": [1080, 1080], "4:5": [1080, 1350] },
+  "durations": [3, 30],
+  "directors": ["seat", "claude", "gemini", "grok"],
+  "sequence": [
+    { "kind": ["lower", "caption", "bug"], "min": 1, "max": 6 }
+  ],
+  "fields": {
+    "lower": { "required": ["name"], "optional": ["vo", "kicker", "role", "source", "pace"] },
+    "caption": { "required": ["text"], "optional": ["vo", "source", "pace"] },
+    "bug": { "required": [], "optional": ["vo", "text", "theme", "pace"] }
+  },
+  "limits": { "name": 32, "role": 44, "kicker": 24, "text": 60, "voWords": 20 },
+  "enums": { "pace": ["quick", "normal", "focus"], "theme": ["light", "dark"] },
+  "defaults": {
+    "lower": { "name": "Ana Ruiz", "role": "Head of Operations" },
+    "caption": { "text": "Recorded in Lisbon, May 2026" },
+    "bug": { "theme": "light" }
+  },
+  "pace": {
+    "quick": { "perShot": 2.5, "minScene": 3.0, "tail": 0.3 },
+    "normal": { "perShot": 4.0, "minScene": 5.0 },
+    "focus": { "perShot": 6.0, "minScene": 7.0, "tail": 1.0 }
+  }
+}

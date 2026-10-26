@@ -1,0 +1,64 @@
+{
+  "default": "seat",
+  "providers": {
+    "seat": {
+      "kind": "claude-code",
+      "label": "Claude Code (seat)",
+      "note": "Run Director without a provider, or type /studio run in Claude Code. Never behind a web route."
+    },
+    "openai": {
+      "kind": "openai",
+      "label": "OpenAI",
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "",
+      "strongModel": "",
+      "vision": true,
+      "keyEnv": "OPENAI_API_KEY",
+      "note": "Chat completions with tools. GPT-6 models need the Responses API (not built yet); pick a GPT-5.x id."
+    },
+    "grok": {
+      "kind": "openai-compatible",
+      "label": "Grok (xAI)",
+      "baseUrl": "https://api.x.ai/v1",
+      "model": "",
+      "strongModel": "",
+      "vision": true,
+      "keyEnv": "XAI_API_KEY",
+      "note": "Chat completions; xAI's docs now lead with the Responses API. The live check confirms."
+    },
+    "gemini": {
+      "kind": "openai-compatible",
+      "label": "Gemini",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model": "",
+      "strongModel": "",
+      "vision": true,
+      "keyEnv": "GEMINI_API_KEY",
+      "note": "Text director through Google's OpenAI-compatible endpoint (beta). The same key makes brand images and clips (Brand tab → Generate).",
+      "models": {
+        "image": "gemini-nano-banana-2.1",
+        "video": "veo-3.1-lite-generate-preview"
+      }
+    },
+    "claude": {
+      "kind": "anthropic",
+      "label": "Claude API",
+      "baseUrl": "https://api.anthropic.com",
+      "model": "",
+      "strongModel": "",
+      "vision": true,
+      "keyEnv": "ANTHROPIC_API_KEY",
+      "note": "Anthropic Messages API with the person's own API key. Never the Claude Code OAuth token; the seat child still gets no key."
+    },
+    "qwen": {
+      "kind": "openai-compatible",
+      "label": "Qwen (DashScope)",
+      "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "model": "",
+      "strongModel": "",
+      "vision": false,
+      "keyEnv": "DASHSCOPE_API_KEY",
+      "note": "Compatible mode. Keys are region-bound; the newer per-workspace host is https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1. Set vision true for a qwen3-vl id."
+    }
+  }
+}

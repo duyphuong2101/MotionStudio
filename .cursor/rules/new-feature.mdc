@@ -1,0 +1,46 @@
+---
+description: Checklist when creating a new Motion Studio feature, template or route
+globs:
+alwaysApply: false
+---
+
+# New Feature Checklist
+
+## 1. New video template
+- [ ] `templates/<id>/beats.json`: `id`, `label`, `description`, `formats`, `sizes`, `durations`, `directors`, `sequence`, `fields`, `limits`, `enums`, `defaults` (start from `.ai/templates/beats.json.template`)
+- [ ] Reuse a renderer with `"extends": "<id>"` when only the rules differ; otherwise `templates/<id>/template.mjs` exporting `build({ brief, brand, script, timing, size })` (start from `.ai/templates/template.mjs.template`)
+- [ ] Shell from `templates/kit.mjs` (`page`, `geometry`); text through `h()`; sizes through `px()`; `data-lint` on text that must fit
+- [ ] Deterministic: everything visible is a function of `seek(t)`; no timers, no `Math.random`
+- [ ] Icons only from `motion-kit/icons.mjs`
+
+## 2. New server route
+- [ ] Add the branch inside `api()` in `server/server.mjs`; ids through `assertId`
+- [ ] Validate the body at the boundary; throw `StudioError(message, code)`
+- [ ] Writes keep the Host/Origin/`X-Studio` checks (they run before `api()`); never add a route that invokes a model, except the two person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key) and `server/generate.mjs` (Gemini assets with the person's own key)
+- [ ] Long work goes through `runEngine` (capped, timed out), never inline in the request
+
+## 3. Engine change
+- [ ] State through `writeJson` / `setStatus`; new statuses only via `STATUSES`
+- [ ] A new `source.json` field: add it to `SOURCE_FIELDS` so locks cover it; a new `script.json` scene field: list it in the template's `beats.json` `fields` (locks read every template's `fields`)
+- [ ] Child processes: argument array, `shell:false`, timeout, capped log
+
+## 4. UI change
+- [ ] Calls go through `api()` in `ui/app.js` (sends `X-Studio: 1`)
+- [ ] HTML built from data goes through `esc()`
+- [ ] Labels are English
+
+## 5. Reuse & impact check
+- [ ] Searched `engine/core.mjs`, `templates/kit.mjs`, `templates/shared.mjs`, `motion-kit/icons.mjs` before writing a helper
+- [ ] Modified shared code → every consumer checked (all templates for `kit.mjs`)
+
+## 6. Update file index
+- [ ] New template, module, route or test listed in `.ai/docs/file-index.md`
+
+## 7. Tests
+- [ ] `tests/engine.test.mjs` for validation, locks, timing; `tests/templates.test.mjs` covers every template automatically; `tests/assets.test.mjs` for assets
+
+## 8.5 VERIFY (MANDATORY)
+- [ ] `npm test` passes (commands: `workflow.mdc` Phase 5.5); max 2 fix cycles, then stop and report
+
+## 9. Update Propagation
+New rule, pattern or reusable code → `workflow.mdc` Phase 7.

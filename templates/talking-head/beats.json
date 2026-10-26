@@ -1,0 +1,191 @@
+{
+  "id": "talking-head",
+  "label": "Talking head / UGC",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "clip": "A trimmed piece of your footage with captions and a name lower third.",
+      "card": "A branded text card between clips, e.g. a chapter title.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": {
+      "asset": "The video clip (.mp4, .webm or .mov) from the project assets.",
+      "clip.text": "What the speaker says in this clip, shown as captions.",
+      "role": "The speaker's role, shown under the name.",
+      "zoom": "in adds a slow punch-in on the clip; none keeps it still.",
+      "vo": "Optional voice line over this card.",
+      "clip.layout": "full (default) keeps the speaker full frame; split slides the speaker to one half and the screenshot into the other (left/right, or top/bottom in portrait); pip fills the frame with the screenshot and shrinks the speaker into a corner. Both run a quarter of the way into the clip.",
+      "clip.image": "The screenshot or picture (.png, .jpg, .webp) shown beside or behind the speaker with layout split or pip."
+    }
+  },
+  "description": "Edits real footage: trimmed clips with their own sound, burned-in captions from the clip text, a name and role lower third and an optional slow punch-in, a split screen or picture-in-picture beside a screenshot, joined by branded text cards and a closing call to action. Clips need .mp4, .webm or .mov uploads in the project's assets.",
+  "audio": "footage",
+  "formats": [
+    "9:16",
+    "1:1",
+    "16:9",
+    "4:5",
+    "2:3",
+    "21:9"
+  ],
+  "sizes": {
+    "9:16": [
+      1080,
+      1920
+    ],
+    "1:1": [
+      1080,
+      1080
+    ],
+    "16:9": [
+      1920,
+      1080
+    ],
+    "4:5": [
+      1080,
+      1350
+    ],
+    "2:3": [
+      1080,
+      1620
+    ],
+    "21:9": [
+      2520,
+      1080
+    ]
+  },
+  "durations": [
+    6,
+    180
+  ],
+  "directors": [
+    "seat",
+    "claude",
+    "gemini",
+    "grok"
+  ],
+  "sequence": [
+    {
+      "kind": [
+        "clip",
+        "card"
+      ],
+      "min": 1,
+      "max": 12
+    },
+    {
+      "kind": [
+        "cta"
+      ],
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "fields": {
+    "clip": {
+      "required": [
+        "asset"
+      ],
+      "optional": [
+        "in",
+        "out",
+        "text",
+        "name",
+        "role",
+        "zoom",
+        "fit",
+        "source",
+        "pace",
+        "layout",
+        "image"
+      ]
+    },
+    "card": {
+      "required": [
+        "title"
+      ],
+      "optional": [
+        "vo",
+        "kicker",
+        "text",
+        "source",
+        "pace"
+      ]
+    },
+    "cta": {
+      "required": [
+        "title",
+        "button"
+      ],
+      "optional": [
+        "vo",
+        "kicker",
+        "url",
+        "source",
+        "pace"
+      ]
+    }
+  },
+  "limits": {
+    "title": 44,
+    "kicker": 24,
+    "text": 160,
+    "name": 30,
+    "role": 40,
+    "button": 24,
+    "url": 40,
+    "voWords": 30
+  },
+  "enums": {
+    "pace": [
+      "quick",
+      "normal",
+      "focus"
+    ],
+    "zoom": [
+      "none",
+      "in"
+    ],
+    "fit": [
+      "cover",
+      "contain"
+    ],
+    "layout": [
+      "full",
+      "split",
+      "pip"
+    ]
+  },
+  "defaults": {
+    "clip": {
+      "in": 0,
+      "text": "What the speaker says in this clip, shown as captions.",
+      "zoom": "in",
+      "fit": "cover"
+    },
+    "card": {
+      "kicker": "Chapter",
+      "title": "Section title"
+    },
+    "cta": {
+      "title": "Try it today",
+      "button": "Get started"
+    }
+  },
+  "pace": {
+    "quick": {
+      "perShot": 1.8,
+      "minScene": 2,
+      "tail": 0.2
+    },
+    "normal": {
+      "perShot": 2.6,
+      "minScene": 2.8
+    },
+    "focus": {
+      "perShot": 3.6,
+      "minScene": 4,
+      "tail": 0.8
+    }
+  }
+}

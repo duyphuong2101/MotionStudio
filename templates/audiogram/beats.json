@@ -1,0 +1,51 @@
+{
+  "id": "audiogram",
+  "label": "Audiogram / podcast clip",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "clip": "A piece of a podcast or interview: cover art, the speaker's name, a waveform that follows the real sound, and captions.",
+      "card": "A branded text card between clips, e.g. the episode title.",
+      "cta": "Closing card: where to listen, with a button."
+    },
+    "fields": {
+      "asset": "The sound (.wav, .mp3) or a video whose sound to use, from the project assets.",
+      "clip.text": "What is said in this clip, shown as captions. Copy it word for word from a transcript.",
+      "clip.title": "A short line above the name, e.g. the show or episode.",
+      "image": "Cover art for the clip (square works best). Without one the brand logo is shown.",
+      "in": "Where the clip starts in the file, in seconds.",
+      "out": "Where it ends, in seconds. At most 120 seconds per clip.",
+      "vo": "Optional voice line over this card."
+    }
+  },
+  "description": "A podcast or interview clip for social: cover art, the speaker's name and role, a waveform that moves with the real sound, a progress bar and captions, joined by text cards and a closing call to action. Clips take .wav or .mp3 uploads, or the sound of a video.",
+  "audio": "footage",
+  "footage": "audio",
+  "levels": true,
+  "formats": ["1:1", "9:16", "16:9", "4:5"],
+  "sizes": { "1:1": [1080, 1080], "9:16": [1080, 1920], "16:9": [1920, 1080], "4:5": [1080, 1350] },
+  "durations": [6, 180],
+  "directors": ["seat", "claude", "gemini"],
+  "sequence": [
+    { "kind": ["card"], "min": 0, "max": 1 },
+    { "kind": ["clip", "card"], "min": 1, "max": 8 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "clip": { "required": ["asset"], "optional": ["in", "out", "text", "title", "name", "role", "image", "source", "pace"] },
+    "card": { "required": ["title"], "optional": ["vo", "kicker", "text", "source", "pace"] },
+    "cta": { "required": ["title", "button"], "optional": ["vo", "kicker", "url", "source", "pace"] }
+  },
+  "limits": { "title": 44, "kicker": 24, "text": 400, "name": 30, "role": 40, "button": 24, "url": 40, "voWords": 30 },
+  "enums": { "pace": ["quick", "normal", "focus"] },
+  "defaults": {
+    "clip": { "in": 0, "text": "What is said in this clip, word for word." },
+    "card": { "kicker": "Episode 12", "title": "Why small teams ship faster" },
+    "cta": { "title": "Listen to the full episode", "button": "Play now" }
+  },
+  "pace": {
+    "quick": { "perShot": 1.8, "minScene": 2.0, "tail": 0.2 },
+    "normal": { "perShot": 2.6, "minScene": 2.8 },
+    "focus": { "perShot": 3.6, "minScene": 4.0, "tail": 0.8 }
+  }
+}

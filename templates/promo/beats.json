@@ -1,0 +1,46 @@
+{
+  "id": "promo",
+  "label": "Promo / sale",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "hook": "The opening line that stops the scroll.",
+      "offer": "The product with its old and new price.",
+      "code": "A coupon code typed into a ticket.",
+      "countdown": "A countdown to when the offer ends.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": { "asset": "A product image.", "offer.icon": "An icon shown with the offer." }
+  },
+  "description": "Short sale or offer video: a punchy hook, the product with the old price struck through and the new price counting in, a coupon code typed into a dashed ticket, an optional countdown, then the call to action.",
+  "formats": ["9:16", "1:1", "4:5", "2:3"],
+  "sizes": { "9:16": [1080, 1920], "1:1": [1080, 1080], "4:5": [1080, 1350], "2:3": [1080, 1620] },
+  "durations": [6, 40],
+  "directors": ["seat", "claude", "gemini", "grok"],
+  "sequence": [
+    { "kind": ["hook"], "min": 1, "max": 1 },
+    { "kind": ["offer", "code", "countdown"], "min": 1, "max": 4 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "hook": { "required": ["vo", "title"], "optional": ["kicker", "source", "pace"] },
+    "offer": { "required": ["vo", "title", "now", "source"], "optional": ["kicker", "was", "currency", "badge", "text", "asset", "icon", "pace"] },
+    "code": { "required": ["vo", "code"], "optional": ["title", "text", "source", "pace"] },
+    "countdown": { "required": ["vo", "title"], "optional": ["days", "hours", "minutes", "seconds", "text", "source", "pace"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["kicker", "url", "source", "pace"] }
+  },
+  "limits": { "title": 40, "kicker": 24, "text": 80, "badge": 14, "code": 16, "button": 24, "url": 40, "voWords": 26 },
+  "enums": { "pace": ["quick", "normal", "focus"] },
+  "defaults": {
+    "hook": { "title": "The big sale is on" },
+    "offer": { "title": "Product name", "now": 19.99, "was": 29.99, "currency": "$", "badge": "30% OFF", "icon": "star" },
+    "code": { "code": "SAVE30", "title": "Use code" },
+    "countdown": { "title": "Ends in", "days": 2, "hours": 14, "minutes": 30, "seconds": 0 },
+    "cta": { "title": "Shop the sale", "button": "Shop now" }
+  },
+  "pace": {
+    "quick": { "perShot": 1.6, "minScene": 2.0, "tail": 0.2 },
+    "normal": { "perShot": 2.6, "minScene": 3.0 },
+    "focus": { "perShot": 3.6, "minScene": 4.5, "tail": 0.8 }
+  }
+}

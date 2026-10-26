@@ -1,0 +1,39 @@
+{
+  "id": "__ID__",
+  "label": "__LABEL__",
+  "help": {
+    "kinds": {
+      "title": "Opening card that names the topic.",
+      "point": "One point with an icon. Say what a person would use this scene for.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    }
+  },
+  "description": "One or two sentences the person sees when picking a template: what the video shows, scene by scene.",
+  "formats": ["16:9", "1:1", "9:16", "4:5", "2:3", "21:9"],
+  "sizes": { "16:9": [1920, 1080], "1:1": [1080, 1080], "9:16": [1080, 1920], "4:5": [1080, 1350], "2:3": [1080, 1620], "21:9": [2520, 1080] },
+  "durations": [10, 60],
+  "directors": ["seat", "claude", "gemini"],
+  "mixable": ["point"],
+  "sequence": [
+    { "kind": ["title"], "min": 1, "max": 1 },
+    { "kind": ["point"], "min": 1, "max": 6 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "title": { "required": ["vo", "title"], "optional": ["kicker", "source", "pace"] },
+    "point": { "required": ["vo", "title", "icon", "source"], "optional": ["text", "pace"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["url", "source", "pace"] }
+  },
+  "limits": { "title": 44, "kicker": 24, "text": 110, "button": 24, "url": 40, "voWords": 30 },
+  "enums": { "pace": ["quick", "normal", "focus"] },
+  "defaults": {
+    "title": { "title": "Title" },
+    "point": { "title": "A point", "icon": "star", "text": "One sentence about it." },
+    "cta": { "title": "Try it", "button": "Get started" }
+  },
+  "pace": {
+    "quick": { "perShot": 2.0, "minScene": 2.5, "tail": 0.3 },
+    "normal": { "perShot": 3.2, "minScene": 3.8 },
+    "focus": { "perShot": 4.5, "minScene": 5.5, "tail": 1.0 }
+  }
+}

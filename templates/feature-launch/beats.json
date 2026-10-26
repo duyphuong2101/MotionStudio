@@ -1,0 +1,233 @@
+{
+  "id": "feature-launch",
+  "label": "Feature launch",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "title": "Opening card: the feature's name and promise.",
+      "beat": "A full-screen message: the problem before the feature, or the payoff after it.",
+      "ui": "The feature at work on one app screen drawn live.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": {
+      "zoom": "assistant zooms into the assistant panel; none shows the whole app.",
+      "stat": "An optional number on the beat: { \"value\": 3, \"unit\": \"x\", \"format\": \"int\" }.",
+      "beat.icon": "An icon for this idea. It morphs from the previous beat's icon.",
+      "cta.icon": "The icon the closing card ends on; it morphs from the last beat."
+    }
+  },
+  "description": "Announces one new feature, built on the UI story renderer: a title, an optional beat that names the problem, one to three animated UI scenes that show the feature at work, an optional closing beat, then the call to action.",
+  "formats": [
+    "16:9"
+  ],
+  "size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "durations": [
+    15,
+    60
+  ],
+  "directors": [
+    "seat",
+    "claude",
+    "gemini"
+  ],
+  "sequence": [
+    {
+      "kind": [
+        "title"
+      ],
+      "min": 1,
+      "max": 1
+    },
+    {
+      "kind": [
+        "beat"
+      ],
+      "min": 0,
+      "max": 1
+    },
+    {
+      "kind": [
+        "ui"
+      ],
+      "min": 1,
+      "max": 3
+    },
+    {
+      "kind": [
+        "beat"
+      ],
+      "min": 0,
+      "max": 1
+    },
+    {
+      "kind": [
+        "cta"
+      ],
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "fields": {
+    "title": {
+      "required": [
+        "vo",
+        "title"
+      ],
+      "optional": [
+        "subtitle",
+        "source",
+        "pace",
+        "sfx"
+      ]
+    },
+    "ui": {
+      "required": [
+        "vo",
+        "title",
+        "layout",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "pace",
+        "nav",
+        "page",
+        "data",
+        "assistant",
+        "zoom",
+        "sfx"
+      ]
+    },
+    "cta": {
+      "required": [
+        "vo",
+        "title",
+        "button"
+      ],
+      "optional": [
+        "url",
+        "source",
+        "pace",
+        "icon",
+        "sfx"
+      ]
+    },
+    "beat": {
+      "required": [
+        "vo",
+        "title",
+        "icon",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "subtitle",
+        "stat",
+        "decor",
+        "check",
+        "pace",
+        "sfx"
+      ]
+    }
+  },
+  "limits": {
+    "title": 44,
+    "subtitle": 60,
+    "kicker": 24,
+    "button": 24,
+    "url": 40,
+    "voWords": 30
+  },
+  "enums": {
+    "sfx": [
+      "whoosh",
+      "hit",
+      "riser",
+      "click",
+      "none"
+    ],
+    "pace": [
+      "quick",
+      "normal",
+      "focus"
+    ],
+    "layout": [
+      "dashboard",
+      "table",
+      "detail",
+      "form",
+      "same"
+    ],
+    "zoom": [
+      "none",
+      "assistant"
+    ],
+    "decor": [
+      "walls",
+      "waves",
+      "none"
+    ]
+  },
+  "mixable": [
+    "ui"
+  ],
+  "defaults": {
+    "title": {
+      "title": "Meet the assistant",
+      "subtitle": "Ask the console, approve in one click"
+    },
+    "ui": {
+      "title": "Ask about today",
+      "kicker": "Assistant",
+      "layout": "dashboard",
+      "page": "Dashboard",
+      "data": {
+        "heading": "Dashboard",
+        "sub": "Today",
+        "kpis": [
+          { "label": "Orders on hold", "value": 3, "tone": "warn", "spark": [1, 3, 2, 4, 3] }
+        ]
+      }
+    },
+    "beat": {
+      "title": "Answers you can act on",
+      "kicker": "The problem",
+      "icon": "chat",
+      "decor": "none"
+    },
+    "cta": {
+      "title": "Try the assistant",
+      "button": "Book a demo",
+      "url": "example.com"
+    }
+  },
+  "app": "script.app = { name, search, nav: [{ label, icon: home|users|cart|receipt|repeat|clock|check|chat|gear }] }",
+  "data": {
+    "dashboard": "{ heading, sub, kpis: [{ label, value: number, format: int|money|pct, tone: brand|warn|bad|teal, spark?: [numbers], ring?: [{ label, value }] }], queue: { title, rows: [{ chip, tone, title, detail }] }, side: { title, rows: [{ label, sub, value }] } }",
+    "table": "{ heading, sub?, filters: [text], columns: [text], rows: [[ text | { text, link } | { badge, tone } | { button } ]], footer? }",
+    "detail": "{ title, sub, badge?: { text, tone }, actions: [label], primary?: index, cards: [{ title, rows: [{ label, value }] }], table?: { title, columns, rows }, click?: { action: index, badge?: { text, tone }, toast } }",
+    "form": "{ heading, sub, modal?: true, sections: [{ title, fields: [{ label, value, placeholder? }] }], search?: { label, query, result, resultSub, line: [cells] }, lines?: { title, columns, rows }, totals?: [{ label, from, value, format }], reason?: text, submit: { label, busy, toast } }"
+  },
+  "assistantTurns": "assistant.turns: [{ type: suggestions, items, pick } | { type: user, text } | { type: answer, text, source?, rows?: [{ label, value }], analytics?: { title, kpis: [{ label, value, format, change }], series: [numbers], bars: [{ name, valueText, fraction, change }] }, approval?: { summary, facts: [{ label, value }], note, approve: true }, result?: { text, rows } }]",
+  "pace": {
+    "quick": {
+      "perShot": 1.8,
+      "minScene": 2.2,
+      "tail": 0.25
+    },
+    "normal": {
+      "perShot": 3,
+      "minScene": 3.5
+    },
+    "focus": {
+      "perShot": 4,
+      "minScene": 5,
+      "tail": 1.2
+    }
+  },
+  "beat": "beat scenes: { kind: beat, kicker?, title, subtitle?, icon: motion-kit name, stat?: { value, unit, format }, decor?: walls|waves|none, check?: true }. The icon is shared: each beat morphs it from the previous one, and a cta with icon ends on it.",
+  "extends": "ui-story"
+}

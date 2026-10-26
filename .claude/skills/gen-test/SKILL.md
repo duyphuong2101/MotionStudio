@@ -1,0 +1,8 @@
+---
+name: gen-test
+description: Generate tests for a file or function following the project's existing test conventions. Use when tests are needed for new or modified code.
+---
+
+# Generate tests
+
+Defer to the `testing-patterns` skill for the conventions: `node:test` + `node:assert/strict` in `tests/*.test.mjs`, run with `npm test`. Read the target file and the nearest existing test file first, cover the happy path and the error paths (bad id, wrong status, limit overflow, locked field), then run `npm test` and report the result.

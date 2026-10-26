@@ -1,0 +1,4 @@
+{
+  "type": "commonjs",
+  "//": "Forces CommonJS for prose-audit.js / set-model-tier.js / apply-*-settings.js. They use require(); the root package.json is \"type\":\"module\", so without this Node treats them as ESM and they crash with 'require is not defined'. Do not remove."
+}

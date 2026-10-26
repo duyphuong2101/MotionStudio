@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .claude/hooks/auto-format.js",
+        "description": "Auto-format with Prettier for .js/.mjs/.cjs/.css (only when a .prettierrc and a local prettier binary exist; this repo has neither, so it is a no-op)."
+      },
+      {
+        "command": "node .claude/hooks/security-lint.js",
+        "description": "Security-lint changed files for injection/auth/CSRF patterns. NOTE: under Cursor afterFileEdit (observe-only) the findings JSON goes to logs only — the agent does NOT see it; real enforcement is Claude-side."
+      },
+      {
+        "command": "node .claude/hooks/propagation-reminder.js",
+        "description": "Propagation nudge when .ai/docs/* is edited. NOTE: logs-only under Cursor afterFileEdit — the agent does NOT see it; the workflow.mdc Phase 7 checklist is the Cursor-side enforcement."
+      },
+      {
+        "command": "node .cursor/hooks/protect-files.js",
+        "description": "Flag post-write edits to .env/credentials/lock files/.git (Cursor has no before-edit block event; afterFileEdit is the earliest available)."
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/block-destructive.js",
+        "description": "Block rm -rf, git push --force, DROP DATABASE, etc. (Cursor-native payload + permission:deny).",
+        "failClosed": true
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "node .cursor/hooks/protect-files.js",
+        "description": "Deny reading .env/credentials/keys into the LLM (lock files: reads allowed, edits flagged). Other files are allowed as-is — Cursor beforeReadFile cannot rewrite content, so no post-read redaction is possible; secrets in source are handled by the deny matchers + .gitignore policy.",
+        "failClosed": true
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/log-checkpoint.js",
+        "description": "Log checkpoint marker (timestamp + changed file count) when agent completes. Does not create git stash."
+      }
+    ]
+  }
+}

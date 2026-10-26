@@ -1,0 +1,34 @@
+# === Dependencies ===
+node_modules/
+
+# === Generated job output (videos, frames, stills, logs) ===
+out/
+
+# === Local TTS model and generated music (large binaries) ===
+models/
+library/music/
+
+# === Brand media ===
+profiles/*/assets/
+
+# === Binary and media files ===
+*.mp4
+*.mov
+*.webm
+*.wav
+*.mp3
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.onnx
+*.bin
+*.zip
+
+# === Logs and runtime state ===
+*.log
+.claude/state/
+.claude/worktrees/
+
+# === Secrets ===
+.env

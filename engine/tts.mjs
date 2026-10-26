@@ -1,0 +1,311 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { ROOT, StudioError, round, readJson, writeJson, keyFreeEnv } from './core.mjs';
+import { ffmpeg, killTree, mediaTimeoutMs } from './media.mjs';
+import { wordsOf } from './script.mjs';
+import { resolvePace, sceneGaps } from './timing.mjs';
+import { kokoroStatus, kokoroSpeak, kokoroVoices, writeWav, voicedSpan } from './tts/kokoro.mjs';
+
+const VOICE_RE = /^[A-Za-z0-9 _()-]{1,60}$/;
+const TTS_TIMEOUT_MS = 60000;
+
+// Kokoro's own grading of its English voices (from the kokoro-js voice table); others are listed as "ungraded".
+const KOKORO_INFO = {
+  af_heart: 'Heart · US female · grade A', af_bella: 'Bella · US female · grade A-', af_nicole: 'Nicole · US female · B-',
+  af_aoede: 'Aoede · US female · C+', af_kore: 'Kore · US female · C+', af_sarah: 'Sarah · US female · C+',
+  af_alloy: 'Alloy · US female · C', af_nova: 'Nova · US female · C', af_sky: 'Sky · US female · C-',
+  am_fenrir: 'Fenrir · US male · C+', am_michael: 'Michael · US male · C+', am_puck: 'Puck · US male · C+',
+  am_echo: 'Echo · US male · D', am_eric: 'Eric · US male · D', am_liam: 'Liam · US male · D', am_onyx: 'Onyx · US male · D',
+  bf_emma: 'Emma · UK female · B-', bf_isabella: 'Isabella · UK female · C', bm_george: 'George · UK male · C', bm_fable: 'Fable · UK male · C',
+  bm_lewis: 'Lewis · UK male · D+', bf_alice: 'Alice · UK female · D', bf_lily: 'Lily · UK female · D', bm_daniel: 'Daniel · UK male · D',
+};
+let sapiVoicesCache = null;
+
+async function sapiVoices() {
+  if (process.platform !== 'win32') return [];
+  if (sapiVoicesCache) return sapiVoicesCache;
+  const out = await new Promise((resolve) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      'Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices() | Where-Object { $_.Enabled } | ForEach-Object { $_.VoiceInfo.Name + "|" + $_.VoiceInfo.Culture + "|" + $_.VoiceInfo.Gender }'],
+    { shell: false, windowsHide: true, env: keyFreeEnv() });
+    let txt = '';
+    p.stdout.on('data', (d) => { if (txt.length < 20000) txt += d; });
+    const timer = setTimeout(() => killTree(p), 20000);
+    p.on('close', () => { clearTimeout(timer); resolve(txt); });
+    p.on('error', () => resolve(''));
+  });
+  sapiVoicesCache = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [name, culture, gender] = l.split('|');
+    return { id: name, culture, label: `${name.replace(/^Microsoft /, '').replace(/ Desktop$/, '')} · ${culture} ${String(gender || '').toLowerCase()}` };
+  }).filter((v) => VOICE_RE.test(v.id));
+  return sapiVoicesCache;
+}
+
+/** Every TTS engine with the voices this machine actually has, for the Brand dropdowns. */
+export async function listVoices() {
+  const k = kokoroStatus();
+  const kv = k.available ? kokoroVoices() : [];
+  const graded = kv.filter((id) => KOKORO_INFO[id]).sort((a, b) => Object.keys(KOKORO_INFO).indexOf(a) - Object.keys(KOKORO_INFO).indexOf(b));
+  const rest = kv.filter((id) => !KOKORO_INFO[id]);
+  return [
+    { id: 'kokoro', label: 'Kokoro (natural, offline)', available: k.available, reason: k.reason || null,
+      voices: [...graded.map((id) => ({ id, label: `${id} · ${KOKORO_INFO[id]}` })), ...rest.map((id) => ({ id, label: `${id} · other language` }))] },
+    { id: 'sapi', label: 'Windows voices (exact word timing)', available: process.platform === 'win32', reason: process.platform === 'win32' ? null : 'Windows only', voices: await sapiVoices() },
+    { id: 'none', label: 'No voice-over', available: true, reason: null, voices: [] },
+  ];
+}
+
+/** A short sample line in one voice, cached on disk; returns the WAV path. */
+export async function previewVoice(cacheDir, provider, voice, speed = 1) {
+  const text = 'Hi, this is how your video will sound. Every claim comes from the product page.';
+  fs.mkdirSync(cacheDir, { recursive: true });
+  if (!VOICE_RE.test(voice || '')) throw new StudioError('Pick a voice first', 400);
+  const sp = Math.max(0.6, Math.min(1.5, Number(speed) || 1));
+  if (provider === 'kokoro') {
+    if (!kokoroStatus().available) throw new StudioError(`Kokoro: ${kokoroStatus().reason}`, 400);
+    return (await speakKokoro(cacheDir, text, voice, sp)).wav;
+  }
+  if (provider === 'sapi') return (await speakLine(cacheDir, text, voice, Math.round((sp - 1) * 20))).wav;
+  throw new StudioError('This voice engine has no preview', 400);
+}
+
+/**
+ * The voice one video uses: the brand's voice, with the brief's own language and voice on top.
+ * `brief.voice` is "<engine>:<voice id>" (e.g. "sapi:Microsoft Helena Desktop"), "none:" for no voice-over.
+ */
+export function voiceFor(brand, brief = {}) {
+  const v = { ...(brand.voice || {}) };
+  if (brief.voice) {
+    const at = brief.voice.indexOf(':');
+    v.tts = brief.voice.slice(0, at);
+    v.voice = brief.voice.slice(at + 1) || undefined;
+  }
+  if (brief.lang) v.lang = brief.lang;
+  v.lang = String(v.lang || 'en').toLowerCase();
+  return v;
+}
+
+const base = (lang) => String(lang || 'en').toLowerCase().split('-')[0];
+
+/**
+ * Kokoro's voice prefix names its language; this machine's phonemizer only has English, so only
+ * American (a*) and British (b*) voices can speak. Returns the espeak language or null.
+ */
+export function kokoroLang(voice) {
+  return { a: 'en-us', b: 'en-gb' }[String(voice || '')[0]] || null;
+}
+
+/** Why this voice cannot speak this video's language here, or null when it can. Kokoro is checked; SAPI voices are checked by culture at prepare. */
+export function voiceProblem(v) {
+  if (String(v.tts || '').toLowerCase() !== 'kokoro') return null;
+  const voice = v.voice || 'af_heart';
+  if (!kokoroLang(voice)) return `Kokoro voice ${voice} needs a phonemizer for its language, and this machine only has English. Pick an English Kokoro voice or a Windows voice.`;
+  if (base(v.lang) !== 'en') return `Kokoro on this machine speaks English only, and this video is "${v.lang}". Pick a Windows voice in that language for the brief (install one in Windows Settings → Time & language → Speech), or "No voice-over".`;
+  return null;
+}
+
+/** A SAPI voice's culture, e.g. "en-US", or null when the voice is unknown here. */
+export async function sapiCulture(voice) {
+  return (await sapiVoices()).find((x) => x.id === voice)?.culture || null;
+}
+
+export const sameLanguage = (culture, lang) => base(culture) === base(lang);
+
+/** Which TTS this brand asks for, and whether this machine can run it. */
+export function ttsProvider(brand) {
+  const name = String(brand.voice?.tts || 'none').toLowerCase();
+  if (name === 'sapi' || name === 'windows') {
+    if (process.platform !== 'win32') return { name, available: false, reason: 'Windows speech needs Windows' };
+    return { name: 'sapi', available: true };
+  }
+  if (name === 'kokoro') {
+    const st = kokoroStatus();
+    return st.available ? { name, available: true } : { name, available: false, reason: `Kokoro: ${st.reason}` };
+  }
+  if (name === 'none') return { name, available: false, reason: 'no TTS set in brand.voice.tts' };
+  return { name, available: false, reason: `TTS "${name}" has no adapter on this machine yet` };
+}
+
+function runPs(script, args) {
+  return new Promise((resolve, reject) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, ...args], { shell: false, windowsHide: true, env: keyFreeEnv() });
+    let err = '';
+    p.stderr.on('data', (d) => { if (err.length < 4000) err += d; });
+    const timer = setTimeout(() => { killTree(p); reject(new StudioError('TTS timed out')); }, TTS_TIMEOUT_MS);
+    p.on('error', reject);
+    p.on('close', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new StudioError(`TTS failed (${code}): ${err.trim().slice(0, 500)}`)); });
+  });
+}
+
+/** The fmt fields and the sample bytes of a PCM WAV; SAPI and Kokoro both write a plain header. */
+function readWav(file) {
+  const buf = fs.readFileSync(file);
+  let off = 12; let fmt = null; let data = buf.subarray(0, 0);
+  while (off + 8 <= buf.length) {
+    const id = buf.toString('ascii', off, off + 4);
+    const size = buf.readUInt32LE(off + 4);
+    if (id === 'fmt ') fmt = { channels: buf.readUInt16LE(off + 10), rate: buf.readUInt32LE(off + 12), byteRate: buf.readUInt32LE(off + 16), bits: buf.readUInt16LE(off + 22) };
+    if (id === 'data') { data = buf.subarray(off + 8, off + 8 + Math.min(size, buf.length - off - 8)); break; }
+    off += 8 + size + (size % 2);
+  }
+  if (!fmt?.byteRate) throw new StudioError(`Unreadable WAV ${path.basename(file)}`);
+  return { ...fmt, data };
+}
+
+const wavSeconds = (file) => { const w = readWav(file); return w.data.length / w.byteRate; };
+
+/** Where the voice starts and stops in a 16-bit WAV (seconds), or null when it is silent or another format. */
+function wavVoicedSpan(file) {
+  const w = readWav(file);
+  if (w.bits !== 16) return null;
+  const step = 2 * w.channels;
+  const samples = new Float32Array(Math.floor(w.data.length / step));
+  for (let i = 0; i < samples.length; i++) samples[i] = w.data.readInt16LE(i * step) / 32768;
+  const span = voicedSpan(samples, w.rate);
+  return span.end > span.start ? span : null;
+}
+
+/**
+ * Kokoro reports no word timing: spread the words over the voiced part of the clip, weighted by
+ * each word's phoneme length plus a pause for its trailing punctuation.
+ */
+function kokoroWords(text, samples) {
+  const span = voicedSpan(samples);
+  const tokens = wordsOf(text);
+  const weight = (w) => w.replace(/[^A-Za-z0-9$%]/g, '').length + 2 + (/[.!?]$/.test(w) ? 6 : /[,;:]$/.test(w) ? 3 : 0) + (/\d/.test(w) ? w.length * 2 : 0);
+  const ws = tokens.map(weight);
+  const total = ws.reduce((a, b) => a + b, 0) || 1;
+  let acc = 0;
+  return tokens.map((w, i) => { const at = span.start + ((span.end - span.start) * acc) / total; acc += ws[i]; return { w, at: round(at) }; });
+}
+
+async function speakKokoro(dir, text, voice, speed) {
+  const lang = kokoroLang(voice);
+  if (!lang) throw new StudioError(`Kokoro voice ${voice} needs a phonemizer for its language, and this machine only has English`, 400);
+  const key = crypto.createHash('sha1').update(`kokoro|${voice}|${speed}|${lang}|${text}`).digest('hex').slice(0, 16);
+  const wav = path.join(dir, `${key}.wav`);
+  const meta = path.join(dir, `${key}.json`);
+  if (fs.existsSync(wav) && fs.existsSync(meta)) return { wav, ...readJson(meta) };
+  const { samples } = await kokoroSpeak(text, voice, speed, lang);
+  writeWav(wav, samples);
+  const result = { seconds: round(samples.length / 24000), words: kokoroWords(text, samples) };
+  writeJson(meta, result);
+  return { wav, ...result };
+}
+
+/** Speaks one line (cached by text + voice + rate). Returns { wav, seconds, words:[{w, at}] }. */
+async function speakLine(dir, text, voice, rate) {
+  const key = crypto.createHash('sha1').update(`${voice}|${rate}|${text}`).digest('hex').slice(0, 16);
+  const wav = path.join(dir, `${key}.wav`);
+  const meta = path.join(dir, `${key}.json`);
+  if (fs.existsSync(wav) && fs.existsSync(meta)) return { wav, ...readJson(meta) };
+  const input = path.join(dir, `${key}.in.json`);
+  fs.writeFileSync(input, JSON.stringify({ voice, rate, text }), 'utf8');
+  const raw = path.join(dir, `${key}.raw.json`);
+  await runPs(path.join(ROOT, 'engine', 'tts', 'sapi.ps1'), ['-In', input, '-Wav', wav, '-Out', raw]);
+  const parsed = JSON.parse(fs.readFileSync(raw, 'utf8').replace(/^﻿/, ''));
+  const words = (Array.isArray(parsed.words) ? parsed.words : [parsed.words]).filter(Boolean).map((x) => ({ w: x.w, at: round(x.ms / 1000) }));
+  const result = { seconds: round(wavSeconds(wav)), words };
+  writeJson(meta, result);
+  fs.unlinkSync(input);
+  fs.unlinkSync(raw);
+  return { wav, ...result };
+}
+
+/**
+ * The words a brand wants said differently (brand.voice.say: "AMAD" → "A M A D", ".NET" → "dot net"), applied to one
+ * voice line. A word matches with its trailing punctuation and a possessive 's set aside. Returns the text to speak and,
+ * per script word, how many spoken words it became (null when nothing was replaced), so timing maps back to the script.
+ */
+export function spokenLine(text, say) {
+  const tokens = wordsOf(text);
+  if (!say || !Object.keys(say).length) return { text, groups: null };
+  let hit = false;
+  const groups = [];
+  const spoken = tokens.map((tok) => {
+    const [, core, poss, tail] = /^(.*?)((?:'s|’s)?)([.,!?;:"”)]*)$/.exec(tok);
+    // "Niteco's" matches a key "Niteco's" first, then "Niteco" with the 's kept.
+    const key = Object.hasOwn(say, core + poss) ? core + poss : Object.hasOwn(say, core) ? core : null;
+    if (!core || !key) { groups.push(1); return tok; }
+    hit = true;
+    const rep = say[key] + (key === core ? poss : '');
+    groups.push(wordsOf(rep).length);
+    return rep + tail;
+  });
+  return hit ? { text: spoken.join(' '), groups } : { text, groups: null };
+}
+
+/**
+ * Real timing from speech: each scene lasts at least its spoken line plus lead/tail, words start
+ * where the voice says them, and voice.wav is every line placed at its scene's lead-in.
+ * `tight` (a motion profile with `tight`) uses the short gaps of `sceneGaps` and measures them from where the voice is
+ * heard, so the engine's own silence at either end of a clip does not widen them.
+ * `take` (engine/voicetake.mjs `recordedVoice`) replaces TTS with a recorded take's cuts, one per scene id.
+ */
+export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed = null, snap = null, tight = false, take = null) {
+  const silent = { seconds: 0, words: [] };
+  let provider = 'take', voice = take?.asset, speak = async (sc) => take.lines[sc.id] || silent;
+  if (!take) {
+    provider = ttsProvider(brand).name;
+    voice = brand.voice?.voice || (provider === 'kokoro' ? 'af_heart' : 'Microsoft Zira Desktop');
+    if (!VOICE_RE.test(voice)) throw new StudioError('brand.voice.voice has unexpected characters', 400);
+    const speed = Math.max(0.6, Math.min(1.5, Number(brand.voice?.speed) || 1));
+    const rate = Math.max(-10, Math.min(10, Math.round((speed - 1) * 20)));
+    const cache = path.join(jobDirPath, 'tts');
+    fs.mkdirSync(cache, { recursive: true });
+    speak = (sc, text) => (provider === 'kokoro' ? speakKokoro(cache, text, voice, speed) : speakLine(cache, text, voice, rate));
+  }
+
+  const scenes = [];
+  const words = [];
+  const clips = [];
+  let t = 0;
+  for (const [idx, sc] of script.scenes.entries()) {
+    const text = String(sc.vo || '').trim();
+    // A recorded take is the person's own reading: brand.voice.say changes only what TTS says.
+    const sp = take ? { text, groups: null } : spokenLine(text, brand.voice?.say);
+    const line = !text ? silent : await speak(sc, sp.text);
+    const last = idx === script.scenes.length - 1;
+    const pace = resolvePace(paceCfg, sc);
+    const shots = Array.isArray(sc.shots) && sc.shots.length ? sc.shots.length : 1;
+    const minScene = pace ? Math.max(pace.minScene, shots * pace.perShot) : cfg.minScene;
+    const { lead, tail } = sceneGaps(cfg, pace, last, tight);
+    const span = tight && line.wav ? wavVoicedSpan(line.wav) : null;
+    // The clip may start before the cut: its leading silence overlaps the previous scene's tail, or is cut off at 0.
+    const at = span ? t + lead - span.start : t + lead;
+    const spoken = span ? at - t + span.end : lead + line.seconds;
+    const raw = fixed?.[sc.id] ?? Math.max(minScene, spoken + tail);
+    const dur = snap && fixed?.[sc.id] === undefined ? snap(t + raw) - t : raw;
+    if (line.wav) clips.push({ wav: line.wav, at });
+    const tokens = wordsOf(text);
+    let said = line.words.length ? line.words : tokens.map((w, i, a) => ({ w, at: (line.seconds * i) / a.length }));
+    // A word said as several ("A M A D") starts where its first spoken word does.
+    if (sp.groups && said.length === sp.groups.reduce((a, b) => a + b, 0)) {
+      let k = 0;
+      said = sp.groups.map((n) => { const x = said[k]; k += n; return x; });
+    }
+    // The engine reports bare words; show the script's own tokens (with punctuation) when they line up one to one.
+    if (said.length === tokens.length) said = said.map((x, i) => ({ ...x, w: tokens[i] }));
+    said.forEach((x, i) => {
+      const next = said[i + 1]?.at ?? (span ? span.end : line.seconds);
+      words.push({ w: x.w, start: round(Math.max(t, at + x.at)), end: round(at + Math.max(x.at + 0.05, next - 0.03)), scene: sc.id });
+    });
+    scenes.push({ id: sc.id, start: round(t), end: round(t + dur) });
+    t += dur;
+  }
+  const duration = round(t);
+  const out = path.join(jobDirPath, 'voice.wav');
+  if (clips.length) {
+    const args = ['-y'];
+    for (const c of clips) args.push('-i', c.wav);
+    const head = (c) => (c.at < 0 ? `atrim=start=${(-c.at).toFixed(3)},asetpts=PTS-STARTPTS,` : '');
+    const chains = clips.map((c, i) => `[${i}:a]aresample=48000,${head(c)}adelay=${Math.round(Math.max(0, c.at) * 1000)}:all=1[a${i}]`);
+    const mix = `${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:duration=longest:normalize=0,apad,atrim=0:${duration}[out]`;
+    args.push('-filter_complex', `${chains.join(';')};${mix}`, '-map', '[out]', '-ac', '1', '-ar', '48000', out);
+    await ffmpeg(args, { timeoutMs: mediaTimeoutMs(duration) });
+  }
+  const lang = script.lang || brand.voice?.lang || 'en';
+  return { source: take ? 'take' : 'tts', provider, voice, lang, duration, scenes, words, ...(take ? { take: take.summary } : {}) };
+}

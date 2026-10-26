@@ -1,0 +1,242 @@
+{
+  "enabledMcpjsonServers": [
+    "playwright",
+    "context7",
+    "deepwiki"
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(npm install*)",
+      "Bash(npm -v)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(git stash list*)",
+      "Bash(ls*)",
+      "Bash(dir*)",
+      "Bash(tree*)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(node -v)",
+      "Bash(node -e *)",
+      "Bash(findstr *)",
+      "Bash(node .claude/scripts/*)",
+      "Bash(npm test*)",
+      "Bash(npm ls*)",
+      "Bash(npm run ui)",
+      "Bash(node --test *)",
+      "Bash(node engine/cli.mjs help*)",
+      "Bash(node engine/cli.mjs list*)",
+      "Bash(node engine/cli.mjs status *)",
+      "Bash(node engine/cli.mjs context *)",
+      "Bash(node engine/cli.mjs claim *)",
+      "Bash(node engine/cli.mjs commit *)",
+      "Bash(node engine/cli.mjs prepare *)",
+      "Bash(bash .ai/scripts/detect-leftovers.sh)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -f:*)",
+      "Bash(git checkout .)",
+      "Bash(git branch -D:*)",
+      "Bash(DROP DATABASE:*)",
+      "Bash(TRUNCATE:*)",
+      "Bash(del /s:*)",
+      "Bash(rmdir /s:*)"
+    ],
+    "defaultMode": "default"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.js\"",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/inject-context.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-files.js\"",
+            "timeout": 5,
+            "statusMessage": "Checking file protection rules..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-destructive.js\"",
+            "timeout": 5,
+            "statusMessage": "Checking command safety..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/auto-format.js\"",
+            "timeout": 15,
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/propagation-reminder.js\"",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/security-lint.js\"",
+            "timeout": 5,
+            "statusMessage": "Security lint..."
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/plan-guard.js\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/update-todo-after-task.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify.js\"",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify.js\"",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify.js\"",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "agent_completed",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify.js\"",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/outcome-guard.js\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-notify.js\"",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-log.js\"",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-compact.js\"",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
+  },
+  "subagentPromptCacheTtl": "1h",
+  "statusLine": {
+    "type": "command",
+    "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.js\"",
+    "padding": 0
+  },
+  "cleanupPeriodDays": 30,
+  "spinnerTipsEnabled": true,
+  "showThinkingSummaries": true,
+  "alwaysThinkingEnabled": false,
+  "outputStyle": "motion-studio"
+}

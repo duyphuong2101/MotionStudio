@@ -1,0 +1,323 @@
+{
+  "_comment": "Checked-in snapshot of the CURRENT Claude Code + Cursor spec. spec-lint.js validates config against this offline (every /check / pre-commit). /upstream-check refreshes it from the live docs. When the watcher reports a change, reconcile here + bump lastVerifiedAgainst.",
+  "lastVerifiedAgainst": {
+    "date": "2026-10-14",
+    "claudeCodeDocs": "https://code.claude.com/docs/en/{skills,sub-agents,hooks,mcp,commands,output-styles,model-config,settings-reference,changelog} + platform.claude.com models overview & model-deprecations — fetched 2026-10-14. Latest CLI release seen: 2.1.299 (Oct 14). CHANGES vs 2026-09-18 snapshot: (a) MODELS: claude-opus-5-5 @2.1.280 (opus + default alias target, retire >= 2027-09-22), claude-sonnet-5-5 @2.1.284 (sonnet alias, retire >= 2027-09-28), claude-haiku-5-5 @2.1.293 (haiku alias, retire >= 2027-10-07), claude-mythos-5-1 (retire >= 2027-09-01). Alias moves are Anthropic API only; other providers still resolve to 4.5/4.6. Opus/Sonnet/Haiku 5.5 default to effort medium in Claude Code (model-config) — the API overview says high for Sonnet 5.5; Claude Code behaviour wins. Fable 5, Opus 5, Opus 4.8, Sonnet 5, Haiku 4.5 are now legacy but Active. claude-sonnet-4-5-20250929 DEPRECATED 2026-09-30, retires 2026-11-30 (replacement claude-sonnet-5-5) — staleString added. claude-haiku-4-5-20251001 retire >= 2026-10-15, no notice yet — re-check. (b) COMMANDS: /vim (removed @2.1.92) and /ultraplan (removed, use plan mode) added to removedCommands + staleStrings; /pr-comments still listed as removed @2.1.91. (c) skill fields (20), agent fields (18), hook events (33), mcp types, output-style fields (4) all UNCHANGED. autoCompactWindow is in the 2.1.296 changelog but NOT in the sub-agents table (whole page read) — not added to agentFields until the docs list it. (d) NEW hook option onFailure:\"block\" @2.1.295 (command + http hooks fail closed) — adoption candidate for the guard hooks, not adopted. (e) Agent tool gained an effort parameter @2.1.292 — CLAUDE.md wording updated 2026-10-14. (f) Agent tools: lists take only the named MCP server tools; a server whose name contains __ must be written mcp__<whole name>__* @2.1.299. (g) REMOVED upstream, unused by NSC: TaskOutput tool + taskOutputMaxChars @2.1.277, teammateDefaultModel @2.1.234. New settings keys (not tracked by spec-lint): idleCompaction, allowedProviders, availableModelsMatch, deniedModels, maxProseWidth, attribution:false. (h) 2.1.279 absent from the fetched changelog text — unread.",
+    "cursorDocs": "https://cursor.com/{changelog,docs/models,docs/agent/hooks,docs/agent/subagents,docs/context/rules,docs/context/skills} — fetched 2026-10-14. Composer 2.5 still current (2.5 and 2.5 Fast). Rules .mdc frontmatter still exactly description/globs/alwaysApply. 21 hook events unchanged; still no beforeFileEdit, still fail-OPEN unless failClosed:true. Subagent fields unchanged. Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1 all offered. ONE CHANGE: skills frontmatter table is now name/description/paths/disable-model-invocation/icon/color/metadata — icon + color added; license is NOT listed (kept in skillFields as unverified: .cursor/skills/vue-best-practices uses it and the docs do not say unknown fields fail); globs accepted only as a legacy fallback for paths. Changelog since Sep 23: Origin App Marketplace, Remote control for local agents — no config surface.",
+    "note": "docs.claude.com 301->code.claude.com ; docs.cursor.com 308->cursor.com/docs ; code.claude.com/docs/en/release-notes is 404 — use /changelog. The settings key table is at /docs/en/settings-reference — /docs/en/settings is precedence prose and has NO key table. Both settings-reference fetches truncated, so treat any \"key absent\" conclusion from that page as UNPROVEN and confirm via the feature page or search (this is how teammateMode was confirmed)."
+  },
+  "claudeCode": {
+    "_skillFieldsNote": "All 19 fields are in the code.claude.com/docs/en/skills frontmatter table as of 2026-08-19. Outside Claude Code (claude.ai upload / Skills API / package_skill.py) ONLY these six validate: name, description, license, compatibility, metadata, allowed-tools — any other field is a hard packaging error.",
+    "skillFields": [
+      "name",
+      "description",
+      "when_to_use",
+      "argument-hint",
+      "arguments",
+      "disable-model-invocation",
+      "user-invocable",
+      "allowed-tools",
+      "disallowed-tools",
+      "model",
+      "effort",
+      "context",
+      "agent",
+      "background",
+      "hooks",
+      "paths",
+      "shell",
+      "license",
+      "compatibility",
+      "metadata"
+    ],
+    "_agentFieldsNote": "18 fields from the /docs/en/sub-agents frontmatter table, verified 2026-09-18. A bare prompt: is NOT valid file frontmatter — the docs scope it to the CLI --agents JSON flag (\"Use prompt for the system prompt, equivalent to the markdown body in file-based subagents\"), and spec-lint only reads .md files, so it was dropped from this list. initialPrompt is the frontmatter field and is a different thing: an auto-submitted FIRST USER TURN, only when the agent runs as the main session agent via --agent or the agent setting.",
+    "agentFields": [
+      "name",
+      "description",
+      "model",
+      "tools",
+      "disallowedTools",
+      "color",
+      "effort",
+      "maxTurns",
+      "mcpServers",
+      "memory",
+      "permissionMode",
+      "skills",
+      "isolation",
+      "background",
+      "hooks",
+      "initialPrompt",
+      "omitClaudeMd",
+      "experimental"
+    ],
+    "_commandFieldsNote": "Custom commands merged into skills upstream — commandFields mirrors the shared skill frontmatter table. Docs note: a file in .claude/commands/ supports the same frontmatter EXCEPT `name` and `paths`, which Claude Code ignores there; kept in this list as a permissive superset so spec-lint doesn't error on a harmless ignored key.",
+    "commandFields": [
+      "name",
+      "description",
+      "when_to_use",
+      "argument-hint",
+      "arguments",
+      "allowed-tools",
+      "disallowed-tools",
+      "model",
+      "effort",
+      "disable-model-invocation",
+      "user-invocable",
+      "context",
+      "agent",
+      "background",
+      "hooks",
+      "paths",
+      "shell",
+      "compatibility",
+      "license",
+      "metadata"
+    ],
+    "hookEvents": [
+      "SessionStart",
+      "Setup",
+      "UserPromptSubmit",
+      "UserPromptExpansion",
+      "PreToolUse",
+      "PermissionRequest",
+      "PermissionDenied",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "PostToolBatch",
+      "Notification",
+      "MessageDisplay",
+      "SubagentStart",
+      "SubagentStop",
+      "TaskCreated",
+      "TaskCompleted",
+      "Stop",
+      "StopFailure",
+      "TeammateIdle",
+      "InstructionsLoaded",
+      "ConfigChange",
+      "CwdChanged",
+      "DirectoryAdded",
+      "FileChanged",
+      "WorktreeCreate",
+      "WorktreeRemove",
+      "PreCompact",
+      "PostCompact",
+      "PreModelSwitch",
+      "PostModelSwitch",
+      "Elicitation",
+      "ElicitationResult",
+      "SessionEnd"
+    ],
+    "mcpTypes": [
+      "stdio",
+      "http",
+      "streamable-http",
+      "sse",
+      "ws"
+    ],
+    "removedCommands": [
+      "/pr-comments",
+      "/vim",
+      "/ultraplan"
+    ]
+  },
+  "cursor": {
+    "ruleFields": [
+      "description",
+      "globs",
+      "alwaysApply"
+    ],
+    "skillFields": [
+      "name",
+      "description",
+      "paths",
+      "disable-model-invocation",
+      "icon",
+      "color",
+      "metadata",
+      "license"
+    ],
+    "agentFields": [
+      "name",
+      "description",
+      "model",
+      "readonly",
+      "is_background"
+    ],
+    "_hookEventsNote": "NO beforeFileEdit event — afterFileEdit is observe-only. To BLOCK a file write use beforeReadFile + failClosed:true emitting {\"permission\":\"deny\"} (or exit 2). Cursor default is fail-OPEN.",
+    "hookEvents": [
+      "sessionStart",
+      "sessionEnd",
+      "preToolUse",
+      "postToolUse",
+      "postToolUseFailure",
+      "subagentStart",
+      "subagentStop",
+      "beforeShellExecution",
+      "afterShellExecution",
+      "beforeMCPExecution",
+      "afterMCPExecution",
+      "beforeReadFile",
+      "afterFileEdit",
+      "beforeSubmitPrompt",
+      "preCompact",
+      "stop",
+      "afterAgentResponse",
+      "afterAgentThought",
+      "beforeTabFileRead",
+      "afterTabFileEdit",
+      "workspaceOpen"
+    ],
+    "_skillFieldsNote": "Seven fields in the cursor.com/docs/context/skills table as of 2026-10-14. license is NOT in the table — kept only because vue-best-practices/SKILL.md carries it and Cursor's handling of unknown fields is undocumented. globs is a legacy fallback for paths; new skills must use paths."
+  },
+  "copilot": {
+    "_comment": "GitHub Copilot custom agents (.github/agents/*.agent.md). Verified vs docs.github.com/en/copilot/reference/custom-agents-configuration on 2026-07-14.",
+    "agentFields": [
+      "name",
+      "description",
+      "target",
+      "tools",
+      "model",
+      "disable-model-invocation",
+      "user-invocable",
+      "mcp-servers",
+      "metadata"
+    ],
+    "_retiredFields": [
+      "infer"
+    ],
+    "toolAliases": [
+      "execute",
+      "read",
+      "edit",
+      "search",
+      "agent",
+      "web",
+      "todo"
+    ],
+    "_toolMcpNote": "MCP/extension tools use \"server/tool\" or \"server/*\". A bare alias not in toolAliases and without a \"/\" is invalid (e.g. \"search/codebase\" means an MCP server literally named \"search\" — likely a VS-Code-chat-mode tool-id used by mistake).",
+    "_modelNote": "model IS spec-valid but NSC convention is to NOT pin it (available models depend on the user Copilot subscription) — spec-lint WARNs on a pinned model, does not error."
+  },
+  "models": {
+    "currentAliases": [
+      "default",
+      "best",
+      "fable",
+      "opus",
+      "sonnet",
+      "haiku",
+      "opusplan",
+      "opus[1m]",
+      "sonnet[1m]",
+      "inherit"
+    ],
+    "currentIds": [
+      "claude-fable-5-1",
+      "claude-mythos-5-1",
+      "claude-fable-5",
+      "claude-mythos-5",
+      "claude-opus-5-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5-5",
+      "claude-sonnet-5",
+      "claude-haiku-5-5"
+    ],
+    "_legacyIdsNote": "2026-10-14: current lineup per platform.claude.com/docs/en/models/overview is Fable 5.1 / Opus 5.5 / Sonnet 5.5 / Haiku 5.5. Alias targets on the Anthropic API: fable -> claude-fable-5-1 (from v2.1.257; Claude apps gateway sessions may still resolve fable/best to Fable 5), opus + default -> claude-opus-5-5 (v2.1.280, retire >= 2027-09-22), sonnet -> claude-sonnet-5-5 (v2.1.284, retire >= 2027-09-28), haiku -> claude-haiku-5-5 (v2.1.293, retire >= 2027-10-07). Opus/Sonnet/Haiku 5.5 default to effort medium in Claude Code; pin effort: on every agent. LEGACY but Active: claude-fable-5 (>= 2027-06-09), claude-opus-5 (>= 2027-07-24), claude-opus-4-8 (>= 2027-05-28), claude-opus-4-7 (>= 2027-04-16), claude-opus-4-6 (>= 2027-02-05), claude-opus-4-5-20251101 (>= 2026-11-24), claude-sonnet-5 (>= 2027-06-30), claude-sonnet-4-6 (>= 2027-02-17), claude-haiku-4-5-20251001 (>= 2026-10-15, no notice yet; DROPPED from currentIds 2026-10-14 by team decision — Haiku 5.5 is the only Haiku the kit targets). DEPRECATED: claude-sonnet-4-5-20250929 (notice 2026-09-30, retires 2026-11-30, replacement claude-sonnet-5-5). RETIRED (unchanged since 2026-08-19): claude-opus-4-1-20250805 (2026-08-05), claude-opus-4-20250514 + claude-sonnet-4-20250514 (2026-06-15), claude-3-7-sonnet-20250219 + claude-3-5-haiku-20241022 (2026-02-19), claude-3-haiku-20240307 (2026-04-20), claude-3-opus-20240229 (2026-01-05). The Opus 4.6/4.7 and Sonnet 4.5/4.6 staleStrings steer NEW config to the current generation; they do not mean those models are retired. API params temperature/top_p/top_k are deprecated on Opus 4.7+ and 400 on a non-default value.",
+    "cursorComposerCurrent": "Composer 2.5",
+    "_fallbackModelNote": "fallbackModel (settings, array, max 3, 'default' expands to default model) applies to the MAIN session only — it does NOT cascade to subagents (those use their own model: frontmatter). Needs CLI >= 2.1.166."
+  },
+  "staleStrings": [
+    {
+      "pattern": "Composer 1\\.5",
+      "reason": "Cursor model 2 versions stale",
+      "replacement": "Composer 2.5"
+    },
+    {
+      "pattern": "Opus 4\\.[67]\\b",
+      "reason": "retired Opus version",
+      "replacement": "Opus 4.8"
+    },
+    {
+      "pattern": "Sonnet 4\\.[56]\\b",
+      "reason": "superseded by Sonnet 5.5 (GA 2.1.284); Sonnet 4.5 retires 2026-11-30",
+      "replacement": "Sonnet 5.5"
+    },
+    {
+      "pattern": "claude-sonnet-4-6\\b",
+      "reason": "superseded model ID (now legacy)",
+      "replacement": "claude-sonnet-5-5"
+    },
+    {
+      "pattern": "claude-3-5-sonnet",
+      "reason": "retired model ID",
+      "replacement": "claude-sonnet-5-5"
+    },
+    {
+      "pattern": "claude-3-opus",
+      "reason": "retired model ID",
+      "replacement": "claude-opus-5-5"
+    },
+    {
+      "pattern": "claude-opus-4-1\\b",
+      "reason": "retired 2026-08-05",
+      "replacement": "claude-opus-5-5"
+    },
+    {
+      "pattern": "claude-(opus|sonnet)-4-20250514",
+      "reason": "retired 2026-06-15",
+      "replacement": "claude-opus-5-5 / claude-sonnet-5-5"
+    },
+    {
+      "pattern": "claude-3-7-sonnet",
+      "reason": "retired 2026-02-19",
+      "replacement": "claude-sonnet-5-5"
+    },
+    {
+      "pattern": "claude-3-5-haiku",
+      "reason": "retired 2026-02-19",
+      "replacement": "claude-haiku-5-5"
+    },
+    {
+      "pattern": "Haiku 4.5\b",
+      "reason": "superseded by Haiku 5.5 (2.1.293); kit targets Haiku 5.5 only",
+      "replacement": "Haiku 5.5"
+    },
+    {
+      "pattern": "claude-haiku-4-5\b",
+      "reason": "superseded model ID; kit targets Haiku 5.5 only",
+      "replacement": "claude-haiku-5-5"
+    },
+    {
+      "pattern": "claude-sonnet-4-5-20250929",
+      "reason": "deprecated 2026-09-30, retires 2026-11-30",
+      "replacement": "claude-sonnet-5-5"
+    },
+    {
+      "pattern": "/pr-comments",
+      "reason": "slash command removed upstream @2.1.91",
+      "replacement": "ask Claude directly to view PR comments"
+    },
+    {
+      "pattern": "/vim\\b",
+      "reason": "slash command removed upstream @2.1.92",
+      "replacement": "/config -> Editor mode"
+    },
+    {
+      "pattern": "/ultraplan",
+      "reason": "slash command removed upstream",
+      "replacement": "plan mode"
+    },
+    {
+      "pattern": "docs\\.claude\\.com",
+      "reason": "doc host moved (301)",
+      "replacement": "code.claude.com/docs"
+    },
+    {
+      "pattern": "docs\\.cursor\\.com",
+      "reason": "doc host moved (308)",
+      "replacement": "cursor.com/docs"
+    }
+  ]
+}

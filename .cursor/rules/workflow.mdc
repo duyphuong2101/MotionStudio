@@ -1,0 +1,102 @@
+---
+description: Development workflow guide — follow this process for any feature implementation
+globs:
+alwaysApply: false
+---
+
+# Development Workflow
+
+Cursor has no auto-workflow like Claude Code, so follow this process manually.
+Full workflow details: `.claude/commands/workflow.md` (shared with Claude Code)
+
+## Quick Fix (1-2 files)
+1. Read the file → understand context
+2. Read `.ai/docs/file-index.md` if unsure about related files
+3. Fix → self-review → **VERIFY gate** (Phase 5.5 applies on every path, Quick Fix included) → done
+
+## New Feature (multi-file)
+
+### Phase 1: Plan
+- **Spec-first — answer BEFORE designing:** "Who is this for, and what outcome does it create?" If the request doesn't say, ask. Then list 2–3 options with trade-offs and state the chosen one (plan file `## Options considered`; skip only for Low mechanical tasks)
+- Read `.ai/docs/file-index.md` and `.ai/docs/common-patterns.md`
+- Identify ALL files to create or modify and list them before writing code
+- Medium/High: capture the design in the plan's `## Architecture` and `## Reuse & extension`
+- Estimate complexity → Low is `dev-quick`, Medium/High is `senior-dev`, high-risk areas and root-cause debugging go to `senior-dev-deep`; announce the risk tier (table below)
+- **Medium/High: write a `## Task breakdown`** — ordered tasks, each with its own `**Verify:**`. Size each as the smallest change that can still be verified on its own. Never bundle independent ideas under one Verify.
+
+### Phase 2 / 3 execution order
+
+**If the plan has a `## Task breakdown`, it wins over the order below.** Work one task at a time: that task's files only → run its Verify → report → tick `- [x] done — <command> → <outcome>` → next task.
+
+### Phase 2: Engine and server first
+1. Data shape: `beats.json` rules, `source.json`/`script.json` fields (add a new source field to `SOURCE_FIELDS`; a new scene field goes in the template's `beats.json` `fields`, which locks read)
+2. Validation: `engine/script.mjs`, `engine/brand.mjs`, `validateBrief`
+3. Engine step: `engine/pipeline.mjs` / `engine/jobs.mjs` (state through `setStatus`)
+4. Server route in `server/server.mjs` (if the UI needs it)
+
+### Phase 3: Templates and UI
+1. Renderer `templates/<id>/template.mjs` (or `extends`)
+2. UI in `ui/app.js` / `ui/app.css`
+
+### Phase 4: Self-review
+- [ ] Every NEVER/ALWAYS in `.ai/docs/conventions.md` holds
+- [ ] Outside ids/files through `assertId`/`assertFileName` + `within()`
+- [ ] HTML text through `escapeHtml`/`h()`/`esc()`; JSON into `<script>` through `jsonForScript`
+- [ ] Child processes capped (args array, `shell:false`, timeout, capped log)
+- [ ] Templates deterministic (`seek(t)` only)
+- [ ] No code path invokes Claude or any model, except the two person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key) and `server/generate.mjs` (Gemini assets with the person's own key); server still localhost-only
+- [ ] Product text is English
+- [ ] Hallucination check: every new import, function or field you referenced exists
+
+### Phase 5: Code Review (MANDATORY)
+Spawn the readonly `explore` subagent (`.cursor/agents/explore.md`) on the diff. Fix every Critical and Warning, then re-review (max 2 cycles); Suggestions are logged only.
+
+### Phase 5.5: VERIFY — Test Gate (MANDATORY, not skippable)
+There is no build step. The gate is the test suite plus a smoke run of the engine CLI:
+
+```bash
+npm test
+node engine/cli.mjs help
+```
+
+When a template changed, also build a storyboard for one demo job that uses it (only if the user agrees to the run time):
+
+```bash
+node engine/cli.mjs prepare <project> <job>
+```
+
+- If errors → fix → re-run. **Max 2 fix cycles**, then STOP and report the failure.
+
+### Phase 6: Unit Tests (MANDATORY)
+1. Identify testable units from the changed files
+2. Write tests in `tests/*.test.mjs` with `node:test` + `node:assert/strict` (see `.claude/skills/testing-patterns/SKILL.md`)
+3. Run `npm test`; fix failures (max 2 cycles, then stop and report)
+4. Do NOT run browser QA unless asked
+
+### Phase 6.5: Completion — outcome log + AI failure log + commit policy
+- Outcome log: `node .claude/scripts/append-outcome.js --task "<id: summary>" --outcome accepted|rejected|user_reverted --code-review-cycles N --verify-cycles N --test-cycles N --qa-cycles N --plan-file .ai/plans/<id>.md`
+- AI failure log for every AI-typed finding: `node .claude/scripts/append-ai-failure.js --category <cat> --description "..." --file <path> --caught-by self_review|code_review|verify|unit_test|qa|user`
+- The folder is not a git repository yet. Once it is: commit after VERIFY + tests pass, never push without an explicit ask, `--force` always denied.
+
+### Phase 7: Update Propagation (if rules/conventions changed)
+Follow `.ai/docs/kit-process.md` → "Mandatory Update Propagation", then `node .claude/scripts/check-propagation.js`.
+
+## TDD Mode
+Opt-in only ("làm theo TDD" / "viết test trước" / "test-first"): `.cursor/rules/workflow-tdd.mdc`.
+
+## Risk-Based Phase Routing
+
+| Signal (highest wins) | Extra checks | Implementer |
+|---|---|---|
+| Server boundary (host/origin checks), secrets, anything touching Claude or a model provider | + explicit security review of the diff | `senior-dev-deep` (Fable 5.1) |
+| Job state, locks, render/TTS process control | + engine test for the state change | `senior-dev-deep` (Fable 5.1) |
+| Root-cause debugging, `/loop-ticket` heal pass | — | `senior-dev-deep` (Fable 5.1) |
+| Shared code with 2+ consumers (`core.mjs`, `jobs.mjs`, `kit.mjs`) | + impact analysis across every template | `senior-dev` (Opus 5.5) |
+| New or changed template | + `prepare` on a demo job and a look at the stills | `senior-dev` (Opus 5.5) |
+| Copy/CSS only, no logic | unit tests may be skipped; VERIFY never skips | `dev-quick` (Sonnet 5.5) |
+| Everything else, Medium/High | default flow | `senior-dev` (Opus 5.5) |
+
+## Epic and Loop-Ticket modes
+- Batch of similar independent items: `/epic` (`.cursor/commands/epic.md`) — the plan carries `## Pattern` + `## Epic Backlog`.
+- One task healed until every acceptance criterion passes: `/loop-ticket` (`.cursor/commands/loop-ticket.md`).
+- CODE_REVIEW always runs in the readonly `explore` agent.

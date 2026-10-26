@@ -1,0 +1,57 @@
+---
+description: Cost/model strategy for Cursor — which model, input method, and agent to pick to minimize tokens. Surface this on questions about cost, model selection, Opus vs Sonnet, or which agent to use.
+globs:
+alwaysApply: false
+---
+
+# Token Optimization for Cursor
+
+> Same roles as Claude Code, priced for Cursor's per-token billing: planning and implementation on Opus 5.5, Fable 5.1 only in `senior-dev-deep` (high-risk areas, root-cause debugging, heal passes), Sonnet 5.5 for pattern work.
+> Claude Code runs `tech-lead` on Fable instead (and `qa` on Opus), because its quota is a flat subscription rather than per-token spend.
+
+## Model Selection in Cursor Settings
+
+Configure in Cursor Settings → Models:
+
+| Task Type | Recommended Model | When |
+|-----------|------------------|------|
+| Tab completion | Fast/Haiku | Always (highest volume, keep cheap) |
+| Inline edit (Cmd+K) | Sonnet | Default for focused edits |
+| Chat (simple Q&A) | Sonnet | Search, explain, simple fix |
+| Chat (standard feature/bug) | Sonnet | Multi-file feature, standard bug |
+| Chat (architecture / design) | Opus 5.5 | System design, planning |
+| Chat (high-risk or root-cause debug) | Fable 5.1 | Server boundary, job state, cause still unknown |
+
+## Agent Selection
+
+| Agent | Model | Use when |
+|-------|-------|----------|
+| `tech-lead` | Opus 5.5 | Architecture, planning, task breakdown |
+| `senior-dev` | Opus 5.5 | Medium/High features, multi-file work |
+| `senior-dev-deep` | Fable 5.1 | high-risk areas (server boundary, secrets, job state and locks), root-cause debugging, `/loop-ticket` heal passes |
+| `dev-quick` | Sonnet 5.5 | Trivial edits — 1-2 files, rename, copy/text tweak, single clear fix |
+| `qa` | Sonnet 5.5 | Writing tests, browser QA, bug hunting |
+| `explore` | Sonnet 5.5 (readonly) | Codebase Q&A, the CODE_REVIEW phase |
+
+Escalate `dev-quick` → `senior-dev` when a "trivial" edit turns out multi-file, and `senior-dev` → `senior-dev-deep` when the work turns out high-risk or the cause is unclear.
+
+## Cost-Saving Habits
+
+1. **Use tab completion** for repetitive patterns — cheapest option
+2. **Use Cmd+K inline edit** for focused changes — cheaper than full chat
+3. **Use chat** only when you need multi-file context or explanation
+4. **Route trivial edits to `dev-quick` (Sonnet)** instead of `senior-dev` (Opus); reserve Opus agents for real implementation, planning, and hard debugging
+5. **Be specific**: include file path + line number → less code scanning
+6. **Attach only needed files** in chat — don't let Cursor auto-index everything
+7. **Use @file to reference** specific files instead of letting Cursor search
+
+## Context Management
+
+- Keep chat conversations short — start new chat for new topics
+- Use @file references instead of pasting code
+- Reference `.ai/docs/file-index.md` for file paths — saves search tokens
+
+## What loads on every request
+- Always: `AGENTS.md` + `core.mdc`. `project.mdc` is manual (`@project`); `workflow.mdc` and `new-feature.mdc` attach when implementing; `workflow-tdd.mdc` only on a TDD ask; `prose-voice.mdc` only on `.md`/`.html`.
+- Every enabled MCP server's tools ride on every request and on every subagent. Toggle `playwright` off in Settings → MCP unless the task needs them.
+- Keep chat threads short: start a new chat per task instead of scrolling one thread through a whole ticket.

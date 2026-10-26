@@ -1,0 +1,314 @@
+{
+  "id": "explainer",
+  "label": "Explainer",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "title": "Opening card that names what the video explains.",
+      "step": "One step of the process with an icon; steps are numbered in order.",
+      "diagram": "A flow of boxes and arrows that draw in order, for how parts connect.",
+      "cta": "Closing card: the one action viewers should take, with a button.",
+      "video": "Real footage in a window, e.g. a screen recording or research film: it plays under the voice, or with its own sound.",
+      "flash": "Kinetic type: 2-12 words flash full frame one at a time on the beat of the voice, then an optional title lands and holds, e.g. nine workstreams ending on \"One partnership.\"",
+      "model": "A 3D model of the product (a .glb file) turning slowly on the scene background, under a title: for a physical product or device the viewer should see from every side."
+    },
+    "fields": {
+      "step.icon": "An icon for this step. One icon morphs from step to step.",
+      "flash.items": "JSON list of 2-12 words or short phrases, each at most 40 characters (a long one wraps to two lines), e.g. [\"Strategy\", \"Design\", \"Build\"]. Say them in this order in the voice line. An item that starts with a word of the voice line flashes as that word is spoken.",
+      "flash.title": "Lands after the last item and holds to the end of the scene, e.g. \"One partnership.\" Say it last.",
+      "video": "The video clip (.mp4, .webm or .mov) from the project assets.",
+      "in": "Where the clip starts in the file, in seconds.",
+      "out": "Where it ends, in seconds (at most 120 s of clip).",
+      "sound": "Plays the clip's own sound; the scene then lasts as long as the clip, so keep the voice line empty or short.",
+      "title.theme": "dark: a centred title on the brand dark colour, for a cold open; accent: the same on the brand secondary colour.",
+      "theme": "light (default), dark (the brand dark colour) or accent (the brand secondary colour). Mix them so the film is not all white.",
+      "caption": "With sound on and no voice line: what the clip says, word for word, for the captions (timed on the heard speech). Without it the captions come from speech recognition.",
+      "model": "The 3D model (.glb, glTF 2.0 binary) from the project assets.",
+      "model.spin": "turn (default): the model turns on its axis; orbit: the camera circles it; hero: it sways while the camera eases in."
+    }
+  },
+  "description": "Explains how something works: a title, numbered steps where one icon morphs from step to step with a progress bar, flow diagrams whose boxes and arrows draw in order, real footage in a window, a 3D model of the product turning on the scene background, full-frame kinetic type that flashes words on the beat, then the call to action. Body scenes can switch to a dark or accent background.",
+  "formats": [
+    "16:9",
+    "1:1",
+    "9:16",
+    "4:5",
+    "2:3",
+    "21:9"
+  ],
+  "sizes": {
+    "16:9": [
+      1920,
+      1080
+    ],
+    "1:1": [
+      1080,
+      1080
+    ],
+    "9:16": [
+      1080,
+      1920
+    ],
+    "4:5": [
+      1080,
+      1350
+    ],
+    "2:3": [
+      1080,
+      1620
+    ],
+    "21:9": [
+      2520,
+      1080
+    ]
+  },
+  "durations": [
+    15,
+    150
+  ],
+  "directors": [
+    "seat",
+    "claude",
+    "gemini"
+  ],
+  "mixable": [
+    "step",
+    "diagram",
+    "video",
+    "flash",
+    "model"
+  ],
+  "sequence": [
+    {
+      "kind": [
+        "title"
+      ],
+      "min": 1,
+      "max": 1
+    },
+    {
+      "kind": [
+        "step",
+        "diagram",
+        "video",
+        "flash",
+        "model"
+      ],
+      "min": 1,
+      "max": 10
+    },
+    {
+      "kind": [
+        "cta"
+      ],
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "fields": {
+    "title": {
+      "required": [
+        "vo",
+        "title"
+      ],
+      "optional": [
+        "kicker",
+        "subtitle",
+        "theme",
+        "source",
+        "pace",
+        "sfx"
+      ]
+    },
+    "step": {
+      "required": [
+        "vo",
+        "title",
+        "icon",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "text",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "diagram": {
+      "required": [
+        "vo",
+        "title",
+        "nodes",
+        "source"
+      ],
+      "optional": [
+        "text",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "flash": {
+      "required": [
+        "vo",
+        "items",
+        "source"
+      ],
+      "optional": [
+        "title",
+        "kicker",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "video": {
+      "required": [
+        "title",
+        "video",
+        "source"
+      ],
+      "optional": [
+        "vo",
+        "kicker",
+        "in",
+        "out",
+        "sound",
+        "text",
+        "pace",
+        "caption",
+        "sfx"
+      ]
+    },
+    "cta": {
+      "required": [
+        "vo",
+        "title",
+        "button"
+      ],
+      "optional": [
+        "kicker",
+        "url",
+        "source",
+        "pace",
+        "sfx"
+      ]
+    },
+    "model": {
+      "required": [
+        "title",
+        "model",
+        "source"
+      ],
+      "optional": [
+        "vo",
+        "kicker",
+        "text",
+        "spin",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    }
+  },
+  "limits": {
+    "title": 44,
+    "subtitle": 70,
+    "kicker": 24,
+    "text": 110,
+    "button": 24,
+    "url": 40,
+    "voWords": 34,
+    "caption": 160
+  },
+  "enums": {
+    "pace": [
+      "quick",
+      "normal",
+      "focus"
+    ],
+    "theme": [
+      "light",
+      "dark",
+      "accent"
+    ],
+    "sfx": [
+      "whoosh",
+      "hit",
+      "riser",
+      "click",
+      "none"
+    ],
+    "spin": [
+      "turn",
+      "orbit",
+      "hero"
+    ]
+  },
+  "data": {
+    "flash": {
+      "items": [
+        2,
+        12
+      ],
+      "chars": 40
+    }
+  },
+  "defaults": {
+    "title": {
+      "title": "How it works"
+    },
+    "step": {
+      "title": "First step",
+      "icon": "chat",
+      "text": "One sentence about this step."
+    },
+    "diagram": {
+      "title": "The flow",
+      "nodes": [
+        "Request",
+        "Review",
+        "Approve",
+        "Done"
+      ]
+    },
+    "video": {
+      "title": "See it in action",
+      "in": 0
+    },
+    "flash": {
+      "items": [
+        "Plan",
+        "Build",
+        "Test",
+        "Launch"
+      ],
+      "title": "One team"
+    },
+    "cta": {
+      "title": "Try it yourself",
+      "button": "Get started"
+    },
+    "model": {
+      "title": "Take a closer look",
+      "spin": "turn"
+    }
+  },
+  "pace": {
+    "quick": {
+      "perShot": 2,
+      "minScene": 2.5,
+      "tail": 0.3
+    },
+    "normal": {
+      "perShot": 3.2,
+      "minScene": 3.8
+    },
+    "focus": {
+      "perShot": 4.5,
+      "minScene": 5.5,
+      "tail": 1
+    }
+  }
+}

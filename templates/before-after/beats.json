@@ -1,0 +1,51 @@
+{
+  "id": "before-after",
+  "label": "Before / after",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "intro": "Opening card that names the change.",
+      "split": "Side by side: the old way against the new way.",
+      "stat": "The improvement as one number.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": {
+      "split.title": "A heading over both sides, e.g. \"What changes\".",
+      "change": "Change in percent next to the number. A positive value draws an up arrow, a negative one a down arrow (\"88% less\" is -88); leave it empty for no arrow.",
+      "theme": "light (default), dark (the brand dark colour) or accent (the brand secondary colour). Mix them so the film is not all white."
+    }
+  },
+  "description": "Comparison video: an intro, split screens where the 'after' side wipes over the 'before' side with crosses turning into ticks, a number that shows the improvement, then the call to action. Side by side in 16:9 and 1:1, stacked in 9:16.",
+  "formats": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
+  "sizes": { "9:16": [1080, 1920], "1:1": [1080, 1080], "16:9": [1920, 1080], "4:5": [1080, 1350], "2:3": [1080, 1620], "21:9": [2520, 1080] },
+  "durations": [10, 60],
+  "directors": ["seat", "claude", "gemini"],
+  "sequence": [
+    { "kind": ["intro"], "min": 0, "max": 1 },
+    { "kind": ["split", "stat"], "min": 1, "max": 5 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "intro": { "required": ["vo", "title"], "optional": ["kicker", "subtitle", "source", "pace", "sfx"] },
+    "split": { "required": ["vo", "before", "after", "source"], "optional": ["title", "pace", "sfx"] },
+    "stat": { "required": ["vo", "value", "text", "source"], "optional": ["kicker", "unit", "format", "change", "theme", "pace", "sfx"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["kicker", "url", "source", "pace", "sfx"] }
+  },
+  "limits": { "title": 44, "subtitle": 70, "kicker": 24, "text": 80, "unit": 12, "button": 24, "url": 40, "voWords": 30 },
+  "enums": { "pace": ["quick", "normal", "focus"], "format": ["int", "dec", "pct", "money"], "theme": ["light", "dark", "accent"], "sfx": ["whoosh", "hit", "riser", "click", "none"] },
+  "defaults": {
+    "intro": { "title": "Before and after" },
+    "split": {
+      "title": "What changes",
+      "before": { "label": "Before", "title": "The old way", "items": ["Slow", "Manual", "Error-prone"] },
+      "after": { "label": "After", "title": "With us", "items": ["Fast", "Automatic", "Reliable"] }
+    },
+    "stat": { "value": 40, "format": "pct", "unit": "", "change": 40, "text": "less time on each task" },
+    "cta": { "title": "Make the switch", "button": "Get started" }
+  },
+  "pace": {
+    "quick": { "perShot": 1.8, "minScene": 2.2, "tail": 0.25 },
+    "normal": { "perShot": 3.0, "minScene": 3.5 },
+    "focus": { "perShot": 4.5, "minScene": 5.5, "tail": 1.0 }
+  }
+}

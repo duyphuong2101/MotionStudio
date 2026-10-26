@@ -1,0 +1,48 @@
+{
+  "id": "app-walkthrough",
+  "label": "App walkthrough",
+  "help": {
+    "kinds": {
+      "title": "Opening card: what the tour is about.",
+      "screen": "One to four real screenshots with zoom, cursor and click on what matters.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    }
+  },
+  "description": "A software tour over real screenshots: title, a run of screen scenes with camera zoom, cursor, click and highlight, then a call to action. Each scene sets its pace: quick scenes cut through secondary screens, focus scenes hold on the feature that matters.",
+  "formats": ["16:9"],
+  "marks": true,
+  "size": { "width": 1920, "height": 1080 },
+  "durations": [20, 120],
+  "directors": ["seat", "claude", "gemini"],
+  "sequence": [
+    { "kind": ["title"], "min": 1, "max": 1 },
+    { "kind": ["screen"], "min": 2, "max": 12 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "title": { "required": ["vo", "title"], "optional": ["subtitle", "source", "pace"] },
+    "screen": { "required": ["vo", "title", "shots", "source"], "optional": ["kicker", "pace"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["url", "source", "pace"] }
+  },
+  "limits": {
+    "title": 40,
+    "subtitle": 60,
+    "kicker": 24,
+    "button": 24,
+    "url": 40,
+    "voWords": 26
+  },
+  "enums": {
+    "pace": ["quick", "normal", "focus"]
+  },
+  "shots": {
+    "max": 4,
+    "imageSize": { "width": 1920, "height": 1080 },
+    "fields": "asset (png in project assets), focus {x,y,w,h} in image pixels or null for the full screen, cursor {x,y} optional, click true|false, highlight true|false"
+  },
+  "pace": {
+    "quick": { "perShot": 1.5, "minScene": 1.8, "tail": 0.2 },
+    "normal": { "perShot": 2.6, "minScene": 3.0 },
+    "focus": { "perShot": 3.4, "minScene": 4.0 }
+  }
+}

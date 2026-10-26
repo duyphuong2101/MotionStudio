@@ -1,0 +1,178 @@
+name: Claude QA Testing
+
+on:
+  pull_request:
+    types: [labeled]
+
+# Configure these for your project
+env:
+  DEV_SERVER_CMD: "npm run dev"
+  DEV_SERVER_PORT: "3000"
+  DEV_SERVER_URL: "http://localhost:3000"
+
+jobs:
+  qa-test:
+    if: contains(github.event.label.name, 'qa-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Start dev server
+        run: |
+          ${{ env.DEV_SERVER_CMD }} &
+          echo "Waiting for server on port ${{ env.DEV_SERVER_PORT }}..."
+          npx wait-on http://localhost:${{ env.DEV_SERVER_PORT }} --timeout 60000
+
+      - name: Determine QA mode and focus
+        id: qa-config
+        run: |
+          LABEL="${{ github.event.label.name }}"
+
+          # Determine mode
+          if [ "$LABEL" = "qa-verify" ]; then
+            echo "mode=verify" >> $GITHUB_OUTPUT
+          else
+            echo "mode=explore" >> $GITHUB_OUTPUT
+          fi
+
+          # Determine focus area
+          case "$LABEL" in
+            qa-forms)       echo "focus=Focus testing on forms, inputs, validation, and form submission flows." >> $GITHUB_OUTPUT ;;
+            qa-navigation)  echo "focus=Focus testing on navigation, routing, links, back/forward behavior, and deep linking." >> $GITHUB_OUTPUT ;;
+            qa-security)    echo "focus=Focus testing on XSS injection, SQL injection patterns, path traversal, and security-sensitive inputs." >> $GITHUB_OUTPUT ;;
+            qa-accessibility) echo "focus=Focus testing on keyboard navigation, screen reader compatibility, alt text, ARIA labels, and heading hierarchy." >> $GITHUB_OUTPUT ;;
+            *)              echo "focus=" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Run Claude QA Testing
+        id: qa-run
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: opus
+          mcp_config: |
+            {
+              "mcpServers": {
+                "playwright": {
+                  "command": "npx",
+                  "args": ["@playwright/mcp@latest", "--headless"]
+                }
+              }
+            }
+          allowed_tools: |
+            browser_navigate
+            browser_go_back
+            browser_go_forward
+            browser_wait
+            browser_close
+            browser_click
+            browser_type
+            browser_select_option
+            browser_hover
+            browser_drag
+            browser_press_key
+            browser_take_screenshot
+            browser_snapshot
+            browser_console_messages
+            browser_get_text
+            browser_resize
+            browser_handle_dialog
+            browser_file_upload
+            browser_tab_list
+            browser_tab_select
+            browser_tab_close
+            browser_generate_playwright_test
+          prompt: |
+            You are Quinn, an AI QA Engineer. Perform browser-based black-box testing.
+
+            **Target URL:** ${{ env.DEV_SERVER_URL }}
+            **Mode:** ${{ steps.qa-config.outputs.mode }}
+            **Focus:** ${{ steps.qa-config.outputs.focus }}
+
+            **PR Description:**
+            ${{ github.event.pull_request.body }}
+
+            ## Instructions
+
+            If mode is "verify":
+            1. Extract testable requirements from the PR description
+            2. Navigate to the target URL
+            3. Test each requirement systematically (navigate → test → screenshot → PASS/FAIL)
+            4. Run negative tests for each requirement
+            5. Check for regression in adjacent features
+            6. Test mobile at 375x812
+
+            If mode is "explore":
+            1. Navigate to the target URL
+            2. Walk the happy path, screenshotting each page
+            3. Hunt edge cases: empty inputs, XSS, SQL injection, unicode, rapid clicks
+            4. Test mobile at 375x812
+            5. Check keyboard navigation and basic accessibility
+
+            ## Rules
+            - Screenshot every bug found
+            - Continue testing after bugs — complete the full plan
+            - Check console errors periodically
+            - Never read source code — UI testing only
+
+            ## Output
+            Produce a QA Report in markdown with:
+            - Executive Summary
+            - Requirements table (verify mode) or Happy Path results (explore mode)
+            - Bugs Found table (severity, steps, expected, actual, screenshot)
+            - Mobile Results at 375x812
+            - Accessibility Quick Check
+            - Console Errors
+            - Verdict: SHIP IT / NEEDS FIXES / BLOCKED
+
+      - name: Post QA report as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `${{ steps.qa-run.outputs.result }}`;
+            const truncated = output.length > 65000
+              ? output.substring(0, 65000) + '\n\n... (report truncated)'
+              : output;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🧪 Quinn QA Report\n\n${truncated}`
+            });
+
+      - name: Set commit status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `${{ steps.qa-run.outputs.result }}`;
+            const passed = output.includes('SHIP IT');
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: passed ? 'success' : 'failure',
+              description: passed ? 'QA: All checks passed' : 'QA: Issues found — see PR comment',
+              context: 'Quinn QA'
+            });

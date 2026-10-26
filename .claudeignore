@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# out/ stays readable: the director writes drafts there and reads storyboard stills.
+out/**/frames/
+
+# Local TTS model and generated music (large binaries)
+models/
+library/music/
+
+# Brand media (images, audio, footage — not code)
+profiles/*/assets/
+
+# Binary and media files
+*.mp4
+*.mov
+*.webm
+*.wav
+*.mp3
+*.onnx
+*.bin
+*.zip
+
+# Logs and runtime state
+*.log
+.claude/state/
+.claude/worktrees/
+
+# Secrets
+.env

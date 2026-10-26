@@ -1,0 +1,16 @@
+---
+description: TDD / test-first mode for the workflow — only when the user asks for it ("làm theo TDD", "viết test trước", "test-first", --tdd)
+globs:
+alwaysApply: false
+---
+
+# TDD Mode (test-first)
+
+Opt-in only — say "làm theo TDD" / "viết test trước" / "test-first" when starting the feature. Not auto-enabled by risk tier.
+
+Reorders Phase 2/3 (Backend/Frontend) and Phase 6 (Unit Tests): tests are written BEFORE product code, from the plan's Acceptance Criteria, and there's no separate later unit-test phase — the pre-written tests ARE what Phase 2/3's code must satisfy.
+
+1. **TEST_FIRST** (runs before Phase 2): from `## Acceptance criteria`, write one test (or small group) per criterion. Run them and **confirm every one FAILS (Red)** — a test passing against nonexistent code proves nothing. Report the Red confirmation before writing any product code.
+2. **IMPLEMENT** (Phase 2/3, unchanged order otherwise): write code until the frozen tests pass (Green). **Test-lock rule:** do NOT edit/delete/`.skip` a TEST_FIRST test to make it pass. If a test looks wrong given the spec, STOP that criterion, report the specific mismatch (file:line, what it asserts, why it looks wrong) at Phase 5 (Code Review) instead of silently changing the test or coding around it. Whoever owns the review decides: fix the test (rare) or fix the implementer's understanding — never a third unreviewed behavior.
+3. **Phase 5 (Code Review)** gets one added check: diff the TEST_FIRST test files against their end-of-step-1 state — any unflagged edit/deletion is a Critical finding regardless of how correct the surrounding code looks.
+4. **Phase 6 (Unit Tests) is skipped** — folded into steps 1–2 above. Phase 5.5 (VERIFY) still re-runs the full test suite as part of its build gate, since it's the last objective checkpoint before completion.

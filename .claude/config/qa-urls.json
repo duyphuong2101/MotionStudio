@@ -1,0 +1,15 @@
+{
+  "project": "motion-studio",
+  "environments": {
+    "local": { "baseUrl": "http://127.0.0.1:4780", "start": "npm run ui" }
+  },
+  "defaultEnvironment": "local",
+  "keywordMapping": {
+    "jobs": { "tab": "jobs", "selector": "[data-tab=\"jobs\"]" },
+    "templates": { "tab": "tpl", "selector": "[data-tab=\"tpl\"]" },
+    "brand": { "tab": "brand", "selector": "[data-tab=\"brand\"]" },
+    "providers": { "tab": "prov", "selector": "[data-tab=\"prov\"]" },
+    "help": { "tab": "help", "selector": "[data-tab=\"help\"]" }
+  },
+  "demoProject": null
+}

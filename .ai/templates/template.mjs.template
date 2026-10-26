@@ -1,0 +1,50 @@
+// Renderer for templates/__ID__/. Pairs with templates/__ID__/beats.json: every scene kind in
+// `sequence` needs a branch below and a KINDS entry. Everything visible must be a function of seek(t).
+import { page, geometry, h } from '../kit.mjs';
+import { logoHtml } from '../shared.mjs';
+import { ICONS } from '../../motion-kit/icons.mjs';
+
+export function build(args) {
+  return page({ ...args, title: '__ID__', ...parts(args) });
+}
+
+/** css, body, scenes and js for page(); a mixed video composes these from several templates. */
+export function parts({ brand, script, size }) {
+  const { px, port } = geometry(size);
+  const blocks = [];
+  const scenes = [];
+  for (const sc of script.scenes) {
+    const id = sc.id;
+    if (sc.kind === 'title') {
+      blocks.push(`<div class="sc fill" id="g-${id}"><div class="box">
+        ${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
+        <div class="hd tt" id="${id}-t" data-lint>${h(sc.title)}</div></div></div>`);
+      scenes.push({ id, kind: 'title' });
+    } else if (sc.kind === 'point') {
+      blocks.push(`<div class="sc fill" id="g-${id}"><div class="box">
+        <svg class="ico" viewBox="0 0 100 100" aria-hidden="true"><path id="${id}-i" d="${ICONS[sc.icon] || ICONS.circle}"/></svg>
+        <div class="hd pt" id="${id}-t" data-lint>${h(sc.title)}</div>
+        ${sc.text ? `<div class="tx" id="${id}-x" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
+      scenes.push({ id, kind: 'point' });
+    } else if (sc.kind === 'cta') {
+      const logo = logoHtml(brand, { onDark: true });
+      blocks.push(`<div class="sc fill dark" id="g-${id}"><div class="box">${logo}
+        <div class="hd tt" id="${id}-t" data-lint>${h(sc.title)}</div>
+        <div class="btn" id="${id}-b" data-lint>${h(sc.button)}</div>
+        ${sc.url ? `<div class="tx" data-lint>${h(sc.url)}</div>` : ''}</div></div>`);
+      scenes.push({ id, kind: 'cta', dark: true }); // drawn on a dark frame: a lead's subtitle style switches colours
+    }
+  }
+  const css = `
+.box{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:${px(28)};padding:${px(110)}}
+.tt{font-size:${px(port ? 120 : 104)}}.pt{font-size:${px(port ? 88 : 76)}}
+.tx{font-size:${px(42)};color:var(--muted);max-width:${px(900)}}
+.ico{width:${px(220)};height:${px(220)};overflow:visible}.ico path{fill:none;stroke:var(--primary);stroke-width:4}`;
+  const js = `
+const KINDS = {
+  title(sc, s) { fadeUp($(sc.id + '-t'), s + 0.2); },
+  point(sc, s) { draw($(sc.id + '-i'), s + 0.1, 0.9); fadeUp($(sc.id + '-t'), s + 0.3); fadeUp($(sc.id + '-x'), cue(sc, 0.4)); },
+  cta(sc, s) { fadeUp($(sc.id + '-t'), s + 0.2); pop($(sc.id + '-b'), s + 0.6); },
+};`;
+  return { css, body: blocks.join(''), scenes, js };
+}

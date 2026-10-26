@@ -1,0 +1,176 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 4780,
+    "reviewPort": 4781,
+    "reviewHost": ""
+  },
+  "director": {
+    "maxJobsPerRun": 5,
+    "maxRunsPerDay": 50,
+    "jobTimeoutMinutes": 15,
+    "claudePath": "",
+    "model": "claude-opus-5-5",
+    "routing": {
+      "standard": "claude-sonnet-5-5",
+      "strong": "claude-opus-5-5",
+      "strongTemplates": [
+        "data-story",
+        "before-after",
+        "testimonial",
+        "code-story",
+        "ui-story",
+        "feature-launch",
+        "app-walkthrough"
+      ]
+    },
+    "maxTurnsPerJob": 60,
+    "maxLogBytes": 200000,
+    "maxOutputBytes": 20000000,
+    "defaultPauseMinutes": 60,
+    "api": {
+      "maxTurnsPerJob": 40,
+      "requestTimeoutSeconds": 180,
+      "maxOutputTokens": 8192,
+      "maxTokensPerJob": 1000000,
+      "maxCallsPerDay": 400,
+      "maxResponseBytes": 4000000,
+      "maxToolResultChars": 60000,
+      "maxDraftBytes": 262144,
+      "maxFetchBytes": 2000000,
+      "maxPageChars": 40000,
+      "maxFetchesPerJob": 6,
+      "maxImagesPerJob": 8,
+      "maxImageBytes": 4000000,
+      "maxPrepareRounds": 3,
+      "pauseMinutes": 15
+    },
+    "tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Write",
+      "Edit",
+      "Bash"
+    ],
+    "allowedTools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit(out/**)",
+      "Bash(node engine/cli.mjs list *)",
+      "Bash(node engine/cli.mjs context *)",
+      "Bash(node engine/cli.mjs claim *)",
+      "Bash(node engine/cli.mjs commit *)",
+      "Bash(node engine/cli.mjs fail *)",
+      "Bash(node engine/cli.mjs prepare *)",
+      "Bash(node engine/cli.mjs status *)",
+      "Bash(node engine/cli.mjs review *)",
+      "Bash(node engine/cli.mjs playcheck *)"
+    ],
+    "disallowedTools": [
+      "Bash(node engine/cli.mjs render *)",
+      "Bash(node engine/cli.mjs approve *)",
+      "Bash(node engine/cli.mjs sequence *)",
+      "Bash(node engine/cli.mjs reset-dirty *)",
+      "Bash(node -e *)",
+      "Bash(npm *)",
+      "Edit(out/**/status.json)"
+    ]
+  },
+  "generate": {
+    "maxImagesPerDay": 20,
+    "maxImagesPerMonth": 300,
+    "maxVideosPerDay": 4,
+    "maxVideosPerMonth": 40,
+    "maxRefreshesPerDay": 10,
+    "requestTimeoutSeconds": 120,
+    "maxResponseBytes": 40000000,
+    "maxVideoBytes": 100000000,
+    "maxVideoSeconds": 8,
+    "pollSeconds": 10,
+    "maxPollMinutes": 6,
+    "pauseMinutes": 15,
+    "imageSize": "1K",
+    "maxLogBytes": 200000
+  },
+  "engine": {
+    "maxConcurrentRuns": 1,
+    "runTimeoutMinutes": 15,
+    "maxLogBytes": 200000,
+    "chromeChannel": "chrome"
+  },
+  "footage": {
+    "sceneThreshold": 0.28,
+    "minShotSeconds": 0.6,
+    "maxShots": 300,
+    "thumbHeight": 270,
+    "barsSampleSeconds": 4,
+    "maxClipSeconds": 120,
+    "analyseTimeoutMinutes": 10,
+    "clipTimeoutMinutes": 10,
+    "maxHits": 50
+  },
+  "render": {
+    "fps": 30,
+    "jpegQuality": 92,
+    "crf": 18,
+    "motionBlurSamples": 4,
+    "concurrency": 4,
+    "shutter": 0.5
+  },
+  "timing": {
+    "wordsPerSecond": {
+      "en": 2.6,
+      "default": 2.4
+    },
+    "leadIn": 0.2,
+    "tailOut": 0.5,
+    "lastSceneHold": 1,
+    "tight": {
+      "leadIn": 0.15,
+      "tailOut": 0.4
+    },
+    "minScene": 2.2,
+    "maxOverrun": 0.1
+  },
+  "lint": {
+    "safeArea": 48
+  },
+  "playcheck": {
+    "enabled": true,
+    "step": 0.083333,
+    "maxFrames": 1500,
+    "historyEvery": 0.5,
+    "opacity": 0.35
+  },
+  "review": {
+    "fastWps": 3.2,
+    "slowTail": 1.5,
+    "maxSilence": 0.25,
+    "frameIn": 0.45,
+    "frameOut": 0.25,
+    "minOut": 0.5,
+    "tile": 480
+  },
+  "loudness": {
+    "match": true,
+    "toleranceDb": 1,
+    "maxGainDb": 12
+  },
+  "voiceTake": {
+    "minMatch": 0.7,
+    "padding": 0.12,
+    "maxExtend": 0.5,
+    "targetLufs": -22,
+    "maxGainDb": 12
+  },
+  "evidence": {
+    "repos": {
+      "nsc": "C:/Projects/NorthShore/NSC"
+    },
+    "releasePattern": "release/",
+    "maxCommits": 300,
+    "timeoutSeconds": 60
+  }
+}

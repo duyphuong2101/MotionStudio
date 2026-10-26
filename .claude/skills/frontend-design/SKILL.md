@@ -1,0 +1,32 @@
+---
+name: frontend-design
+description: Design and implement Motion Studio UI (ui/index.html, ui/app.js, ui/app.css) or the visual layout of a video template. Use when building new UI, improving UX, styling, or planning a template's look across 16:9, 1:1, 9:16, 4:5, 2:3 and 21:9.
+agent: Explore
+allowed-tools: Read, Grep, Glob
+---
+
+# Frontend design
+
+> **This is the up-front design step**: plan structure, states and responsive behaviour before coding. Implementation rules live in `project-conventions` and, for templates, `template-authoring`.
+
+## Two different frontends
+
+| Surface | Files | Rules |
+|---|---|---|
+| Studio UI (the tool) | `ui/index.html`, `ui/app.js`, `ui/app.css` | Vanilla JS, no framework, no bundler. English labels. Data through `esc()`. Calls through `api()` (sends `X-Studio: 1`). |
+| Video templates (the product) | `templates/<id>/template.mjs` | Brand tokens only (`var(--primary)` …), sizes via `px()`, text via `h()`, deterministic `seek(t)`. |
+
+## Studio UI
+
+1. Read `ui/app.js` around the screen you change. State lives in the single `S` object; rendering is string templates into containers.
+2. Plan every state: loading, empty (no jobs, no source yet), error (server `error` text in a toast), busy (`preparing`/`rendering` disables actions).
+3. Keyboard and focus: every action is a `<button>`; visible focus; no colour-only status (status text from `STATUS`).
+4. Keep copy short and specific about the next step ("Approve the storyboard first").
+
+## Template layout
+
+1. Design on the 1080 short side, then check `port` (9:16, and 2:3 with `short`), `land` (16:9, and 21:9 where `padX()` keeps content in a centred 16:9 area) and `square` (1:1 and 4:5) branches.
+2. Leave the safe area (`config/studio.json` → `lint.safeArea`) clear; mark text `data-lint`.
+3. Colours from the brand (`--primary`, `--primary2`, `--secondary`, `--bg`, `--ink`, `--muted`, `--on`) and palette variables `--c-<name>`.
+4. Motion: one idea per scene, entrances tied to voice cues (`cue(sc, frac)`), nothing driven by wall-clock time.
+5. Verify with `node engine/cli.mjs prepare <project> <job>` and look at the stills.

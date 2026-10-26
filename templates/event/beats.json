@@ -1,0 +1,48 @@
+{
+  "id": "event",
+  "label": "Event / webinar",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "poster": "Opening poster: the event name, date, time and place.",
+      "speakers": "Speaker cards with each person's name and role.",
+      "agenda": "The agenda as a timeline: what happens when.",
+      "cta": "Closing card: how to sign up, with a button."
+    },
+    "fields": {
+      "items": "JSON agenda: [{ \"time\": \"10:00\", \"text\": \"Welcome\" }].",
+      "asset": "A poster image behind the title.",
+      "cta.date": "Repeat the date on the sign-up card."
+    }
+  },
+  "description": "Announces an event or webinar: a poster with a date tile that flips in plus time and place, speaker cards, an agenda whose timeline draws itself, then the sign-up call to action.",
+  "formats": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
+  "sizes": { "9:16": [1080, 1920], "1:1": [1080, 1080], "16:9": [1920, 1080], "4:5": [1080, 1350], "2:3": [1080, 1620], "21:9": [2520, 1080] },
+  "durations": [8, 60],
+  "directors": ["seat", "claude", "gemini", "grok"],
+  "mixable": ["speakers", "agenda"],
+  "sequence": [
+    { "kind": ["poster"], "min": 1, "max": 1 },
+    { "kind": ["speakers", "agenda"], "min": 0, "max": 3 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "poster": { "required": ["vo", "title", "date"], "optional": ["kicker", "time", "place", "asset", "source", "pace", "sfx"] },
+    "speakers": { "required": ["vo", "title", "people"], "optional": ["source", "pace", "sfx"] },
+    "agenda": { "required": ["vo", "title", "items"], "optional": ["source", "pace", "sfx"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["kicker", "url", "date", "source", "pace", "sfx"] }
+  },
+  "limits": { "title": 48, "kicker": 24, "date": 20, "time": 30, "place": 40, "button": 24, "url": 40, "voWords": 30 },
+  "enums": { "pace": ["quick", "normal", "focus"], "sfx": ["whoosh", "hit", "riser", "click", "none"] },
+  "defaults": {
+    "poster": { "kicker": "Live webinar", "title": "Event title", "date": "2026-11-20", "time": "10:00 AM ET", "place": "Online" },
+    "speakers": { "title": "Your hosts", "people": [{ "name": "Alex Morgan", "role": "Head of Support" }, { "name": "Sam Lee", "role": "Product Lead" }] },
+    "agenda": { "title": "What we will cover", "items": [{ "time": "10:00", "text": "Welcome" }, { "time": "10:10", "text": "Live demo" }, { "time": "10:40", "text": "Questions" }] },
+    "cta": { "title": "Save your seat", "button": "Register free" }
+  },
+  "pace": {
+    "quick": { "perShot": 2.0, "minScene": 2.5, "tail": 0.3 },
+    "normal": { "perShot": 3.0, "minScene": 3.5 },
+    "focus": { "perShot": 4.2, "minScene": 5.0, "tail": 0.9 }
+  }
+}

@@ -1,0 +1,489 @@
+{
+  "id": "data-story",
+  "label": "Data story",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "title": "Opening card for the numbers.",
+      "stat": "One big number that counts up, with an optional up or down change.",
+      "bars": "A ranking: one bar per item, growing from zero.",
+      "line": "A trend over time: a line chart that draws itself.",
+      "donut": "Shares of a whole: a donut that fills part by part.",
+      "cta": "Closing card: the one action viewers should take, with a button.",
+      "race": "A ranking that changes over time: bars race to new places period by period (a bar chart race).",
+      "stripes": "One colored stripe per value, cool below the average and warm above; can end as bars above and below the average."
+    },
+    "fields": {
+      "items": "JSON list of bars, largest first: [{ \"label\": \"Product A\", \"value\": 31200 }]; with series, add \"value2\" to each.",
+      "stat.text": "What the number counts, e.g. \"orders this week\".",
+      "periods": "JSON list of period labels in time order, e.g. [\"2005\", \"2010\", \"2015\", \"2020\"]. 2-12 periods.",
+      "series": "JSON list of bars, each with one value per period: [{ \"label\": \"Coal\", \"values\": [2013, 1847, 1352, 774] }]. Copy every value from the source.",
+      "top": "How many bars show at once (3-8). The rest wait below and race in when they rank high enough.",
+      "values": "JSON list of numbers in time order, one stripe each (5-200), e.g. yearly temperature anomalies. Copy them from the source.",
+      "stripes.labels": "JSON pair: the first and the last period under the stripes, e.g. [\"1880\", \"2025\"].",
+      "finish": "stripes keeps the colored stripes; bars turns them into bars above and below the average at the middle of the voice line.",
+      "race.vo": "Give each period about a second of voice: the bars move while the line is spoken.",
+      "theme": "light (default), dark (the brand dark colour) or accent (the brand secondary colour). Mix them so the film is not all white.",
+      "band": "JSON highlight over a span of points, counted from 0: { \"from\": 2, \"to\": 2, \"label\": \"Q3\" }. Label at most 24 characters.",
+      "ref": "JSON dashed reference line at one value: { \"value\": 50, \"label\": \"50% target\" }. Label at most 24 characters.",
+      "bars.series": "Optional: two names for two bars per item, e.g. [\"Commercial PEX\", \"Delivery PEX\"]; every item then needs \"value2\".",
+      "bars.layout": "Optional: \"columns\" draws upright bars side by side with the value above each and the label below (good for 2-4 items with two series); default rows."
+    }
+  },
+  "description": "Numbers told as a story: a title, big headline figures that count up with an up or down change, bar rankings that grow, a bar chart race over time, warming-style color stripes, a line chart that draws itself, a donut that fills in parts, then the call to action.",
+  "formats": [
+    "16:9",
+    "1:1",
+    "9:16",
+    "4:5",
+    "2:3",
+    "21:9"
+  ],
+  "sizes": {
+    "16:9": [
+      1920,
+      1080
+    ],
+    "1:1": [
+      1080,
+      1080
+    ],
+    "9:16": [
+      1080,
+      1920
+    ],
+    "4:5": [
+      1080,
+      1350
+    ],
+    "2:3": [
+      1080,
+      1620
+    ],
+    "21:9": [
+      2520,
+      1080
+    ]
+  },
+  "durations": [
+    10,
+    120
+  ],
+  "directors": [
+    "seat",
+    "claude",
+    "gemini"
+  ],
+  "mixable": [
+    "stat",
+    "bars",
+    "race",
+    "stripes",
+    "line",
+    "donut"
+  ],
+  "sequence": [
+    {
+      "kind": [
+        "title"
+      ],
+      "min": 0,
+      "max": 1
+    },
+    {
+      "kind": [
+        "stat",
+        "bars",
+        "race",
+        "stripes",
+        "line",
+        "donut"
+      ],
+      "min": 1,
+      "max": 10
+    },
+    {
+      "kind": [
+        "cta"
+      ],
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "fields": {
+    "title": {
+      "required": [
+        "vo",
+        "title"
+      ],
+      "optional": [
+        "kicker",
+        "subtitle",
+        "source",
+        "pace",
+        "sfx"
+      ]
+    },
+    "stat": {
+      "required": [
+        "vo",
+        "value",
+        "text",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "unit",
+        "format",
+        "change",
+        "theme",
+        "pace",
+        "sfx",
+        "tone"
+      ]
+    },
+    "bars": {
+      "required": [
+        "vo",
+        "title",
+        "items",
+        "source"
+      ],
+      "optional": [
+        "format",
+        "unit",
+        "text",
+        "theme",
+        "pace",
+        "sfx",
+        "tone",
+        "series",
+        "layout"
+      ]
+    },
+    "race": {
+      "required": [
+        "vo",
+        "title",
+        "periods",
+        "series",
+        "source"
+      ],
+      "optional": [
+        "format",
+        "unit",
+        "text",
+        "top",
+        "pace",
+        "sfx"
+      ]
+    },
+    "stripes": {
+      "required": [
+        "vo",
+        "title",
+        "values",
+        "source"
+      ],
+      "optional": [
+        "labels",
+        "finish",
+        "text",
+        "pace",
+        "sfx"
+      ]
+    },
+    "line": {
+      "required": [
+        "vo",
+        "title",
+        "points",
+        "source"
+      ],
+      "optional": [
+        "labels",
+        "format",
+        "unit",
+        "text",
+        "band",
+        "ref",
+        "theme",
+        "pace",
+        "sfx",
+        "tone"
+      ]
+    },
+    "donut": {
+      "required": [
+        "vo",
+        "title",
+        "parts",
+        "source"
+      ],
+      "optional": [
+        "text",
+        "pace",
+        "sfx"
+      ]
+    },
+    "cta": {
+      "required": [
+        "vo",
+        "title",
+        "button"
+      ],
+      "optional": [
+        "kicker",
+        "url",
+        "source",
+        "pace",
+        "sfx"
+      ]
+    }
+  },
+  "limits": {
+    "title": 44,
+    "subtitle": 70,
+    "kicker": 24,
+    "text": 90,
+    "unit": 12,
+    "button": 24,
+    "url": 40,
+    "voWords": 34
+  },
+  "enums": {
+    "pace": [
+      "quick",
+      "normal",
+      "focus"
+    ],
+    "format": [
+      "int",
+      "dec",
+      "pct",
+      "money"
+    ],
+    "finish": [
+      "stripes",
+      "bars"
+    ],
+    "theme": [
+      "light",
+      "dark",
+      "accent"
+    ],
+    "sfx": [
+      "whoosh",
+      "hit",
+      "riser",
+      "click",
+      "none"
+    ],
+    "tone": [
+      "up",
+      "down"
+    ],
+    "layout": [
+      "rows",
+      "columns"
+    ]
+  },
+  "defaults": {
+    "title": {
+      "title": "The year in numbers"
+    },
+    "stat": {
+      "value": 1284,
+      "format": "int",
+      "text": "orders this week",
+      "change": 3.1
+    },
+    "bars": {
+      "title": "Top products",
+      "format": "money",
+      "items": [
+        {
+          "label": "Product A",
+          "value": 31200
+        },
+        {
+          "label": "Product B",
+          "value": 22400
+        },
+        {
+          "label": "Product C",
+          "value": 12950
+        }
+      ]
+    },
+    "race": {
+      "title": "Sales by region",
+      "format": "int",
+      "periods": [
+        "2021",
+        "2022",
+        "2023",
+        "2024"
+      ],
+      "top": 4,
+      "series": [
+        {
+          "label": "North",
+          "values": [
+            120,
+            135,
+            150,
+            160
+          ]
+        },
+        {
+          "label": "South",
+          "values": [
+            140,
+            138,
+            145,
+            170
+          ]
+        },
+        {
+          "label": "East",
+          "values": [
+            90,
+            130,
+            160,
+            155
+          ]
+        },
+        {
+          "label": "West",
+          "values": [
+            60,
+            80,
+            110,
+            175
+          ]
+        }
+      ]
+    },
+    "stripes": {
+      "title": "Every year, one stripe",
+      "finish": "bars",
+      "labels": [
+        "2000",
+        "2024"
+      ],
+      "values": [
+        0.4,
+        0.5,
+        0.6,
+        0.5,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1,
+        0.9,
+        0.8,
+        1,
+        1,
+        0.9,
+        0.9,
+        1.2,
+        1.3
+      ]
+    },
+    "line": {
+      "title": "Sessions by day",
+      "points": [
+        6100,
+        6600,
+        7200,
+        6800,
+        7400,
+        7000,
+        7100
+      ],
+      "labels": [
+        "Mon",
+        "Sun"
+      ],
+      "format": "int"
+    },
+    "donut": {
+      "title": "Where orders come from",
+      "parts": [
+        {
+          "label": "Web",
+          "value": 62
+        },
+        {
+          "label": "Phone",
+          "value": 24
+        },
+        {
+          "label": "Subscriptions",
+          "value": 14
+        }
+      ]
+    },
+    "cta": {
+      "title": "See the full report",
+      "button": "Open report"
+    }
+  },
+  "pace": {
+    "quick": {
+      "perShot": 2,
+      "minScene": 2.5,
+      "tail": 0.3
+    },
+    "normal": {
+      "perShot": 3.2,
+      "minScene": 3.8
+    },
+    "focus": {
+      "perShot": 4.5,
+      "minScene": 5.5,
+      "tail": 1
+    }
+  },
+  "data": {
+    "race": {
+      "periods": [
+        2,
+        12
+      ],
+      "series": [
+        2,
+        10
+      ],
+      "top": [
+        3,
+        8
+      ],
+      "periodChars": 12,
+      "labelChars": 24
+    },
+    "stripes": {
+      "values": [
+        5,
+        200
+      ],
+      "periodChars": 12
+    },
+    "line": {
+      "labelChars": 24
+    },
+    "bars": {
+      "seriesChars": 24
+    }
+  }
+}

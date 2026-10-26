@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/ui/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="logo"><i aria-hidden="true"></i>Motion Studio</div>
+    <label class="sr" for="proj">Project</label>
+    <select class="proj" id="proj"></select>
+    <button class="btn sm" id="new-proj">+ New project</button>
+    <span class="spacer"></span>
+    <span class="status" id="topstatus" aria-live="polite"></span>
+  </header>
+  <nav id="nav" aria-label="Navigation">
+    <button class="on" data-tab="jobs">Jobs</button>
+    <button data-tab="tpl">Templates</button>
+    <button data-tab="brand">Brand</button>
+    <button data-tab="help">Guide</button>
+  </nav>
+  <div class="conn" id="conn" role="alert" hidden></div>
+  <main id="main">
+    <section class="tab on" id="tab-jobs">
+      <div class="jobs">
+        <div class="side">
+          <div class="seg" id="listmode" role="group" aria-label="List">
+            <button type="button" data-mode="jobs" class="on" aria-pressed="true">Jobs <span id="n-jobs"></span></button>
+            <button type="button" data-mode="seqs" aria-pressed="false">Sequences <span id="n-seqs"></span></button>
+          </div>
+          <div id="side-jobs">
+            <div class="listhead"><button class="btn p sm" id="new-brief">+ New brief</button></div>
+            <div class="dir" id="director"></div>
+            <div class="chips" id="jobfilter" role="group" aria-label="Show jobs"></div>
+            <div class="list" id="joblist"></div>
+          </div>
+          <div id="side-seqs" hidden>
+            <div class="listhead"><button class="btn p sm" id="new-seq">+ New sequence</button></div>
+            <p class="muted small">A sequence joins finished videos of one format into one MP4.</p>
+            <div class="list" id="seqlist"></div>
+          </div>
+        </div>
+        <div class="detail" id="detail"><p class="muted">Select a job on the left.</p></div>
+      </div>
+    </section>
+    <section class="tab" id="tab-tpl"></section>
+    <section class="tab" id="tab-brand"></section>
+    <section class="tab" id="tab-help"></section>
+  </main>
+</div>
+<dialog class="dlg" id="dlg"></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/ui/app.js"></script>
+</body>
+</html>
