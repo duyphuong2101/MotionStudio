@@ -116,7 +116,9 @@ export function parts({ brand, script, size }) {
       const all = ref ? [...pts, num(ref.value)] : pts;
       const min = Math.min(...all), max = Math.max(...all), span = max - min || 1;
       const xOf = (k) => Math.round((k / Math.max(1, pts.length - 1)) * Wc);
-      const yOf = (v) => Math.round(Hc - 20 - ((v - min) / span) * (Hc - 60));
+      // A band label sits at the top of the chart: the line then keeps clear of it (a peak ran through "Q3").
+      const top = sc.band?.label ? 10 + Math.round(MK * 1.3) + 14 : 40;
+      const yOf = (v) => Math.round(Hc - 20 - ((v - min) / span) * (Hc - 20 - top));
       const xy = pts.map((v, k) => [xOf(k), yOf(v)]);
       const line = xy.map(([x, y], k) => `${k ? 'L' : 'M'}${x} ${y}`).join(' ');
       const last = xy[xy.length - 1] || [0, 0];

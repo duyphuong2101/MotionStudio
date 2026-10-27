@@ -206,9 +206,12 @@ test('a band tints its span of points under a label; a reference value draws a d
   // 5 points over 1400 units: point 2 sits at 700, half a segment (175) each side.
   assert.match(p.body, /<rect class="band" id="l-band" x="525" y="0" width="350" height="420"\/>/);
   assert.match(p.body, /<div class="blab" id="l-bl" data-lint style="left:calc\(\(100% - \d+px\) \* 0\.3750\);width:calc\(\(100% - \d+px\) \* 0\.2500\);justify-content:center">Q3 &lt;launch&gt;<\/div>/);
-  // 90 is above every point, so it becomes the top of the scale (y = 40).
-  assert.match(p.body, /<path class="ref" id="l-ref" d="M0 40 H1400"\/>/);
-  assert.match(p.body, /<div class="rlab" id="l-rl" data-lint style="top:2px">Target<\/div>/);
+  // 90 is above every point, so it becomes the top of the scale; under a band label the top is 10 + 28 * 1.3 + 14 = 60,
+  // so the line keeps clear of the label (a peak ran through "Q3", NSC s5, 2026-10-26).
+  assert.match(p.body, /<path class="ref" id="l-ref" d="M0 60 H1400"\/>/);
+  assert.match(p.body, /<div class="rlab" id="l-rl" data-lint style="top:22px">Target<\/div>/);
+  // Without a band label the scale top stays at 40.
+  assert.match(lineParts({ band: { from: 2, to: 2 }, ref: { value: 90, label: 'Target' } }).body, /<path class="ref" id="l-ref" d="M0 40 H1400"\/>/);
   assert.ok(p.css.includes('.band{fill:var(--secondary);fill-opacity:.22}') && p.css.includes('stroke-dasharray:14 10'));
   assert.ok(p.js.includes("for (const [mark, lab] of [['-band', '-bl'], ['-ref', '-rl']])"));
   const plain = lineParts({});

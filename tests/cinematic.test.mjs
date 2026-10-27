@@ -79,7 +79,7 @@ const CINE_BASELINE = {
   event: { '9:16': '3bd7f313bcdf509df98e8d0f6ca400f8b300a708', '1:1': '417fa6d6d66247e8aae26c10135ef7cb93a64595', '16:9': '1076b0cd21779ae0f34fc2434c967508c5f8eae5', '4:5': '514e3e30ce5f426f4ae6c87bdf1bce96dd3409fc', '2:3': 'c4148d58fefb831cb7b7dcd93098c7cfbee273e0', '21:9': 'b22f10e906ba30d39165a4912aa5090e0bceb792' },
   'code-story': { '16:9': '285f9d71b22daff8e24cfade9d10acc92e3cc084', '1:1': 'b5586e6784b2b2b07a437ac2fe36bb2bb9b20a17', '9:16': '8b51e5664bf77d418a4e07ae295166aa7cafcfe6', '4:5': 'cd49a92fcf12adf1f1e7cc90033c7186d5a92a30' },
   'before-after': { '9:16': '1c3565dcc3beaea63f65bcb55f946f8290368e11', '1:1': 'a5f8777c870dee968fd5fd173d44c18a8a6aa990', '16:9': 'c51caa6d73b88a156fb9503bcb11632a5e01974d', '4:5': '2e28e84d313745f695b1bcc583ae886888b9eafe', '2:3': '7f3a57b6b1fe85c4153a2d62d64bc3daf22bf6d7', '21:9': 'c6be03fe63620a436e3fcec918b958e548064df3' },
-  'ui-story': { '16:9': 'd4fe254c470462ae124dece760090195cbd49785' },
+  'ui-story': { '16:9': 'e4326a5ecdf57b44b4a7e428258e00db240d109b' },
 };
 const HASH_BRAND = { name: 'Hash Co', logoText: 'Hash', colors: { primary: '#1e293b', primary2: '#4f46e5', secondary: '#f59e0b', bg: '#f8fafc', ink: '#0f172a', muted: '#64748b', onPrimary: '#ffffff' }, fonts: { display: 'Inter', body: 'Inter' }, motion: 'cinematic' };
 const HASH_TIMING = { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, tailOut: 0.4, lastSceneHold: 1.2 };
@@ -573,4 +573,20 @@ test('a cinematic cut between two colours turns through a veil in the new colour
   } finally {
     for (const o of Object.values(opened)) await o.browser.close();
   }
+});
+
+// NSC a2, 2026-10-26: on a ui-story page (a template with its own subtitle style) the cinematic line captions stayed
+// pale grey with no box, and the spoken word never lit. The film's caption look now wins in line-caption mode.
+test('cinematic line captions keep the dark box and lit words on a template with its own subtitle style', async () => {
+  const { sampleScript } = await import('../engine/template-preview.mjs');
+  const { beats } = loadTemplate('ui-story');
+  const sc = sampleScript(beats);
+  const timing = estimateTiming(sc, HASH_TIMING, 'en', beats.pace || null);
+  const { build: b } = await mod('ui-story');
+  const page = (brand) => b({ brief: { format: '16:9' }, brand, script: sc, timing, size: sizeFor(beats, '16:9') });
+  const cine = page(HASH_BRAND);
+  assert.ok(cine.includes('.sw,.subdark .sw{font-size:40px;font-weight:700;color:rgba(255,255,255,.7);background:rgba(15,23,42,.72)}'), 'the dark caption box');
+  assert.ok(cine.includes('.sw span.hl{color:var(--secondary)}'), 'the spoken word lights');
+  const std = page({ ...HASH_BRAND, motion: undefined });
+  assert.ok(!std.includes('.sw span.hl') && !std.includes('.sw,.subdark .sw{'), 'standard pages keep the template subtitle style');
 });

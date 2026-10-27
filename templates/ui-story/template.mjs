@@ -249,7 +249,11 @@ const shotJs = (cued) => `
     const n = sc.shots.length, slot = (e - s - 0.15) / n, move = SHOT_MOVE[sc.pace] || SHOT_MOVE.normal;${cued ? CUE_TIMES : ''}
     sc.shots.forEach((sh, k) => {
       ${cued ? 'const t0 = T[k], slot = (k + 1 < n ? T[k + 1] : e) - t0, layer = $(sh.layer);' : 'const t0 = s + 0.15 + slot * k, layer = $(sh.layer);'}
-      if (!shotUp) {
+      if (!shotUp && k === 0 && (!prev || (prev.kind !== 'ui' && prev.kind !== 'shot'))) {
+        // The window comes in with this scene: the screenshot is in it from the start, so the empty drawn app never shows.
+        tl.set(layer, { opacity: 1 }, s - 0.2).set('#shcam', { x: 0, y: 0, scale: 1 }, s - 0.2).set('#shots', { opacity: 1 }, s - 0.2);
+        shotUp = true;
+      } else if (!shotUp) {
         tl.set(layer, { opacity: 1 }, t0).set('#shcam', { x: 0, y: 0, scale: 1 }, t0)
           .fromTo('#shots', { opacity: 0 }, { opacity: 1, duration: 0.35, immediateRender: false }, t0);
         shotUp = true;

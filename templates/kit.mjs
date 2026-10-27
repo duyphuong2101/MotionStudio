@@ -744,7 +744,9 @@ ${css}${transparent ? '\nhtml,body,#stage{background:transparent!important}#bgc{
 #grain{position:absolute;inset:0;width:${W}px;height:${H}px;z-index:25;pointer-events:none;opacity:.07}` : ''}${M.caps === 'lines' && BS?.bg && !P ? `
 .subt{bottom:${px(64)}}
 .sw{line-height:1.25;letter-spacing:.005em;border-radius:${px(8)};padding:${px(9)} ${px(24)} ${px(11)};box-shadow:0 ${px(4)} ${px(18)} rgba(0,0,0,.16)}
-.sw span{opacity:.5}.sw span.hl{background:linear-gradient(transparent 62%,var(--secondary) 62%,var(--secondary) 94%,transparent 94%)}` : ''}${M.caps === 'lines' && !BS && !S ? `
+.sw span{opacity:.5}.sw span.hl{background:linear-gradient(transparent 62%,var(--secondary) 62%,var(--secondary) 94%,transparent 94%)}` : ''}${M.caps === 'lines' && !BS && S ? `
+.subt{left:${padX(70)};right:${padX(70)};bottom:${px(70)}}
+.sw,.subdark .sw{font-size:${px(g.port ? 50 : 40)};font-weight:700;color:rgba(255,255,255,.7);background:rgba(15,23,42,.72)}` : ''}${M.caps === 'lines' && !BS ? `
 .sw{line-height:1.25;border-radius:${px(10)};padding:${px(8)} ${px(24)} ${px(10)}}
 .sw span{color:#ffffff;opacity:.7}.sw span.hl{color:var(--secondary)}` : ''}${marks ? MARK_CSS : ''}${shines ? SHINE_CSS : ''}${leaks ? `
 #leak{position:absolute;inset:0;z-index:20;pointer-events:none;opacity:0;overflow:hidden}

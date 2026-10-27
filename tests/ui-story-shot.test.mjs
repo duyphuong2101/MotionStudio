@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { openComposition } from '../engine/media.mjs';
 import { loadTemplate } from '../engine/jobs.mjs';
 import { loadStudioConfig } from '../engine/core.mjs';
 import { validateScript } from '../engine/script.mjs';
@@ -131,4 +135,31 @@ test('a mixed page with ui-story.shot builds once, with no element id twice', as
   assert.ok(html.includes('src="assets/csr-dashboard.png"'));
   const ids = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(ids.filter((id, i) => ids.indexOf(id) !== i), [], 'no element id twice');
+});
+
+// NSC a3, 2026-10-26: after a step or flash scene the drawn app window showed empty for about 0.3 s before the first
+// screenshot faded in. The screenshot is now in the window from the moment it appears.
+test('a shot scene after a non-ui scene has its screenshot in the window from the start', { timeout: 120000 }, async (t) => {
+  const require = createRequire(import.meta.url);
+  const gsapDir = path.dirname(require.resolve('gsap/dist/gsap.min.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-shotin-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(dir, 'vendor'));
+  // The screenshot the page loads (a missing asset is a page error): one grey pixel is enough.
+  fs.mkdirSync(path.join(dir, 'assets'));
+  fs.writeFileSync(path.join(dir, 'assets', 'csr-orders.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4ceMGAAWEAsGjyhVlAAAAAElFTkSuQmCC', 'base64'));
+  for (const f of ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js']) fs.copyFileSync(path.join(gsapDir, f), path.join(dir, 'vendor', f));
+  const c = composeBeats(rules('explainer'), [rules('ui-story')]);
+  const script = { app: APP, scenes: [scene(c, 'title', 't'), scene(c, 'step', 's1'), scene(c, 'ui-story.shot', 'orders', { shots: [shot(), shot({ focus: null, cursor: null, click: false })] }), scene(c, 'cta', 'c')] };
+  const timing = estimateTiming(script, cfg.timing, 'en', c.pace);
+  const file = path.join(dir, 'shot.html');
+  fs.writeFileSync(file, await buildMixed({ brief: { format: '16:9' }, brand: BRAND, script, timing, size: sizeFor(c, '16:9') }, c));
+  let opened;
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(c, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+  try {
+    const s = timing.scenes.find((x) => x.id === 'orders').start;
+    // Both the screenshot layer and the first screenshot in it are up as the window comes in.
+    const at = (v) => opened.page.evaluate((x) => { window.seek(x); return ['shots', 'shot-orders-0'].map((id) => Number(getComputedStyle(document.getElementById(id)).opacity)); }, v);
+    assert.deepEqual(await at(s + 0.02), [1, 1], 'the screenshot is in the window from the start');
+  } finally { await opened.browser.close(); }
 });

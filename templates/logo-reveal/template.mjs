@@ -59,7 +59,9 @@ const KINDS = {
       tl.fromTo(logo, { clipPath: 'inset(0 100% 0 0)', x: -60 * U }, { clipPath: 'inset(0 0% 0 0)', x: 0, duration: 0.8, ease: X, immediateRender: false }, at);
     } else if (sc.style === 'burst') {
       tl.fromTo(rays, { drawSVG: '0% 0%' }, { drawSVG: '0% 100%', duration: 0.45, ease: X, stagger: 0.015, immediateRender: false }, s + 0.25)
-        .to(rays, { drawSVG: '100% 100%', duration: 0.5, ease: XI, stagger: 0.015 }, s + 0.75);
+        .to(rays, { drawSVG: '100% 100%', duration: 0.5, ease: XI, stagger: 0.015 }, s + 0.75)
+        // A spent ray is a zero-length stroke whose round cap still shows as a dot (two sat on the tagline): hide them.
+        .set(rays, { opacity: 0 }, s + 0.75 + 0.5 + 15 * 0.015);
       at = s + 0.45;
       tl.fromTo(logo, { scale: 0.2, opacity: 0, rotation: -8 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.8, ease: 'back.out(2)', immediateRender: false }, at);
     } else {

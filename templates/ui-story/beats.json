@@ -12,6 +12,7 @@
     },
     "fields": {
       "zoom": "assistant zooms into the assistant panel; none shows the whole app.",
+      "logo": "false keeps the brand logo off this title card, e.g. when the film shows its logo only at the end. Default true.",
       "stat": "An optional number on the beat: { \"value\": 3, \"unit\": \"x\", \"format\": \"int\" }.",
       "beat.icon": "An icon for this idea. It morphs from the previous beat's icon.",
       "cta.icon": "The icon the closing card ends on; it morphs from the last beat."
