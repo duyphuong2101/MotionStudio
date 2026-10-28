@@ -403,7 +403,7 @@ function drawJobList() {
     const pr = s.progress && s.progress.total ? Math.round((s.progress.frame / s.progress.total) * 100) : null;
     return `<button class="job ${S.sel === j.brief.id ? 'on' : ''}" data-id="${esc(j.brief.id)}"${s.status === 'error' && s.error ? ` title="Error: ${esc(s.error)}"` : ''}>
       <span class="dot s-${esc(s.status)}" role="img" aria-label="Status: ${esc(STATUS[s.status] || s.status)}" title="${esc(STATUS[s.status] || s.status)}"></span>
-      <span style="min-width:0;flex:1"><span class="t">${esc(j.brief.id)}</span><br>
+      <span style="min-width:0;flex:1"><span class="t">${esc(j.brief.id)}</span>${j.brief.quick ? ' <span class="pill" title="Quick video: built from an outline">quick</span>' : ''}<br>
       <span class="m">${esc(STATUS[s.status] || s.status)} · ${esc(tplName(j.brief))} · ${esc(j.brief.duration)}s</span>
       ${pr !== null ? `<span class="bar"><i style="width:${pr}%"></i></span>` : ''}</span></button>`;
   }).join('') : S.jobs.length ? '<p class="muted">No job matches this filter.</p>' : '<p class="muted">No jobs yet. Click New brief to write the first one.</p>';
@@ -475,7 +475,7 @@ function renderTop() {
   const findings = (s.lint?.findings || []).length
     ? `<h3>Lint</h3><ul class="findings">${s.lint.findings.map((f) => `<li class="${esc(f.level)}">[${esc(f.level)}] ${f.scene ? `${esc(f.scene)} · ` : ''}${esc(f.el)}: ${esc(f.msg)}</li>`).join('')}</ul>` : '';
   $('#d-top').innerHTML = `<div class="head"><h2>${esc(b.id)}</h2>
-      <span class="pill">${esc(tplName(b))}</span><span class="pill">${esc(b.format)}</span>${b.platform ? `<span class="pill">${esc(platformLabel(b.platform))}</span>` : ''}<span class="pill">${esc(b.duration)}s</span>
+      <span class="pill">${esc(tplName(b))}</span>${b.quick ? '<span class="pill" title="Quick video: built from an outline">quick</span>' : ''}<span class="pill">${esc(b.format)}</span>${b.platform ? `<span class="pill">${esc(platformLabel(b.platform))}</span>` : ''}<span class="pill">${esc(b.duration)}s</span>
       ${b.lang ? `<span class="pill">${esc(langName(b.lang))}</span>` : ''}${b.voice ? `<span class="pill" title="Voice for this video">${esc(b.voice === 'none:' ? 'no voice' : b.voice.slice(b.voice.indexOf(':') + 1))}</span>` : ''}${b.voiceTake ? `<span class="pill" title="Recorded voice">recorded · ${esc(b.voiceTake)}</span>` : ''}
       <span class="pill">${esc(STATUS[s.status] || s.status)}</span>
       <span class="hbtns"><button class="btn sm" id="d-edit" ${busyNow ? 'disabled title="Wait until the job finishes"' : ''}>Edit brief</button>
@@ -1396,6 +1396,7 @@ const briefBody = () => ({
   subject: $('#bf-subj').value.trim(), message: $('#bf-msg').value.trim(), facts: $('#bf-facts').value.trim(),
   cta: $('#bf-cta').value.trim(), notes: $('#bf-notes').value.trim(), lang: $('#bf-lang').value, voice: $('#bf-voice').value, voiceTake: $('#bf-take').value,
   alsoFormats: $$('#bf-alsolist input:checked').map((x) => x.value), cutOnBeat: $('#bf-beat').checked, motionBlur: $('#bf-blur').checked,
+  quick: $('#bf-quick').checked,
 });
 // A new brief counts as unsaved once it has a message; an edit once any field differs from the stored brief.
 function briefFormDirty() {
@@ -1403,8 +1404,8 @@ function briefFormDirty() {
   return S.briefForm.edit ? JSON.stringify(briefBody()) !== S.briefSnap : Boolean($('#bf-msg').value.trim());
 }
 
-const TPL_CHANGE_CONFIRM = 'Changing the template sends the job back to the Director for a new script. Your edits stay in script.prev.json.';
-const TPL_CHANGE_NOTE = 'Changing the template or the mix sends the job back to the Director for a new script; the current script is kept as script.prev.json.';
+const TPL_CHANGE_CONFIRM = 'Changing the template, the mix or quick mode sends the job back to the Director for a new script. Your edits stay in script.prev.json.';
+const TPL_CHANGE_NOTE = 'Changing the template, the mix or quick mode sends the job back to the Director for a new script; the current script is kept as script.prev.json.';
 
 function renderBriefForm(pre) {
   const st = S.state;
@@ -1437,6 +1438,8 @@ function renderBriefForm(pre) {
         <span class="muted hint" id="bf-voicehint"></span></div>
       <div class="f"><label for="bf-take">Recorded voice</label><select id="bf-take" aria-describedby="bf-takehint">${opt('', 'None — use the brand voice', !pre.voiceTake)}${pre.voiceTake ? opt(pre.voiceTake, pre.voiceTake, true) : ''}</select>
         <span class="muted hint" id="bf-takehint">One take reading every voice line in order. Prepare matches it to the scenes.</span></div>
+      <div class="f" style="grid-column:1/-1" id="bf-quickrow"><label class="chk"><input type="checkbox" id="bf-quick" ${pre.quick ? 'checked' : ''} aria-describedby="bf-quickhint"> Quick video (outline)</label>
+        <span class="muted hint" id="bf-quickhint"></span></div>
       <div class="f" style="grid-column:1/-1"><label class="chk"><input type="checkbox" id="bf-beat" ${pre.cutOnBeat ? 'checked' : ''} aria-describedby="bf-beathint"> Cut scenes on the music beat</label>
         <span class="muted hint" id="bf-beathint"></span>
         <label class="chk"><input type="checkbox" id="bf-blur" ${pre.motionBlur ? 'checked' : ''} aria-describedby="bf-blurhint"> Motion blur on fast moves</label>
@@ -1543,7 +1546,20 @@ function renderBriefForm(pre) {
     $$('#bf-alsolist input').forEach((x) => { x.disabled = !x.checked && n >= MAX_CUTS; });
     $('#bf-alsohint').textContent = n ? `${n + 1} videos from one script: rendering takes about ${n + 1} times as long.` : `Optional: up to ${MAX_CUTS} more sizes, e.g. a vertical cut for Shorts.`;
   };
-  const syncAll = () => { syncMix(); syncPlatforms($('#bf-plat').value); syncFormats($('#bf-fmt').value); syncTpl(); syncAlso(); syncId(); };
+  // Quick mode (engine/jobs.mjs validateBrief): only a template with a quick block, never with a mix. The tick the
+  // person chose comes back when the box is allowed again.
+  let quickWanted = pre.quick === true;
+  const quickTpls = tpls.filter((x) => x.quick).map((x) => x.label).join(', ');
+  const syncQuick = () => {
+    const t = tpl(), mixed = mixPicked().length > 0, box = $('#bf-quick');
+    const can = Boolean(t.quick) && !mixed;
+    box.disabled = !can;
+    box.checked = can && quickWanted;
+    $('#bf-quickhint').textContent = !t.quick ? `${t.label} has no quick mode yet. Quick mode works with ${quickTpls}.`
+      : mixed ? 'Quick mode does not take a mix. Untick the mixed templates to use it.'
+        : `The Director writes a short outline (a headline, ${t.quick.points[0]}-${t.quick.points[1]} points, a call to action); the engine builds the script from it. Good for a simple video or a smaller model.`;
+  };
+  const syncAll = () => { syncMix(); syncPlatforms($('#bf-plat').value); syncFormats($('#bf-fmt').value); syncTpl(); syncAlso(); syncQuick(); syncId(); };
   // Language and voice default to the brand's; a voice says which language it speaks, and Kokoro here speaks English only.
   const bv = S.state.projects.find((p) => p.id === S.project)?.brand?.voice || {};
   const brandLang = String(bv.lang || 'en').toLowerCase();
@@ -1587,10 +1603,11 @@ function renderBriefForm(pre) {
   }).catch(() => {});
   $('#bf-lang').addEventListener('change', syncVoiceHint);
   $('#bf-voice').addEventListener('change', syncVoiceHint);
-  drawMix(); syncMix(); syncPlatforms(pre.platform); syncFormats(pre.format); syncTpl(); syncAlso(); syncId();
+  drawMix(); syncMix(); syncPlatforms(pre.platform); syncFormats(pre.format); syncTpl(); syncAlso(); syncQuick(); syncId();
   S.briefSnap = pre.edit ? JSON.stringify(briefBody()) : null;
   $('#bf-tpl').addEventListener('change', () => { drawMix(); syncAll(); });
   $('#bf-mixlist').addEventListener('change', syncAll);
+  $('#bf-quick').addEventListener('change', (e) => { quickWanted = e.target.checked; });
   $('#bf-plat').addEventListener('change', () => { syncFormats($('#bf-fmt').value); syncAlso(); syncId(); });
   $('#bf-fmt').addEventListener('change', syncAlso);
   $('#bf-alsolist').addEventListener('change', syncAlso);
@@ -1601,7 +1618,7 @@ function renderBriefForm(pre) {
     if (INFLIGHT.has('form:brief')) return;
     const body = { id: syncId(), project: S.project, ...briefBody() };
     if (body.duration === null) { $('#bf-err').textContent = 'Set the duration in seconds.'; $('#bf-dur').focus(); return; }
-    const newScript = hasScript && (body.template !== pre.template || JSON.stringify(body.mix) !== JSON.stringify(pre.mix || []));
+    const newScript = hasScript && (body.template !== pre.template || JSON.stringify(body.mix) !== JSON.stringify(pre.mix || []) || body.quick !== (pre.quick === true));
     if (newScript && !window.confirm(TPL_CHANGE_CONFIRM)) return;
     sendBrief(btn, run, body);
   };

@@ -264,7 +264,7 @@ p.small{margin:0 0 8px}
 /* Review link (npm run ui:review): same layout, no edit controls. The server refuses writes anyway. */
 .ro-badge{background:var(--accent);color:var(--accent-fg);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
 html[data-review] :is(#new-proj, #new-brief, #new-seq, #director, #d-edit, #d-dup, #d-del, [data-act], [data-copy], [data-dir],
-  #src-add, [data-del], [data-useshot], .addrow, .lookrow, [data-move], [data-todraft], [data-dup], .savebar, #br-addfont, [data-frm], .uplist,
+  #src-add, [data-del], [data-useshot], .addrow, .lookrow, #bf-quickrow, [data-move], [data-todraft], [data-dup], .savebar, #br-addfont, [data-frm], .uplist,
   #sq-render, .sq-preview, #sq-edit, #sq-del, [data-usetpl], #br-addcolor, #br-vprev, [data-prm], [data-trun], [data-adel], [data-idel], [data-shots],
   .drop, label:has(#br-replace), label:has(#br-ireplace), #br-gen, h3:has(+ #br-gen), #br-banner, h3:has(+ #br-banner), .danger){display:none !important}
 

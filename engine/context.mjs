@@ -10,6 +10,7 @@ import { MARK_FIELDS, MARKS_PER_FIELD, MARK_CHARS } from './marks.mjs';
 import { REVIEW_DEFAULTS } from './review.mjs';
 import { notesForDirector } from './notes.mjs';
 import { assetRhythms } from './footage.mjs';
+import { quickRules } from './quick.mjs';
 
 /** Stored transcripts of the project's footage, as timed segments, for picking clips and quoting them exactly. */
 function transcriptsOf(project) {
@@ -30,18 +31,52 @@ const NOTES_RULE = 'A person pinned these notes to moments of the last preview (
 
 const RHYTHM_RULE = 'The cut rhythm of the brand\'s analysed videos. Only when the brief or a note asks to pace the video like one of them: a scene lasts about as long as its voice line (about 2.6 words a second), so aim at its averageShot per scene with voice lines that fit, within the template\'s scene limits. Otherwise ignore it.';
 
-/** Brief, status, brand, voice notes, URL check, assets, template rules, layout rule, pinned notes, reference rhythm, transcripts, icons, bullet screenshots and draft scenes. */
+const BRIEF_META = ['director', 'createdBy', 'createdAt', 'updatedAt'];
+
+/**
+ * A quick brief's context (engine/quick.mjs): no template rules, only what an outline needs: the brief, the job's
+ * step, the brand's name and language, the source and the last outline once committed, the lock keys, pinned notes
+ * and the outline rules with this template's limits.
+ */
+function quickContext(project, job, { brief, beats, brand, notes }) {
+  const st = getStatus(project, job);
+  const source = readJson(jobFile(project, job, 'source.json'), null);
+  const outline = readJson(jobFile(project, job, 'outline.json'), null);
+  // The committed script's locks, or before one the locks a template, mix or quick change carried over.
+  const locks = Object.keys(commitBase(project, job, 'script')?.locks || {});
+  const check = urlCheck(brief.url, brand.sources?.allowedHosts);
+  // Only the brief fields the person filled in: an empty one, or who made the brief when, tells an outline nothing.
+  const given = Object.fromEntries(Object.entries(brief).filter(([k, v]) => !BRIEF_META.includes(k)
+    && v !== '' && v !== false && !(Array.isArray(v) && !v.length)));
+  return {
+    brief: given, status: { status: st.status, step: st.step, dirty_from: st.dirty_from ?? null, ...(st.error ? { error: st.error } : {}) },
+    brand: { name: brand.name, voice: { lang: brand.voice?.lang } }, voiceNotes: loadVoiceNotes(project),
+    ...(check ? { urlCheck: check } : {}),
+    ...(source ? { source } : {}),
+    ...(outline ? { outline } : {}),
+    ...(locks.length ? { locks } : {}),
+    ...(notes.length ? { notes, notesRule: NOTES_RULE } : {}),
+    quick: quickRules(beats, { brandIcons: Object.keys(loadBrandIcons(project)) }),
+  };
+}
+
+/**
+ * Brief, status, brand, voice notes, URL check, assets, template rules, layout rule, pinned notes, reference rhythm,
+ * transcripts, icons, bullet screenshots and draft scenes. A quick brief gets the quick context instead, unless a
+ * person left draft scenes: filling those needs the template rules.
+ */
 export function directorContext(project, job) {
   const brief = loadBrief(project, job);
   const { beats } = loadBriefTemplate(brief);
   const script = readJson(jobFile(project, job, 'script.json'), null);
-  const screenshots = bulletScreenshots(readJson(jobFile(project, job, 'source.json'), null));
   const drafts = draftScenes(script).map((s) => ({
     id: s.id, kind: s.kind, position: script.scenes.indexOf(s) + 1, source: s.source ?? null, note: s.draft.note, by: s.draft.by,
   }));
-  const carried = script ? null : commitBase(project, job, 'script');
   const brand = loadBrand(project);
   const notes = notesForDirector(project, job);
+  if (brief.quick === true && beats.quick && !brief.mix?.length && !drafts.length) return quickContext(project, job, { brief, beats, brand, notes });
+  const screenshots = bulletScreenshots(readJson(jobFile(project, job, 'source.json'), null));
+  const carried = script ? null : commitBase(project, job, 'script');
   const assets = listAssets(project);
   const rhythms = assetRhythms(project, assets);
   return {

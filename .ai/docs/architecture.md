@@ -28,8 +28,8 @@ storyboard before anything is rendered.
 
 | Step | Who | What | Code |
 |---|---|---|---|
-| 1 Brief | human | UI posts `/api/briefs` | `validateBrief`, `saveBrief` |
-| 2 Pick | director | `cli.mjs list --queued`, `context` (`urlCheck`), `claim`, or `fail --reason` when it cannot run | `pipeline.claim`, `pipeline.fail` |
+| 1 Brief | human | UI posts `/api/briefs`; the Quick video (outline) box sets `quick: true` | `validateBrief` (`quick` only on a template with `beats.quick`, never with a mix), `saveBrief` |
+| 2 Pick | director | `cli.mjs list --queued`, `context` (`urlCheck`), `claim`, or `fail --reason` when it cannot run | `pipeline.claim`, `pipeline.fail`; `directorContext` gives a quick brief the quick context (`quickRules`: no template rules, the outline fields with this template's limits, moods, icons, an example outline; plus source, `outline.json`, lock keys, notes) unless the script holds draft scenes |
 | 3 Source | director | writes `source.draft.json`, `commit source` | `pipeline.commit`, `validateSource` |
 | 4 Script | director | writes `script.draft.json`, `commit script`; in quick mode `outline.draft.json`, `commit outline` | outline only: `validateOutline` + `expandOutline` over `beats.quick` (`engine/quick.mjs`; `outline.json` kept after the script); then `repairScript` (mechanical fixes, reported), `mergeRespectingLocks`, then `validateScript` against `beats.json` |
 | 5 Timing | tool | recorded take, TTS or estimate → `timing.json`, `words.json`, `captions.srt` | `voicetake.recordedVoice`, `tts.speakScript`, `timing.estimateTiming` |
@@ -40,6 +40,7 @@ storyboard before anything is rendered.
 
 Statuses: `queued → scripting → scripted → preparing → awaiting_review → approved → rendering → done`,
 plus `dirty` (a person edited source/script; `dirty_from` says which step must re-run) and `error`.
+A brief change of `template`, `mix` or `quick` after a script exists moves `script.json` to `script.prev.json`, carries the locks that still hold to `script.locks.json` and sends the job back from step 3 (`updateBrief`).
 
 ## Play-through check
 

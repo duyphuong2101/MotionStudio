@@ -110,6 +110,57 @@ export function validateOutline(outline, beats, { source = null } = {}) {
   return out;
 }
 
+// The example outline in the quick context, cut down to the fields a template maps. Short enough for any template.
+const EXAMPLE = {
+  open: { text: 'The news in one line', say: 'The headline as it is spoken.', source: 'bullets[0]' },
+  point: (n) => ({ label: `Point ${n}`, text: 'What it means to the viewer', say: 'One short spoken sentence.', source: `bullets[${n}]` }),
+  close: { text: 'What to do next', button: 'Shop now', say: 'Ask the viewer to act.' },
+};
+const OUTLINE_PATH = { open: 'headline', point: 'points[]', close: 'cta' };
+// Average English word plus its space, for the words hint next to a character limit.
+const CHARS_PER_WORD = 6;
+const QUICK_RULE = 'Write an outline, not a script: shaped like shape, every field within its limit in fields, as many points as the source supports. The engine builds the script: scenes open, point-1 … point-N, close, with layouts, icons and the mood\'s look. Take every claim from source.json and name its line in source. The engine never shortens text: an error names the field and the cut; fix only that. say is the spoken line. A locked field keeps the person\'s value. With outline present, start from it and change only what the brief, the notes or the step to redo ask.';
+
+/** What one outline field takes, in a short line a model can follow. */
+function fieldNote(beats, part, from, to) {
+  const map = beats.quick[part];
+  const need = OUTLINE[part].required.includes(from) || (from === 'source' && beats.fields[map.kind].required.includes(to)) ? 'required' : 'optional';
+  if (from === 'source') return `${need}: bullets[n] or facts[n]`;
+  if (from === 'icon') return `${need}: one of icons, default matched`;
+  const max = to === 'vo' ? beats.limits?.voWords : beats.limits?.[to];
+  if (to === 'vo') return `${need} spoken line${max ? `: max ${max} words` : ''}, default the text`;
+  return max ? `${need}: max ${max} chars (~${Math.floor(max / CHARS_PER_WORD)} words)` : need;
+}
+
+/**
+ * The quick context's rules for one template: point count, whether the cta is required, the moods, each outline
+ * field with its limit, the icon names, an example outline that passes validateOutline, and the rule text.
+ */
+export function quickRules(beats, { brandIcons = [] } = {}) {
+  const q = beats.quick;
+  const closing = q.close && beats.sequence.find((s) => s.kind.includes(q.close.kind));
+  const fields = { mood: `optional: one of moods, default ${DEFAULT_MOOD}`, lang: 'optional: language code, default the brief\'s' };
+  for (const part of Object.keys(OUTLINE)) {
+    for (const [from, to] of Object.entries(q[part] || {})) {
+      if (from !== 'kind' && OUTLINE[part].fields.includes(from)) fields[`${OUTLINE_PATH[part]}.${from}`] = fieldNote(beats, part, from, to);
+    }
+  }
+  const pick = (part, ex) => Object.fromEntries(Object.entries(ex).filter(([k]) => Object.hasOwn(q[part], k) || OUTLINE[part].required.includes(k)));
+  // Two example points, within the template's count: the rule asks for as many as the source supports.
+  const n = Math.max(q.points[0], Math.min(q.points[1], 2));
+  return {
+    template: beats.id, points: q.points, cta: closing?.min >= 1 ? 'required' : q.close ? 'optional' : 'none',
+    // One line of names: a JSON list would print one name a line in `cli context`.
+    moods: LOOK_NAMES, fields, icons: { brand: brandIcons, builtIn: ICON_NAMES.join(', ') },
+    shape: {
+      mood: DEFAULT_MOOD, headline: pick('open', EXAMPLE.open),
+      points: Array.from({ length: n }, (_, i) => pick('point', EXAMPLE.point(i + 1))),
+      ...(q.close ? { cta: pick('close', EXAMPLE.close) } : {}),
+    },
+    rule: QUICK_RULE,
+  };
+}
+
 /** One scene from one outline part: the mapped fields copied (ends trimmed), never composed or cut. */
 function sceneOf(id, item, map) {
   const sc = { id, kind: map.kind };

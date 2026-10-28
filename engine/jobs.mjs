@@ -267,6 +267,12 @@ export function validateBrief(input, { providers } = {}) {
   }
   if (b.cutOnBeat !== undefined && typeof b.cutOnBeat !== 'boolean') errors.push('cutOnBeat must be true or false');
   if (b.motionBlur !== undefined && typeof b.motionBlur !== 'boolean') errors.push('motionBlur must be true or false');
+  // Quick mode (engine/quick.mjs): the Director writes an outline that the template's `quick` block expands.
+  if (b.quick !== undefined && typeof b.quick !== 'boolean') errors.push('quick must be true or false');
+  if (b.quick === true && beats) {
+    if (!beats.quick) errors.push(`Template ${b.template} has no quick mode yet; quick mode works with ${listTemplates().filter((x) => x.quick).map((x) => x.id).join(', ')}`);
+    if (b.mix.length) errors.push('Quick mode does not take a mix: untick the mixed templates or Quick video');
+  }
   if (b.subject == null && b.sku != null) b.subject = b.sku;
   for (const [k, max] of [['message', 400], ['cta', 80], ['notes', 1000], ['subject', 64], ['facts', 2000]]) {
     if (b[k] != null && (typeof b[k] !== 'string' || b[k].length > max)) errors.push(`${k} must be text up to ${max} characters`);
@@ -283,7 +289,7 @@ export function validateBrief(input, { providers } = {}) {
     id: b.id, project: b.project, template: b.template, mix: b.mix, format: b.format, duration: b.duration,
     platform: b.platform || '', director: b.director, url: b.url || '', subject: b.subject || '', message: b.message,
     lang: b.lang || '', voice: b.voice || '', ...(b.voiceTake ? { voiceTake: b.voiceTake } : {}),
-    alsoFormats: b.alsoFormats || [], cutOnBeat: b.cutOnBeat === true, motionBlur: b.motionBlur === true,
+    alsoFormats: b.alsoFormats || [], cutOnBeat: b.cutOnBeat === true, motionBlur: b.motionBlur === true, ...(b.quick === true ? { quick: true } : {}),
     facts: b.facts || '', cta: b.cta || '', notes: b.notes || '', createdBy: b.createdBy || 'ui', createdAt: b.createdAt || nowIso(),
   };
 }
@@ -306,7 +312,11 @@ export function saveBrief(brief) {
   return brief;
 }
 
-const BRIEF_FIELDS = ['template', 'mix', 'format', 'duration', 'platform', 'director', 'url', 'subject', 'message', 'facts', 'cta', 'notes', 'lang', 'voice', 'voiceTake', 'alsoFormats', 'cutOnBeat', 'motionBlur'];
+const BRIEF_FIELDS = ['template', 'mix', 'format', 'duration', 'platform', 'director', 'url', 'subject', 'message', 'facts', 'cta', 'notes', 'lang', 'voice', 'voiceTake', 'alsoFormats', 'cutOnBeat', 'motionBlur', 'quick'];
+// Yes/no fields: absent and false are the same choice.
+const BRIEF_FLAGS = ['cutOnBeat', 'motionBlur', 'quick'];
+// Changing any of these needs a new script under other rules: a template, a mix, or an outline instead of a script.
+const NEW_SCRIPT = ['template', 'mix', 'quick'];
 // Changing only these needs a new storyboard (prepare), not a new script from the Director. A script does not
 // depend on the frame size: beats.json has no per-format rule and alsoFormats renders one script at other sizes.
 const PREPARE_ONLY = ['voice', 'voiceTake', 'alsoFormats', 'cutOnBeat', 'format'];
@@ -326,9 +336,9 @@ export const VOICE_TAKE_RE = /\.(wav|mp3|m4a)$/i;
 
 /**
  * Rewrites a brief in place; id, project and creation stay. Once the director has written source.json or
- * script.json, a change sends the job back to the director (dirty from step 1, the brief). A template or mix
- * change after a script exists moves the script to script.prev.json and sends the job back from step 3, so the
- * Director writes a new script for the new rules on the kept source.
+ * script.json, a change sends the job back to the director (dirty from step 1, the brief). A template, mix or
+ * quick change after a script exists moves the script to script.prev.json and sends the job back from step 3, so
+ * the Director writes a new script (or outline) for the new rules on the kept source.
  */
 export function updateBrief(project, id, input, { providers, by = 'ui' } = {}) {
   const stored = loadBrief(project, id);
@@ -341,14 +351,15 @@ export function updateBrief(project, id, input, { providers, by = 'ui' } = {}) {
     ...input, id, project, director: input.director || stored.director, createdBy: stored.createdBy, createdAt: stored.createdAt,
   }, { providers });
   assertBriefHost(next);
-  const was =(k) => (k === 'subject' ? stored.subject ?? stored.sku : k === 'mix' || k === 'alsoFormats' ? stored[k] || [] : k === 'cutOnBeat' || k === 'motionBlur' ? stored[k] === true : stored[k]) ?? '';
-  const changed = BRIEF_FIELDS.filter((k) => !same(next[k] ?? '', was(k)));
+  const was =(k) => (k === 'subject' ? stored.subject ?? stored.sku : k === 'mix' || k === 'alsoFormats' ? stored[k] || [] : BRIEF_FLAGS.includes(k) ? stored[k] === true : stored[k]) ?? '';
+  const changed = BRIEF_FIELDS.filter((k) => !same(BRIEF_FLAGS.includes(k) ? next[k] === true : next[k] ?? '', was(k)));
   if (!changed.length) return { brief: stored, changed, requeued: false };
   const script = jobFile(project, id, 'script.json');
   const hasScript = exists(script);
-  // A script follows its template's rules, so another template or mix needs a new one. The old script moves aside
-  // to script.prev.json; source.json stays. Its locks that still hold under the new rules go to script.locks.json.
-  const newScript = hasScript && (changed.includes('template') || changed.includes('mix'));
+  // A script follows its template's rules, so another template or mix needs a new one, and so does a switch between
+  // an outline (quick) and a full script. The old script moves aside to script.prev.json; source.json stays. Its
+  // locks that still hold under the new rules go to script.locks.json.
+  const newScript = hasScript && changed.some((k) => NEW_SCRIPT.includes(k));
   const carried = newScript ? archiveScript(project, id, script, stored, next) : [];
   const brief = { ...next, updatedAt: nowIso() };
   writeJson(briefFile(project, id), brief);
