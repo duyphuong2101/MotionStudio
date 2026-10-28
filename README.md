@@ -39,13 +39,21 @@ After you update the code, restart `npm run ui`. The page reloads its own files,
    - Fields you edit are locked, so the Director never overwrites them.
 6. Approve, then render. The MP4 (one per size) and an `.srt` caption file appear under **Download** when the render is done. A QA line under the banner says whether loudness, length, black or frozen picture and captions look right; open it for the details. **Download HTML video** gives one file that plays in any browser with no server.
 
+## Quick video
+
+Tick **Quick video (outline)** in the brief to get a simple video that looks finished on the first run, even with a smaller model. It works with Explainer, Product demo and Social teaser, and not with a mix.
+
+The Director writes a short outline instead of a script: a headline, a few points (each with its source line), a call to action and a mood. The tool builds the scenes from it. It picks the icons, varies the backgrounds from scene to scene and turns a point with a number into a stat. It never rewrites the Director's words. A line that is too long goes back to the Director with how much to cut.
+
+The mood picks one of four looks: calm (clean fades, a soft aurora, a quiet pad), energetic (bouncy moves, drifting 3D shapes, a liquid wipe, an upbeat track), premium (slow focus pulls, film grain, light leaks) or bold (words rise out of a mask, a colour panel sweeps over each cut, flowing lines). Anything you set on the Brand tab wins: the look only fills what the brand leaves empty. Change the look on the Script tab. The Script tab also shows the outline the scenes came from, and your edits stay locked as usual.
+
 To join finished videos into one MP4 (say a logo sting, a demo and a testimonial), switch the job list to **Sequences** and click **+ New sequence**. Every part must be a rendered job in the same format.
 
 To clean up, **Delete…** on a job moves its brief and output to `trash/`. Delete a whole project from the bottom of the Brand tab.
 
 ## Templates
 
-All 17 are built in. Mixable templates can lend their scenes to another lead template in one video (tick them under "Mix in scenes from").
+All 18 are built in. Mixable templates can lend their scenes to another lead template in one video (tick them under "Mix in scenes from").
 
 | Template | Formats | Length | Mixable |
 |---|---|---|---|
@@ -61,6 +69,7 @@ All 17 are built in. Mixable templates can lend their scenes to another lead tem
 | Logo reveal / sting | all six | 3-10 s | |
 | Lower third / overlay (renders a .mov with transparency) | 16:9, 9:16, 1:1, 4:5 | 3-30 s | |
 | Product demo | 9:16 | 10-40 s | |
+| Product tour (one 3D model, the camera glides from step to step) | 16:9, 1:1, 9:16, 4:5 | 15-90 s | |
 | Promo / sale | 9:16, 1:1, 4:5, 2:3 | 6-40 s | |
 | Social teaser | 9:16 | 6-15 s | |
 | Talking head / UGC | all six | 6-180 s | |

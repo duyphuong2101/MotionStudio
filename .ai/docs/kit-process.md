@@ -75,6 +75,8 @@ Approval is UI-only for every agent: `node engine/cli.mjs approve` refuses (`tes
 
 A plain request needs no command file: `AGENTS.md` says it means "read `.agents/skills/studio/SKILL.md` and follow it", with actor `<tool>-agent` (e.g. `codex-agent`). The skill's three generated blocks (shared, full script, quick mode) come from `server/worker/director-*.md` through `node .ai/scripts/sync-director-prompt.js`.
 
+Quick mode takes no extra setup in any agent. When `cli context` for the job has a `quick` block, the skill's run loop writes `outline.draft.json` and runs `commit <project> <job> outline` instead of writing a script. The engine expands the outline and repairs it mechanically. It answers with the repairs and warnings, and an over-limit field comes back as an error that names the cut. The agent writes only the job's draft files (source, script or outline) and runs only the CLI commands the skill lists. The seat allowlist already covers both (`Edit(out/**)`, `Bash(node engine/cli.mjs commit *)`).
+
 Outside the seat the Director runs on that tool's own model and account; the caps are the ones the skill states (`director.maxJobsPerRun` through `list --queued`, two fix rounds, one run at a time). `tests/worker-prompt.test.mjs` fails when a skill copy or a rules block drifts.
 
 ## Commands
