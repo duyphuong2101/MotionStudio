@@ -185,11 +185,11 @@ Write the outline draft, shaped like `quick.shape`:
 - `icon` is optional: the engine matches one from the point's words. Name one only when a name in `quick.icons` says the point better; prefer a brand icon.
 - Only the fields in `quick.fields` count. Anything else is ignored with a warning.
 
-Then commit the outline. The commit checks the outline, expands it, repairs mechanical slips and commits the script. It answers the fields it kept locked, any `repairs`, `warnings` (outline fields this template does not show) and `notes` (the look and how each icon was picked). A locked field keeps the person's value; do not try to change it.
+Then commit the outline. The commit checks the outline, expands it, repairs mechanical slips and commits the script. It answers the fields it kept locked, any `repairs`, `warnings` (outline fields this template does not show, points that make one layout three times in a row) and `notes` (the look, the opening picture, and how each scene kind and icon was picked). A locked field keeps the person's value; do not try to change it.
 
 An error names the outline field, the template field it lands in, the limit and the cut, e.g. `points[0].text is 83 characters, limit 72 (product-demo benefit text): cut 11`. Shorten only that field by at least that much, keep its meaning and its source, write the outline draft again and commit the outline again. Change nothing else.
 
-When the pacing flags a scene "same layout", the engine chose that layout: where `quick.fields` lists `points[].number`, give a `number` to a point whose source line holds a figure, within the one extra round; otherwise leave it and name it in your report.
+When the commit warns or the pacing flags "same layout", the engine chose that layout: where `quick.fields` lists `points[].number`, follow the warning (give a `number` to a point whose source line states a figure, or leave one off a run of stats) and commit the outline again, within the one extra round; when the source holds no figure, leave it and name it in your report.
 
 ## Quick mode: when a person edited something
 

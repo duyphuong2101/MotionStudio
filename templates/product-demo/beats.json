@@ -58,5 +58,15 @@
     "stat": { "kicker": "Key number", "stat": { "value": 12, "unit": "h" }, "text": "of protection", "chip": "Up to 12 hours", "icon": "drop" },
     "benefit": { "kicker": "Benefit", "text": "One line about this benefit", "chip": "Short tag", "icon": "shield" },
     "cta": { "title": "Try it today", "button": "Shop now" }
+  },
+  "quick": {
+    "points": [2, 5],
+    "open": { "kind": "hero", "text": "title", "say": "vo", "source": "source", "image": "asset" },
+    "point": { "kind": "benefit", "label": "kicker", "text": "text", "tag": "chip", "say": "vo", "icon": "icon", "source": "source" },
+    "number": { "kind": "stat", "label": "kicker", "number": "stat", "text": "text", "tag": "chip", "say": "vo", "icon": "icon", "source": "source" },
+    "close": { "kind": "cta", "text": "title", "button": "button", "say": "vo", "source": "source" },
+    "or": { "tag": "label" },
+    "vary": { "decor": ["walls", "waves", "none"] },
+    "icons": ["shield", "star", "heart", "leaf", "sparkle"]
   }
 }

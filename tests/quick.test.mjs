@@ -227,19 +227,24 @@ test('every template with a quick block fills each mapped kind\'s required field
     for (const [k, cycle] of Object.entries(q.vary || {})) {
       assert.ok(cycle.length && cycle.every((v) => b.enums[k]?.includes(v)), `${b.id}: vary.${k} values are in enums.${k}`);
     }
-    for (const [part, spec] of Object.entries(OUTLINE)) {
-      const map = q[part];
+    assert.ok(Object.values(q.or || {}).every((alt) => OUTLINE.point.required.includes(alt)), `${b.id}: an or fallback is a required point field`);
+    // `number` maps a point that carries a number, so it reads the point's outline fields.
+    for (const [key, part] of [['open', 'open'], ['point', 'point'], ['number', 'point'], ['close', 'close']]) {
+      const spec = OUTLINE[part];
+      const map = q[key];
       if (!map) continue;
       const f = b.fields[map.kind];
-      assert.ok(f, `${b.id}.quick.${part}: no kind ${map.kind}`);
+      assert.ok(f, `${b.id}.quick.${key}: no kind ${map.kind}`);
       const takes = [...f.required, ...f.optional];
       // say falls back to the required text; a source the kind requires is required in the outline too.
-      const filled = new Set(part === 'point' ? Object.keys(q.vary || {}) : []);
+      const filled = new Set(part === 'point' ? Object.keys(q.vary || {}).filter((v) => takes.includes(v)) : []);
       for (const [from, to] of Object.entries(map)) {
         if (from === 'kind') continue;
-        assert.ok([...spec.fields, 'theme'].includes(from), `${b.id}.quick.${part}.${from} is not an outline field`);
-        assert.ok(takes.includes(to), `${b.id}.quick.${part}.${from}: ${map.kind} has no field ${to}`);
-        if (spec.required.includes(from) || ['say', 'source', 'icon', 'theme'].includes(from)) filled.add(to);
+        assert.ok([...spec.fields, 'theme', 'image'].includes(from), `${b.id}.quick.${key}.${from} is not an outline field`);
+        assert.ok(takes.includes(to), `${b.id}.quick.${key}.${from}: ${map.kind} has no field ${to}`);
+        if (spec.required.includes(from) || ['say', 'source', 'icon', 'theme'].includes(from) || q.or?.[from]) filled.add(to);
+        // The number map is chosen only for a point that has one, so its number is filled.
+        if (key === 'number' && from === 'number') filled.add(to);
       }
       for (const r of f.required) assert.ok(filled.has(r), `${b.id}: ${map.kind}.${r} is filled by no required outline field`);
     }

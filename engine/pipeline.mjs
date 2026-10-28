@@ -97,9 +97,10 @@ export function assertCommittable(st, { kind, draft, draftMs, template, storyboa
 /** Quick mode: the outline checked against the template's `quick` block and the job's source, then expanded. */
 function outlineScript(project, id, brief, beats, outline, icons) {
   if (brief.mix?.length) throw new StudioError('Quick mode does not take a mix: write script.draft.json instead.', 400);
-  const { errors, warnings } = validateOutline(outline, beats, { source: readJson(jobFile(project, id, 'source.json'), null) });
+  const source = readJson(jobFile(project, id, 'source.json'), null);
+  const { errors, warnings } = validateOutline(outline, beats, { source });
   if (errors.length) throw new StudioError(`Outline invalid:\n- ${errors.join('\n- ')}`, 400);
-  const { script, notes } = expandOutline(outline, beats, { icons, brandIcons: Object.keys(loadBrandIcons(project)) });
+  const { script, notes } = expandOutline(outline, beats, { icons, brandIcons: Object.keys(loadBrandIcons(project)), source, assets: listAssets(project) });
   return { script, warnings, notes };
 }
 

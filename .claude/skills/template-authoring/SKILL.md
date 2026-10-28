@@ -36,6 +36,7 @@ A template with `"extends": "<other-id>"` in `beats.json` has no `template.mjs`;
 | `pace` | Per pace: `perShot`, `minScene`, `tail` seconds |
 | `audio` | `"footage"` when scenes carry video clips with their own sound |
 | `mixable` | Body kinds this template adds to a mixed brief (as `<id>.<kind>`) and, as lead, the kinds that mark its body slots. Absent = not mixable |
+| `quick` | Quick mode (`engine/quick.mjs`): `points` `[min, max]`, `open`/`point`/`close` (and optional `number`, a point with a figure) each `{ kind, <outline field>: <scene field> }`, `or` (fallback field when one is blank), `vary` (scene fields cycled over the points), `icons` (fallback cycle). The engine fills `theme`, `icon` and `image`. `tests/quick.test.mjs` checks every mapped kind's required fields are filled. Absent = no quick mode |
 
 Every field listed in `fields` (required or optional) is lockable: `engine/jobs.mjs` reads the field names from all templates, so a UI edit of any of them is locked.
 

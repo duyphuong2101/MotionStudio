@@ -130,5 +130,15 @@
     "benefit": { "kicker": "Benefit", "text": "One line about this benefit", "chip": "Short tag", "icon": "shield" },
     "cta": { "title": "Try it today", "button": "Shop now" }
   },
+  "quick": {
+    "points": [1, 1],
+    "open": { "kind": "hero", "text": "title", "say": "vo", "source": "source", "image": "asset" },
+    "point": { "kind": "benefit", "label": "kicker", "text": "text", "tag": "chip", "say": "vo", "icon": "icon", "source": "source" },
+    "number": { "kind": "stat", "label": "kicker", "number": "stat", "text": "text", "tag": "chip", "say": "vo", "icon": "icon", "source": "source" },
+    "close": { "kind": "cta", "text": "title", "button": "button", "say": "vo", "source": "source" },
+    "or": { "tag": "label" },
+    "vary": { "decor": ["walls", "waves", "none"] },
+    "icons": ["shield", "star", "heart", "leaf", "sparkle"]
+  },
   "extends": "product-demo"
 }

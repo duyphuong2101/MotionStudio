@@ -7,6 +7,8 @@ import { lookProblem } from './looks.mjs';
 
 const wordsOf = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
 export const SCENE_ID_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+// A stat's unit next to the counted number ("h", "%", "x").
+export const STAT_UNIT_MAX = 4;
 // Every limit error ends with how much to cut, in the unit of the limit.
 const overLimit = (at, what, n, unit, max) => `${at}: ${what} ${unit === 'words' ? 'has' : 'is'} ${n} ${unit}, limit ${max}: cut ${n - max}`;
 
@@ -92,7 +94,7 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
     }
     if (kind === 'stat' &&(spec.required.includes('stat') || spec.optional.includes('stat'))) {
       if (!s.stat || !Number.isFinite(Number(s.stat.value))) errors.push(`${s.id}: stat.value must be a number`);
-      else if (String(s.stat.unit ?? '').length > 4) errors.push(`${s.id}: stat.unit max 4 chars`);
+      else if (String(s.stat.unit ?? '').length > STAT_UNIT_MAX) errors.push(`${s.id}: stat.unit max ${STAT_UNIT_MAX} chars`);
     }
     if (s.asset && !assets.includes(s.asset)) errors.push(`${s.id}: asset "${s.asset}" is not in the project assets`);
     if (s.image && !assets.includes(s.image)) errors.push(`${s.id}: image "${s.image}" is not in the project assets`);
@@ -334,11 +336,11 @@ export function assertValidScript(script, beats, opts) {
 }
 
 // A bullet's optional screenshot: a raster image in the project assets (SVG is a logo or icon, not a screen).
-const BULLET_IMAGE_RE =/\.(png|jpe?g|webp)$/i;
+export const IMAGE_ASSET_RE = /\.(png|jpe?g|webp)$/i;
 
 function bulletAssetError(asset, at, assets) {
   try { assertFileName(asset, 'screenshot'); } catch { return `${at}.asset is not a valid file name`; }
-  if (!BULLET_IMAGE_RE.test(asset)) return `${at}.asset must be a .png, .jpg or .webp image`;
+  if (!IMAGE_ASSET_RE.test(asset)) return `${at}.asset must be a .png, .jpg or .webp image`;
   if (!assets.includes(asset)) return `${at}.asset "${asset}" is not in the project assets. Upload it in the Brand tab → Assets first`;
   return '';
 }
