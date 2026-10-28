@@ -34,6 +34,8 @@ const optsOf = (opts) => ({ ...REVIEW_DEFAULTS, ...opts });
 export function pacing(timing, script, opts = {}) {
   const o = optsOf(opts);
   const kinds = new Map((script?.scenes || []).map((s) => [s.id, s.kind]));
+  // A change of background theme (light, dark, accent) is a new layout too (user decision, 2026-10-28).
+  const themes = new Map((script?.scenes || []).map((s) => [s.id, s.theme ?? null]));
   // A scene with a 3D model, its own camera pose or exploded parts (a product-tour step, a model scene) shows a different picture.
   const posed = new Set((script?.scenes || []).filter((s) => s.view || s.path || s.explode || s.model).map((s) => s.id));
   // A clip that plays its own sound is heard even with no words over it.
@@ -66,10 +68,11 @@ export function pacing(timing, script, opts = {}) {
     if (gains.has(s.id)) row.gainDb = gains.get(s.id);
     return row;
   });
-  // The third scene of one kind in a row, and every one after it, repeats the layout.
+  // The third scene of one kind and one theme in a row, and every one after it, repeats the layout.
   let run = 0;
   scenes.forEach((r, i) => {
-    run = i && r.kind && r.kind === scenes[i - 1].kind ? run + 1 : 1;
+    const prev = scenes[i - 1];
+    run = i && r.kind && r.kind === prev.kind && themes.get(r.id) === themes.get(prev.id) ? run + 1 : 1;
     if (run >= o.sameKindRun && !FOOTAGE_KIND.test(r.kind) && !posed.has(r.id)) r.flags.push('repeat');
   });
   const duration = timing.duration;

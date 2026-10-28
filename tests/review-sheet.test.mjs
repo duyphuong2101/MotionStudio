@@ -45,6 +45,19 @@ test('pacing flags the third scene of one kind in a row and every one after it, 
   assert.deepEqual(pacing(t, { scenes: posed }, REVIEW_DEFAULTS).scenes.filter((s) => s.flags.includes('repeat')).map((s) => s.id), []);
 });
 
+test('a theme change ends a same-layout run; one theme (or none) all along does not', () => {
+  const repeats = (themes) => {
+    const t = { duration: themes.length, scenes: themes.map((_, i) => ({ id: `s${i}`, start: i, end: i + 1 })), words: themes.map((_, i) => word('w', i + 0.1, i + 0.9, `s${i}`)) };
+    const sc = { scenes: themes.map((theme, i) => ({ id: `s${i}`, kind: 'step', ...(theme ? { theme } : {}) })) };
+    return pacing(t, sc, REVIEW_DEFAULTS).scenes.filter((s) => s.flags.includes('repeat')).map((s) => s.id);
+  };
+  assert.deepEqual(repeats(['light', 'dark', 'accent']), []);
+  assert.deepEqual(repeats(['light', 'dark', 'accent', 'light', 'dark']), []);
+  assert.deepEqual(repeats(['dark', 'dark', 'dark']), ['s2']);
+  assert.deepEqual(repeats([null, null, null, null]), ['s2', 's3']);
+  assert.deepEqual(repeats(['light', 'light', 'dark', 'dark', 'dark']), ['s4']);
+});
+
 test('pacing flags fast speech and counts a clip that plays its own sound as heard', () => {
   const t = timing();
   t.words.push(word('more', 2.2, 2.4, 'a'), word('words', 2.4, 2.6, 'a'), word('here', 2.6, 2.8, 'a'));

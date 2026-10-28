@@ -31,7 +31,7 @@ storyboard before anything is rendered.
 | 1 Brief | human | UI posts `/api/briefs` | `validateBrief`, `saveBrief` |
 | 2 Pick | director | `cli.mjs list --queued`, `context` (`urlCheck`), `claim`, or `fail --reason` when it cannot run | `pipeline.claim`, `pipeline.fail` |
 | 3 Source | director | writes `source.draft.json`, `commit source` | `pipeline.commit`, `validateSource` |
-| 4 Script | director | writes `script.draft.json`, `commit script` | `repairScript` (mechanical fixes, reported), `mergeRespectingLocks`, then `validateScript` against `beats.json` |
+| 4 Script | director | writes `script.draft.json`, `commit script`; in quick mode `outline.draft.json`, `commit outline` | outline only: `validateOutline` + `expandOutline` over `beats.quick` (`engine/quick.mjs`; `outline.json` kept after the script); then `repairScript` (mechanical fixes, reported), `mergeRespectingLocks`, then `validateScript` against `beats.json` |
 | 5 Timing | tool | recorded take, TTS or estimate → `timing.json`, `words.json`, `captions.srt` | `voicetake.recordedVoice`, `tts.speakScript`, `timing.estimateTiming` |
 | 6 Compose | tool | copies GSAP + assets, runs `template.build()` → `index.html` | `pipeline.prepare` |
 | 7 Stills | tool | headless Chrome seeks frames, lints safe area → `stills/*.png`, then plays the page through (play-through check), taking the review sheet's frames on the way → `review/sheet.jpg` (main format; `review/pacing.json` is written with the timing) | `media.openComposition`, `lintInPage`, `playcheck.playCheck`, `review.writeSheet` |

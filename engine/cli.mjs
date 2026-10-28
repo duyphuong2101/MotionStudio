@@ -17,7 +17,7 @@ const USAGE = `Motion Studio engine
   node engine/cli.mjs list [--queued] [--project <p>]
   node engine/cli.mjs context <project> <job>       print brief, brand, voice notes, assets, template rules (for the director)
   node engine/cli.mjs claim   <project> <job> [--by name]
-  node engine/cli.mjs commit  <project> <job> source|script [--by name]
+  node engine/cli.mjs commit  <project> <job> source|script|outline [--by name]   outline: quick mode, expanded into script.json
   node engine/cli.mjs fail    <project> <job> --reason "<text>" [--by name]   stop a job before review: status error with that reason
   node engine/cli.mjs prepare <project> <job>       steps 5-7: timing, compose, stills + lint, play-through check
   node engine/cli.mjs playcheck <project> <job>     play a prepared job frame by frame again and print what overlaps (writes nothing)

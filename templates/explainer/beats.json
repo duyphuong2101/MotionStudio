@@ -412,5 +412,13 @@
       "minScene": 5.5,
       "tail": 1
     }
+  },
+  "quick": {
+    "points": [2, 5],
+    "open": { "kind": "title", "text": "title", "say": "vo", "source": "source", "theme": "theme" },
+    "point": { "kind": "step", "label": "title", "text": "text", "say": "vo", "icon": "icon", "source": "source" },
+    "close": { "kind": "cta", "text": "title", "button": "button", "say": "vo", "source": "source" },
+    "vary": { "theme": ["light", "dark", "accent"] },
+    "icons": ["check", "bolt", "star", "shield", "sparkle"]
   }
 }

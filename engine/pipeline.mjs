@@ -9,11 +9,12 @@ import {
   loadBrief, loadBrand, loadBriefTemplate, listAssets, assetPath, getStatus, setStatus, jobDir, jobFile,
   mergeRespectingLocks, commitBase, PLATFORMS, cutSlug,
 } from './jobs.mjs';
-import { iconsFor } from './icons.mjs';
+import { iconsFor, loadBrandIcons } from './icons.mjs';
 import { motionProfile } from './brand.mjs';
 import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, MAX_HOLD } from './script.mjs';
 import { repairScript } from './repair.mjs';
-import { lookBrand } from './looks.mjs';
+import { lookBrand, BRAND_LOOK } from './looks.mjs';
+import { validateOutline, expandOutline } from './quick.mjs';
 import { estimateTiming, toSrt, sceneGaps, resolvePace } from './timing.mjs';
 import { buildMixed } from './mix.mjs';
 import { ttsProvider, speakScript, voiceFor, voiceProblem, sapiCulture, sameLanguage } from './tts.mjs';
@@ -93,30 +94,43 @@ export function assertCommittable(st, { kind, draft, draftMs, template, storyboa
   }
 }
 
+/** Quick mode: the outline checked against the template's `quick` block and the job's source, then expanded. */
+function outlineScript(project, id, brief, beats, outline, icons) {
+  if (brief.mix?.length) throw new StudioError('Quick mode does not take a mix: write script.draft.json instead.', 400);
+  const { errors, warnings } = validateOutline(outline, beats, { source: readJson(jobFile(project, id, 'source.json'), null) });
+  if (errors.length) throw new StudioError(`Outline invalid:\n- ${errors.join('\n- ')}`, 400);
+  const { script, notes } = expandOutline(outline, beats, { icons, brandIcons: Object.keys(loadBrandIcons(project)) });
+  return { script, warnings, notes };
+}
+
 /* ---------- steps 3-4: director commits drafts; human locks survive ---------- */
 export function commit(project, id, kind, by) {
-  if (!['source', 'script'].includes(kind)) throw new StudioError('kind must be source or script', 400);
+  if (!['source', 'script', 'outline'].includes(kind)) throw new StudioError('kind must be source, script or outline', 400);
+  // An outline (quick mode) is expanded into a script draft, then committed like any script.
+  const target = kind === 'source' ? 'source' : 'script';
   const draftFile = jobFile(project, id, `${kind}.draft.json`);
-  const finalFile = jobFile(project, id, `${kind}.json`);
+  const finalFile = jobFile(project, id, `${target}.json`);
   const draft = readJson(draftFile);
   const page = jobFile(project, id, 'index.html');
+  const brief = loadBrief(project, id);
   assertCommittable(getStatus(project, id), {
-    kind, draft, draftMs: fs.statSync(draftFile).mtimeMs, template: loadBrief(project, id).template,
+    kind, draft, draftMs: fs.statSync(draftFile).mtimeMs, template: brief.template,
     storyboardMs: exists(page) ? fs.statSync(page).mtimeMs : null,
   });
-  const existing = commitBase(project, id, kind);
-  let doc, kept, repairs = [];
+  const existing = commitBase(project, id, target);
+  let doc, kept, repairs = [], quick = null;
   if (kind === 'source') {
     ({ doc, kept } = mergeRespectingLocks(kind, existing, draft));
     const errs = validateSource(doc, { assets: listAssets(project) });
     if (errs.length) throw new StudioError(`source invalid:\n- ${errs.join('\n- ')}`, 400);
   } else {
-    const { beats } = loadBriefTemplate(loadBrief(project, id));
+    const { beats } = loadBriefTemplate(brief);
     const icons = Object.keys(iconsFor(project));
+    if (kind === 'outline') quick = outlineScript(project, id, brief, beats, draft, icons);
     // Mechanical fixes first, on the draft only: the merge then restores every locked field as the person left it.
-    const fixed = repairScript(draft, beats, { icons, existing });
+    const fixed = repairScript(quick ? quick.script : draft, beats, { icons, existing });
     repairs = fixed.repairs;
-    ({ doc, kept } = mergeRespectingLocks(kind, existing, fixed.doc));
+    ({ doc, kept } = mergeRespectingLocks(target, existing, fixed.doc));
     try {
       assertValidScript(doc, beats, { assets: listAssets(project), icons });
       const left = draftScenes(doc).map((s) => s.id);
@@ -128,13 +142,17 @@ export function commit(project, id, kind, by) {
     }
   }
   writeJson(finalFile, doc);
+  // The outline is kept only once the script made from it is written.
+  if (quick) writeJson(jobFile(project, id, 'outline.json'), draft);
   fs.unlinkSync(draftFile);
-  const patch = kind === 'script'
+  const patch = target === 'script'
     ? { status: 'scripted', step: 5, dirty_from: null, error: null, failed: null }
     : { status: 'scripting', step: 4, error: null, failed: null };
-  const event = `${kind}.json committed${kept.length ? `, kept locked: ${kept.join(', ')}` : ''}${repairs.length ? `, repaired: ${repairs.join('; ')}` : ''}`;
+  const what = quick ? `script.json committed from outline (quick mode), look ${doc.look ?? BRAND_LOOK}` : `${kind}.json committed`;
+  const warned = quick?.warnings.length ? `, warnings: ${quick.warnings.join('; ')}` : '';
+  const event = `${what}${kept.length ? `, kept locked: ${kept.join(', ')}` : ''}${repairs.length ? `, repaired: ${repairs.join('; ')}` : ''}${warned}`;
   setStatus(project, id, patch, event, by);
-  return { kept, repairs };
+  return quick ? { kept, repairs, warnings: quick.warnings, notes: quick.notes } : { kept, repairs };
 }
 
 /** The brand a job's video uses: the project brand with the script's look laid over it (engine/looks.mjs). */
