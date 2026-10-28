@@ -40,6 +40,9 @@ test('pacing flags the third scene of one kind in a row and every one after it, 
   assert.deepEqual(pacing(t, { scenes: kinds.map((kind, i) => ({ id: `s${i}`, kind })) }, { sameKindRun: 2 }).scenes.filter((s) => s.flags.includes('repeat')).map((s) => s.id), ['s1', 's2', 's3', 's11']);
   assert.equal(pacing(t, null).scenes.some((s) => s.flags.includes('repeat')), false, 'no script, no kinds, no run');
   assert.match(pacingTable(p)[3], /same layout$/);
+  // A scene with its own camera pose or exploded parts (a product-tour step) shows a different picture, like footage.
+  const posed = kinds.map((kind, i) => ({ id: `s${i}`, kind, ...(i === 2 ? { view: { azimuth: 30 } } : i === 3 ? { explode: ['front'] } : {}) }));
+  assert.deepEqual(pacing(t, { scenes: posed }, REVIEW_DEFAULTS).scenes.filter((s) => s.flags.includes('repeat')).map((s) => s.id), []);
 });
 
 test('pacing flags fast speech and counts a clip that plays its own sound as heard', () => {

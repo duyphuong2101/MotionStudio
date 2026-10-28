@@ -3,6 +3,7 @@ import { motionProfile } from '../../engine/brand.mjs';
 import { logoHtml } from '../shared.mjs';
 import { iconSet } from '../../motion-kit/icons.mjs';
 import { modelCanvas } from '../model3d.mjs';
+import { lottieBox } from '../lottie.mjs';
 import { stripMarks } from '../../engine/marks.mjs';
 
 // flash: one item fills a line at up to this size (1080 units); a longer one wraps at the minimum.
@@ -27,6 +28,10 @@ export function flashSize(text, max, min, width) {
   return word ? Math.min(line, Math.floor(width / word)) : line;
 }
 const tone = (sc) => (sc.theme === 'dark' ? { dark: true } : {});
+// A cta's optional background photo, faded under a brand-colour gradient on the text side.
+export const CTA_BG_CSS = '.ctabg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.32;filter:saturate(.9)}.ctabg+.cta{background:linear-gradient(90deg,var(--primary) 30%,rgba(0,0,0,0))}';
+// A scene's decal as the renderer takes it: the icon's path from the icon set, the brand secondary on white.
+export const decalOf = (decal, ICONS, brand) => (decal && typeof decal === 'object' && ICONS[decal.icon] ? { ...decal, d: ICONS[decal.icon], color: brand.colors?.secondary, bg: '#ffffff' } : undefined);
 const themed = (sc) => sc.theme === 'dark' || sc.theme === 'accent';
 
 export function build(args) {
@@ -104,12 +109,19 @@ export function parts({ brand, script, timing, size, icons }) {
       // A 3D model (a .glb asset) on the scene's own background; templates/model3d.mjs draws it at every seek.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
       blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="mod">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd vt" data-lint>${h(sc.title)}</div>
-        <div class="mwin" id="${id}-win">${modelCanvas(sc.model, t, sc.spin, sc)}</div>
+        <div class="mwin" id="${id}-win">${modelCanvas(sc.model, t, sc.spin, { ...sc, decal: decalOf(sc.decal, ICONS, brand), colors: brand.colors })}</div>
         ${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
       scenes.push({ id, kind: 'model', ...tone(sc) });
+    } else if (sc.kind === 'anim') {
+      // A Lottie animation (a .json asset) in the model window; templates/lottie.mjs seeks it with the page clock.
+      const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
+      blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="mod">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd vt" data-lint>${h(sc.title)}</div>
+        <div class="mwin awin" id="${id}-win">${lottieBox(sc.lottie, t, { loop: sc.loop !== false, fit: sc.fit })}</div>
+        ${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
+      scenes.push({ id, kind: 'anim', ...tone(sc) });
     } else if (sc.kind === 'cta') {
       const logo = hasLogoBug(brand) ? '' : logoHtml(brand, { onDark: true });
-      blocks.push(`<div class="sc fill dark" id="g-${id}"><div class="cta">${logo ? `<div class="clogo">${logo}</div>` : ''}
+      blocks.push(`<div class="sc fill dark" id="g-${id}">${sc.image ? `<img class="ctabg" src="assets/${encodeURIComponent(sc.image)}" alt="">` : ''}<div class="cta">${logo ? `<div class="clogo">${logo}</div>` : ''}
         ${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd ctat" data-lint>${h(sc.title)}</div>
         <div class="btn" id="${id}-btn" data-lint>${h(sc.button)}</div>${sc.url ? `<div class="curl" data-lint>${h(sc.url)}</div>` : ''}</div></div>`);
       scenes.push({ id, kind: 'cta', dark: true });
@@ -118,7 +130,8 @@ export function parts({ brand, script, timing, size, icons }) {
   const hasVideo = scenes.some((s) => s.kind === 'video');
   const hasDarkTitle = scenes.some((s) => s.kind === 'title' && s.dark);
   const hasFlash = scenes.some((s) => s.kind === 'flash');
-  const hasModel = scenes.some((s) => s.kind === 'model');
+  const hasModel = scenes.some((s) => s.kind === 'model' || s.kind === 'anim');
+  const ctaBg = script.scenes.some((s) => s.kind === 'cta' && s.image);
   // The model window: wide in landscape, square in portrait, between the title and the content area's bottom.
   const mwin = port ? [880, short ? 640 : 860] : land ? [1240, 560] : [820, 470];
   // A dark title has its own rules (tdark); these cover the themed body scenes.
@@ -156,16 +169,19 @@ export function parts({ brand, script, timing, size, icons }) {
 .nodes{display:flex;flex-direction:${stack ? 'column' : 'row'};align-items:center;gap:${px(tight ? 8 : 14)}}
 .node{min-width:${px(port ? 520 : tight ? 460 : 250)};padding:${tight ? `${px(20)} ${px(30)}` : `${px(30)} ${px(34)}`};border-radius:${px(24)};background:#fff;border:${px(4)} solid rgba(15,23,42,.1);font-weight:700;font-size:${px(tight ? 34 : 38)};box-shadow:0 ${px(14)} ${px(30)} rgba(15,23,42,.08)}
 .node.on{border-color:var(--primary2);background:var(--primary2);color:#fff}
-.arr{width:${px(tight ? 40 : stack ? 60 : 90)};height:${px(tight ? 28 : 36)};overflow:visible;${stack ? 'transform:rotate(90deg)' : ''}}.arr path{fill:none;stroke:var(--primary2);stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+.arr{width:${px(tight ? 40 : stack ? 60 : 90)};height:${px(tight ? 28 : 36)};overflow:visible;${stack ? 'transform:rotate(90deg)' : ''}}.arr path{fill:none;stroke:var(--primary2);stroke-width:5;stroke-linecap:round;stroke-linejoin:round}${!stage && !land && !stack ? `
+.node{min-width:0}
+.nodes:has(> :nth-child(7)){flex-direction:column;gap:${px(4)}}.nodes:has(> :nth-child(7)) .node{min-width:${px(420)};font-size:${px(30)};padding:${px(12)} ${px(30)}}
+.nodes:has(> :nth-child(7)) .arr{width:${px(30)};height:${px(22)};transform:rotate(90deg)}` : ''}
 .cta{align-items:flex-start}.ctat{font-size:${px(port ? 116 : 100)}}.curl{font-size:${px(38)};opacity:.8}
-.clogo .brandlogo{height:${px(80)};max-width:${px(560)}}.clogo .txt{font-weight:800;font-size:${px(56)}}${hasVideo ? `
+.clogo .brandlogo{height:${px(80)};max-width:${px(560)}}.clogo .txt{font-weight:800;font-size:${px(56)}}${ctaBg ? '\n' + CTA_BG_CSS : ''}${hasVideo ? `
 .vid{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${px(26)};padding:${px(port ? 130 : 60)} ${padX(110)} ${px(port ? 270 : 170)};text-align:center}
 .vt{font-size:${px(port ? 80 : 64)}}
 .vwin{flex:none;line-height:0;border-radius:${px(22)};overflow:hidden;background:#000;box-shadow:0 ${px(24)} ${px(60)} rgba(15,23,42,.3)}
 .vwin video{display:block;width:auto;height:auto;max-width:${px(land ? 1320 : 900)};max-height:${px(port ? 900 : land ? 600 : 560)}}` : ''}${hasModel ? `
 .mod{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${px(18)};padding:${px(A.top)} ${padX(110)} ${px(A.bottom)};text-align:center}
 .mod .vt{font-size:${px(port ? 80 : 64)}}
-.mwin{flex:none;width:${px(mwin[0])};height:${px(mwin[1])};max-width:100%}.m3c{display:block;width:100%;height:100%}` : ''}${hasDarkTitle ? `
+.mwin{flex:none;width:${px(mwin[0])};height:${px(mwin[1])};max-width:100%}.m3c{display:block;width:100%;height:100%}.awin{position:relative}.lot{position:absolute;inset:0}.lot svg{display:block;width:100%;height:100%}` : ''}${hasDarkTitle ? `
 .tdark{align-items:center;text-align:center}.tdark .tt{color:var(--on);font-size:${px(port ? 140 : 150)}}.tdark .tsub{color:var(--on);opacity:.75}` : ''}${hasFlash ? `
 .flash{position:absolute;left:${padX(flashSide)};right:${padX(flashSide)};top:${px(A.top)};bottom:${px(A.bottom)}}
 .flk{position:absolute;left:0;right:0;top:0;text-align:center}
@@ -283,7 +299,8 @@ ${hasFlash ? `  flash(sc, s, e) {
     fadeUp(g.querySelector('.kick'), s + 0.05); fadeUp(g.querySelector('.vt'), s + 0.1, { d: 0.6 });
     pop($(sc.id + '-win'), s + 0.2, { from: 0.92 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.6));
   },
-` : ''}${hasModel ? `  model(sc, s) {
+` : ''}${hasModel ? `  anim(sc, s) { KINDS.model(sc, s); },
+  model(sc, s) {
     const g = $('g-' + sc.id);
     fadeUp(g.querySelector('.kick'), s + 0.05); fadeUp(g.querySelector('.vt'), s + 0.1, { d: 0.6 });
     pop($(sc.id + '-win'), s + 0.15, { from: 0.85 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.55));

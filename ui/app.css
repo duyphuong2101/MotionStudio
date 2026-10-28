@@ -133,6 +133,9 @@ form.stack,.stack{max-width:680px;display:flex;flex-direction:column;gap:14px}
 .sbtns{flex-wrap:wrap;justify-content:flex-end}
 .scene .sh{flex-wrap:wrap}
 .kindhelp{margin:-4px 0 8px;font-size:12.5px}
+.media{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 10px}.mitem{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--panel2)}
+.mprev{flex:none;width:56px;height:42px;border-radius:4px;object-fit:contain;background:#000}.mprev.glyph,.mprev.empty{display:flex;align-items:center;justify-content:center;background:var(--panel);border:1px dashed var(--line);color:var(--muted);font:600 14px var(--mono)}
+.mtxt{display:flex;flex-direction:column;gap:2px;min-width:0}.mtxt .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}.media-none{margin:-4px 0 8px}
 .scene.is-draft{border-style:dashed;border-color:var(--human)}
 .pill.draft{color:var(--human);border-color:var(--human)}
 .draftbox{display:flex;flex-direction:column;gap:10px}
@@ -158,6 +161,7 @@ form.stack,.stack{max-width:680px;display:flex;flex-direction:column;gap:14px}
 .mix .chk:has(input:disabled){color:var(--muted)}
 .card .row .btn.sm{white-space:nowrap}
 .f .hint{font-size:12px}
+.lookrow{max-width:520px}
 .bthumb{height:56px;max-width:120px;object-fit:contain;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
 .listhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}.listhead h3{margin:0;flex:1;min-width:0}
 .dir{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:13px;background:var(--panel)}
@@ -260,7 +264,7 @@ p.small{margin:0 0 8px}
 /* Review link (npm run ui:review): same layout, no edit controls. The server refuses writes anyway. */
 .ro-badge{background:var(--accent);color:var(--accent-fg);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
 html[data-review] :is(#new-proj, #new-brief, #new-seq, #director, #d-edit, #d-dup, #d-del, [data-act], [data-copy], [data-dir],
-  #src-add, [data-del], [data-useshot], .addrow, [data-move], [data-todraft], [data-dup], .savebar, #br-addfont, [data-frm], .uplist,
+  #src-add, [data-del], [data-useshot], .addrow, .lookrow, [data-move], [data-todraft], [data-dup], .savebar, #br-addfont, [data-frm], .uplist,
   #sq-render, .sq-preview, #sq-edit, #sq-del, [data-usetpl], #br-addcolor, #br-vprev, [data-prm], [data-trun], [data-adel], [data-idel], [data-shots],
   .drop, label:has(#br-replace), label:has(#br-ireplace), #br-gen, h3:has(+ #br-gen), #br-banner, h3:has(+ #br-banner), .danger){display:none !important}
 

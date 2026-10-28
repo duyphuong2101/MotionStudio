@@ -29,6 +29,27 @@ export async function decode(file, from = 0, seconds = null) {
   }
 }
 
+/**
+ * Where speech starts in decoded audio (seconds): the first 20 ms window within 15 dB of the loudest one that stays
+ * loud for the next 40 ms, so a click at the cut or a music bed well under the voice does not count. 0 when silent.
+ */
+export function speechOnset(samples, rate = SAMPLE_RATE) {
+  const win = Math.round(rate * 0.02);
+  const rms = [];
+  for (let i = 0; i + win <= samples.length; i += win) {
+    let s = 0;
+    for (let j = i; j < i + win; j++) s += samples[j] * samples[j];
+    rms.push(Math.sqrt(s / win));
+  }
+  const top = Math.max(0, ...rms);
+  if (!top) return 0;
+  const thr = top * 0.18;
+  for (let i = 0; i + 2 < rms.length; i++) {
+    if (rms[i] > thr && rms[i + 1] > thr * 0.55 && rms[i + 2] > thr * 0.55) return round((i * win) / rate, 2);
+  }
+  return 0;
+}
+
 /** Size and modified time of a file: a cached result made from it is current while this matches. */
 export const stamp = (file) => { const s = fs.statSync(file); return `${s.size}-${Math.round(s.mtimeMs)}`; };
 

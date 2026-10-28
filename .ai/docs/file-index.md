@@ -5,9 +5,9 @@
 | File | Purpose |
 |---|---|
 | `core.mjs` | `ROOT`, `DIRS`, `StudioError`, `assertId`, `assertFileName`, `within`, `readJson`, `writeJson`, `escapeHtml`, `jsonForScript`, `loadStudioConfig` |
-| `jobs.mjs` | `STEPS`, `STATUSES`, brief/brand/asset loaders, `validateBrief` (incl. `mix`), `saveBrief`/`updateBrief` (a template or mix change after a script moves it to `script.prev.json`, dirty from 3), `loadBriefTemplate` (composed rules for a mixed brief), `getStatus`/`setStatus`, locks (`diffLocks`, `humanEdit`, `mergeRespectingLocks`; scene fields from every `beats.json`; draft scenes), `editDirtyFrom`, `sequenceFile`/`sequenceIds` |
+| `jobs.mjs` | `STEPS`, `STATUSES`, brief/brand/asset loaders, `validateBrief` (incl. `mix`), `saveBrief`/`updateBrief` (a template or mix change after a script moves it to `script.prev.json`, dirty from 3), `loadBriefTemplate` (composed rules for a mixed brief), `getStatus`/`setStatus`, locks (`diffLocks`, `humanEdit`, `mergeRespectingLocks`; scene fields from every `beats.json`; the script's `look`, which also carries over a template change; draft scenes), `editDirtyFrom`, `sequenceFile`/`sequenceIds` |
 | `mix.mjs` | Mixed briefs: `MAX_MIX_EXTRAS`, `splitKind`, `isMixable`, `composeBeats` (lead + extras rules), `scopeCss`, `buildMixed` (one page from several renderers' `parts()`) |
-| `pipeline.mjs` | `claim`, `fail` (Director stops a job before review), `commit`, `prepare` (passes `tight` for a cinematic brand; stills, lint and the play-through check), `playJob` (read-only play-through check of a prepared job), `approve`, `render`, `describe`, `sizeFor`, footage clip cutting, `footageArgs` (footage.wav graph, per-clip `gainDb`), `finalMixArgs` (final mux args and audio label), `mixFilter` (final audio graph; `offsets`/`fadeIn`/`fadeOut` for a sequence music bed; `sfx`/`sfxOffsets` cut sounds after the duck), `brandMusic`, `SPEECH_FILES` |
+| `pipeline.mjs` | `claim`, `fail` (Director stops a job before review), `commit`, `prepare` (passes `tight` for a cinematic brand; stills, lint and the play-through check), `playJob` (read-only play-through check of a prepared job), `approve`, `render`, `describe`, `sizeFor`, footage clip cutting, `footageArgs` (footage.wav graph, per-clip `gainDb`), `finalMixArgs` (final mux args and audio label), `mixFilter` (final audio graph; `offsets`/`fadeIn`/`fadeOut` for a sequence music bed; `sfx`/`sfxOffsets` cut sounds after the duck), `brandMusic`, `SPEECH_FILES`, `startOnSpeech` (a clip's words stamped before its speech is heard are moved onto it, from `speechOnset`) |
 | `sfx.mjs` | Cut sounds: `SFX_FILE`, `cutSound` (scene `sfx` over brand `sfx.cut`), `placeSound` (peak on the cut), `sfxPlacements` (every scene start but the first), `sfxArgs`/`writeSfxTrack` (sfx.wav graph), `jobSfx` (prepare: `sfx.wav` + `timing.sfx`) |
 | `sequences.mjs` | Sequences (finished videos joined into one MP4): `validateSequence` (optional `targetDuration`), `checkParts` (render and preview: every part done), `checkDraftParts` (create and edit: parts may be unrendered), `sequenceBudget` (each part's length from render, storyboard or brief estimate, transition overlaps, total vs target, parts not ready), `create`/`update`/`deleteSequence`, `getSequenceStatus`/`setSequenceStatus`, `sequencePlan` (ffmpeg args), `musicBedPlan` (one music track under the joined film, `musicBed`; parts' `sfx.wav` and join sounds), `joinSfx` (cut sounds at the joins), `loopMusic` (crossfaded loop of a track shorter than the film), `joinCaptions`, `previewSequence`, `renderSequence`; `dip-black`/`dip-white` are custom xfade expressions (down over the first half, up over the second); `luma-fade` has a 0.6 soft edge so an evenly dark part still turns over gradually |
 | `cli.mjs` | Engine CLI: `list`, `context` (incl. `urlCheck`), `claim`, `fail`, `commit`, `prepare`, `playcheck`, `review`, `approve`, `render`, `status`, `transcribe`, `shots`, `find`, `clip`, `qa`, `sequence`, `evidence git|csv` (`--json` prints errors as `{ error, code }`) |
@@ -17,14 +17,17 @@
 | `qa.mjs` | Checks a finished MP4: `runQa` (one decode pass: loudness, black, freeze, `scdet` hard cuts), `judge` (findings; a hard cut over `QA_RULES.cutJump` warns), `parseLoudness`/`parseBlack`/`parseFreeze`/`parseJumps`, `checkCaptions`, `QA_RULES` |
 | `notes.mjs` | Notes pinned to a moment of a job's preview (`notes.json`): `loadNotes`, `addNote` (scene from timing.json, `MAX_NOTES`, `NOTE_CHARS`), `deleteNote`, `notesForDirector` (none for a queued job) |
 | `context.mjs` | `directorContext`: brief, status, brand, voice notes, URL check, assets, template rules, `marksRule`, `layoutRule`, pinned `notes` + `notesRule`, `referenceRhythm` + `rhythmRule`, transcripts, icons, screenshots, drafts |
-| `script.mjs` | `validateScript` (against `beats.json`; draft scenes, placeholder voice warning), `assertValidScript`, `validateSource` (bullet `asset` screenshots against the project assets), `bulletScreenshots`, `wordsOf`, `draftScenes`, `assertNoDrafts`, `DRAFT_NOTE_MAX` |
+| `repair.mjs` | `repairScript(draft, beats, { icons, existing })`: mechanical fixes at every script commit before the lock merge (unknown icon → nearest, off-list enum removed, scenes over a slot's `max` dropped, bad or repeated ids → `<kind>-<n>`; ends of text trimmed); never words, never a locked field; returns `{ doc, repairs }` |
+| `looks.mjs` | Script looks: `LOOKS` (`calm`, `energetic`, `premium`, `bold`: motion, backdrop, wipe, leaks, shine, sfx, built-in music), `LOOK_NAMES`, `BRAND_LOOK`, `lookProblem` (the script check's message), `lookBrand(look, brand)` (the look under what the brand sets; prepare, render, `playJob` and the job route's preview music) |
+| `icon-match.mjs` | `ICON_KEYWORDS` (English words per built-in icon, no word under two icons), `matchIcon(words, builtIn, brand)` (a brand icon named in the words, then most keyword hits, null when none), `nearestIcon(name, icons, fallback)` (same letters, then prefix/suffix/substring, then keywords, then fallback, then the first built-in) |
+| `script.mjs` | `validateScript` (against `beats.json`; draft scenes, placeholder voice warning; limit errors end with `: cut N`; `look` one of `brand` or `LOOK_NAMES`), `SCENE_ID_RE`, `assertValidScript`, `validateSource` (bullet `asset` screenshots against the project assets), `bulletScreenshots`, `wordsOf`, `draftScenes`, `assertNoDrafts`, `DRAFT_NOTE_MAX` |
 | `help.mjs` | Script tab help: `FIELD_HELP` (shared field hints), `sceneHelp(beats)` (kind + field help per kind, mixed briefs included) |
 | `templates.mjs` | `hasRenderer`, `isBuiltIn`, `readTemplate`, `rendererDir` (handles `extends`) |
 | `transition-preview.mjs` | `transitionPreview`, `transitionPreviewFile`: a sequence transition demo clip per project (two brand-coloured scenes joined by the preset) in `out/_preview/transitions/` |
 | `timing.mjs` | `estimateTiming` (words per second), `sceneGaps` (lead-in and tail per scene; `tight` for a motion profile with `tight`: cinematic, clean, kinetic), `resolvePace` (pace table per scene, `byKind` for a mix), `toSrt`, `srtTime` |
-| `tts.mjs` | `listVoices`, `previewVoice`, `ttsProvider`, `spokenLine` (brand `voice.say`: TTS text only, timing mapped back to the script's words), `speakScript` (Kokoro or SAPI, or a recorded take's cuts via `take`; `tight` measures gaps from the voiced span of each clip) |
+| `tts.mjs` | `listVoices`, `previewVoice`, `ttsProvider`, `spokenLine` (brand `voice.say`: TTS text only, timing mapped back to the script's words), `speakScript` (Kokoro or SAPI, or a recorded take's cuts via `take`; `tight` measures gaps from the voiced span of each clip), `kokoroWords` (Kokoro has no word timing: words weighted by length, each punctuation mark and any clear pause pinned to a real pause in the audio, words spread between pins; cached lines are retimed from their cached audio when `KOKORO_WORDS_V` changes) |
 | `voicetake.mjs` | Recorded voice (`brief.voiceTake`): `spokenTokens`/`numberWords` (words as heard), `alignTake` (Needleman–Wunsch over tokens with free ends and fused words, script words timed on the take; low match → error naming the scene), `voicedFrames`, `cutPlan`, `takeGain`, `recordedVoice` (transcribe, align, cut `take/<scene>.wav`), `TAKE_DEFAULTS` |
-| `tts/kokoro.mjs` | Local Kokoro ONNX synthesis |
+| `tts/kokoro.mjs` | Local Kokoro ONNX synthesis, `voicedSpan`, `voicedPauses` |
 | `tts/sapi.ps1` | Windows SAPI synthesis script |
 | `loudness.mjs` | Loudness match for clip sound: `LOUDNESS_DEFAULTS`, `voicedSpans` (words → spans), `measureFilter`, `parseEbur128`, `measureLoudness` (ebur128 on voiced spans), `matchGains` (gain toward the voice-over or the clips' median; tolerance, clamp, peak headroom), `clipGains` |
 | `media.mjs` | `BT709_VF` / `BT709_TAGS` (colour for every encode), `ffmpeg`, `ffmpegReport`, `probeMedia` (duration, sound, `width`/`height`/`fps` via `videoInfo`), `openComposition` (headless Chrome; SwiftShader for a page with `data-gl`, `usesGl`; `inject` serves a render script inside the page, `injectScript`), `lintInPage` |
@@ -33,7 +36,7 @@
 | `banner.mjs` | Hero banner export: `buildBanner` (one standalone HTML page with a `templates/gl.mjs` backdrop on a rAF clock, escaped headline/subline/button, reduced-motion still, optional parallax), `writeBanner` into `out/<project>/_banner/`, `BANNER_BACKDROPS`, `BANNER_SIZES`, `BANNER_LIMITS` |
 | `frames.mjs` | Parallel render: `openWorkers` (one Chrome per worker), `renderWorkers`, `splitFrames`, `renderFrames` (one ffmpeg segment per worker, joined by the concat demuxer), `cutClipFrames` (clips cut into `frames/` for a render, returns the `CLIP_FRAMES_JS` script to inject; `CLIP_FPS`) |
 | `footage.mjs` | Footage import and shot finder: `analyseFootage` (scene cuts, thumbnails, letterbox bars → `out/_footage/<p>/<asset>/`), `loadShots` (with `rhythm`), `rhythmOf` (shots, average and median shot, cuts a minute), `assetRhythms` (every analysed video asset, for the Director), `findWords`/`searchWords` (transcript search), `validateClipOptions`, `clipGraph`/`clipArgs`/`maskExpr` (pure ffmpeg graphs), `previewFrame`, `makeClip` (new asset + `profiles/<p>/clips/<name>.clip.json`), `forgetFootage` |
-| `stt.mjs` | `transcribeAsset`, `loadTranscript`, `clipWords`, `decode` (asset → 16 kHz mono floats), `stamp` (size + mtime fingerprint for caches) |
+| `stt.mjs` | `transcribeAsset`, `loadTranscript`, `clipWords`, `decode` (asset → 16 kHz mono floats), `speechOnset` (where speech starts: within 15 dB of the loudest 20 ms and lasting 60 ms, so a click or a music bed does not count), `stamp` (size + mtime fingerprint for caches) |
 | `assets.mjs` | `ASSET_TYPES`, size caps, `cleanAssetName`, `saveAsset`, `deleteAsset` |
 | `brand.mjs` | `validateBrand` (empty `allowedHosts` filled from `site`; `sfx`; `motion` stored unless standard, `film: false` only for a grain profile), `MOTION_PROFILES` (one row per motion: entrance, cut, push, bg, caps, layout, tight, oneScene, layers, carrier), `carry` kept only for a profile with `carrier`, `motionProfile(brand)` (absent or unknown → standard), `MOTIONS`, `hostsFromSite`, `urlCheck` (brief URL host vs allowed hosts), `CUT_SOUNDS`, `SFX_GAIN_DB` |
 | `library.mjs` | Built-in music and cut sounds synthesised with ffmpeg: `MUSIC` (`calm-pad`, `soft-pulse`, `steady-tech`, `bright-drive`; `beat`, `cycle` per track), `ensureMusic`, `musicPath`; `SFX` (`seconds`, `peak`, `peakDb`), `ensureSfx` (peak-normalised, `library/sfx/`), `sfxPath` |
@@ -42,9 +45,9 @@
 
 | File | Purpose |
 |---|---|
-| `server/server.mjs` | Local HTTP server: `/api/*` routes, `/files/*` job outputs, `/assets/*` brand assets, `runEngine` |
+| `server/server.mjs` | Local HTTP server: `/api/*` routes (the job detail lists `looks`; its preview music follows the script's look), `/files/*` job outputs, `/assets/*` brand assets, `runEngine` |
 | `server/director.mjs` | Run Director (the one Claude call site, person-clicked): `directorArgs` (allowlist, `--permission-mode dontAsk`, `--max-turns`), `resolveClaude` (`claude.exe`, never a `.cmd`), `startDirector`/`cancelDirector`, `directorState`, usage-limit pause (`detectPause`, `readPause`, `clearPause`), logs in `logs/director/` |
-| `ui/index.html`, `ui/app.js`, `ui/app.css` | Single-page UI: briefs, storyboard review, source/script editing, brand editor |
+| `ui/index.html`, `ui/app.js`, `ui/app.css` | Single-page UI: briefs, storyboard review, source/script editing (the Script tab's Look select, hidden on the review link), brand editor |
 | `ui/shots.js` | Bullet screenshots in the Script tab: `bulletShot`, `shotField`, `shotAction` (set / offer), `applyShot`; the Brand tab's `MOTION_OPTIONS` (twin of `MOTIONS`) and `motionOpt`; imported by `app.js` and `tests/bullet-screenshots.test.mjs` |
 
 ## Templates (`templates/`)
@@ -59,7 +62,7 @@
 | `explainer` | own, `parts()`, mixable; `title`/`step`/`diagram`/`flash` take `theme`; `flash` is full-frame kinetic type, each item on the word that starts it |
 | `feature-launch` | extends `ui-story`, mixable |
 | `lifestyle` | own |
-| `logo-reveal` | own |
+| `logo-reveal` | own; reveal `notes` (1-6 silent lines, e.g. end notes: after the voice the logo lifts and the notes roll up like film credits and settle under it; `focus` pace holds about 6 s after the voice; `notesCue` has the voice read them, the roll timed to the reading) |
 | `product-demo` | own |
 | `promo` | own |
 | `social-teaser` | extends `product-demo` |
@@ -109,6 +112,7 @@
 | `tests/banner.test.mjs` | Hero banner page content, caps and 400s, path stays in `out/<project>/_banner`, review link refuses it, a headless Chrome draw check |
 | `tests/server-banner.test.mjs` | `POST /api/projects/:project/banner` and `GET /banner/...`: cross-site and bad input refused, sandboxed headers |
 | `tests/product-demo.test.mjs` | product-demo formats: 9:16 without a model byte for byte against `tests/fixtures/product-demo-9x16.mjs` (the frozen pre-format renderer), side-by-side vs stacked hero, logo and caption-band rows, the hero's 3D model and three.js wiring, 2-5 benefits, `spin` = `SPINS`; social-teaser keeps 9:16 |
+| `tests/tts-words.test.mjs` | Voice and clip caption timing: `voicedPauses`, `kokoroWords` (punctuation and clear pauses pinned to the audio), `speechOnset` (skips a click at the cut), `startOnSpeech` (clip words stamped before the speech moved onto it) |
 | `tests/scene-captions.test.mjs` | Captions for a motion scene's clip that plays its own sound: `typedWords` (typed `caption` timed on heard speech), `heardWords`, the explainer `caption` limit |
 | `tests/mix.test.mjs` | Mixed briefs: `composeBeats`, `scopeCss`, per-source script rules, pace per kind, brief `mix` rules, `buildMixed` page shape, ui-story as lead |
 | `tests/ui-story-shot.test.mjs` | ui-story `shot` scenes: missing asset, bad focus, shot count, `ui-story.shot` in a mix, screenshot markup and camera |
@@ -117,6 +121,8 @@
 | `tests/footage.test.mjs` | Clip option validation, clip names, shot/bar parsing, mask and clip graphs, transcript search, path checks, rotation; real ffmpeg: cut found at 2 s, white bars, blur-fill 1080×1920 → 1920×1080, sidecar, masked clip, preview frame |
 | `tests/server-footage.test.mjs` | Footage routes on a live server: traversal and bad image names refused, no write without `X-Studio`, missing asset 404; the review link reaches none of them |
 | `tests/help.test.mjs` | Every kind and field of every template has help text; kind overrides; mixed-brief help |
+| `tests/repair.test.mjs` | Icon matching (keyword coverage of every built-in, brand first, ties, determinism, `nearestIcon` fallbacks); each repair (icon, enum, over-max scenes, ids), words never changed, locked fields and a locked order left to the merge; a temp-project commit's result and `status.history`, a refused draft naming the cut and the repairs, the API worker's `commit` result |
+| `tests/looks.test.mjs` | Looks: the table uses only existing brand features, every look over a plain brand passes `validateBrand`, brand fields win (motion, backdrop, sfx, music, shine), `brand`/no look returns the same object, purity, unknown looks refused, `validateScript` on `look`, the `look` lock (kept, cleared, carried over a template change on a temp project); every look builds in every format of explainer, product-demo and social-teaser; Chrome-gated per look: the explainer sample in every format lints clean at every still with one scene and one caption line at a time (16:9 and 9:16 frame by frame, the rest around every cut) |
 | `tests/drafts.test.mjs` | Draft scenes: validation, `dirty_from` 4 + Director queue, lock semantics, prepare/render refusal, commit rejects leftovers |
 | `tests/bullet-screenshots.test.mjs` | Bullet `asset`: validation, asset-only edit keeps status (`editDirtyFrom` null) and locks per bullet, merge keeps the person's choice, commit refuses an invented file, `cli context` lists screenshots, `ui/shots.js` prefill rules |
 | `tests/brief-host.test.mjs` | Brief URL host check on save/edit (not on read), hosts filled from site, `cli context` `urlCheck`, `cli fail` statuses and reason cleaning, recovery by `claim` |
@@ -140,5 +146,10 @@
 
 | Path | Purpose |
 |---|---|
-| `.claude/skills/studio/SKILL.md` | The `/studio run` director |
+| `.claude/skills/studio/SKILL.md` | The `/studio run` director, for every agent (edit only this copy) |
+| `.cursor/skills/studio/SKILL.md`, `.agents/skills/studio/SKILL.md` | Byte copies for Cursor and for Copilot / Antigravity, written by `.ai/scripts/sync-director-prompt.js` |
+| `.cursor/commands/studio.md`, `.github/prompts/studio.prompt.md`, `.agents/workflows/studio.md` | `/studio` in Cursor, Copilot and Antigravity |
+| `.agents/rules/motion-studio.md` | Antigravity's always-on rule (points to `AGENTS.md`) |
+| `.vscode/settings.json` | Copilot asks before `cli.mjs approve`, `render`, `sequence` (`chat.tools.terminal.autoApprove`) |
+| `.cursor/hooks/ask-before-render.js` | Cursor asks before the same commands (beforeShellExecution) |
 | `CLAUDE.md` | Project rules loaded every turn |

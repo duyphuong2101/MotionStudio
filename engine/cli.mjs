@@ -2,7 +2,7 @@
 import { StudioError, loadStudioConfig, round } from './core.mjs';
 import { listJobs, loadBrief, jobFile, markDirty, STEPS } from './jobs.mjs';
 import { directorContext } from './context.mjs';
-import { claim, commit, fail, prepare, approve, render, describe, qaJob, playJob, benchJob, BENCH_SECONDS, BENCH_WORKERS } from './pipeline.mjs';
+import { claim, commit, fail, prepare, render, describe, qaJob, playJob, benchJob, BENCH_SECONDS, BENCH_WORKERS } from './pipeline.mjs';
 import { MAX_WORKERS } from './frames.mjs';
 import { renderSequence, previewSequence } from './sequences.mjs';
 import { transcribeAsset } from './stt.mjs';
@@ -10,6 +10,7 @@ import { analyseFootage, findWords, makeClip } from './footage.mjs';
 import { reviewOf, pacingTable, FLAG_TEXT } from './review.mjs';
 import { gitEvidence, aliasForPath, csvEvidence, readCsvFile } from './evidence.mjs';
 import { writeBanner, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES } from './banner.mjs';
+import { makePackGlb, DEPTH_RANGE } from './pack-glb.mjs';
 
 const USAGE = `Motion Studio engine
 
@@ -21,7 +22,7 @@ const USAGE = `Motion Studio engine
   node engine/cli.mjs prepare <project> <job>       steps 5-7: timing, compose, stills + lint, play-through check
   node engine/cli.mjs playcheck <project> <job>     play a prepared job frame by frame again and print what overlaps (writes nothing)
   node engine/cli.mjs review  <project> <job>       pacing table (words per second, head, tail, silence) and the review sheet path (writes nothing)
-  node engine/cli.mjs approve <project> <job> [--by name]
+  (approve)                                         a person approves the storyboard in the UI only; no command here approves
   node engine/cli.mjs render  <project> <job>       steps 9-11: frames, audio, final.mp4
   node engine/cli.mjs bench   <project> <job> [--seconds ${BENCH_SECONDS}] [--workers ${BENCH_WORKERS.join(',')}]   time the first seconds of a prepared job
         with each Chrome count, to pick config/studio.json → render.concurrency (writes nothing in the job)
@@ -44,6 +45,9 @@ const USAGE = `Motion Studio engine
   node engine/cli.mjs banner  <project> [--backdrop ${BANNER_BACKDROPS.join('|')}] [--size ${BANNER_SIZES.join('|')}] [--headline "<text>"]
         [--subline "<text>"] [--button "<text>"] [--parallax]   a standalone WebGL hero banner page in the brand colours,
         written to out/<project>/_banner/<backdrop>-<size>.html (no render, no model)
+  node engine/cli.mjs pack-glb <project> --front <pack.png> [--back <back.png>] [--name <pack.glb>] [--depth ${DEPTH_RANGE[0]}-${DEPTH_RANGE[1]}]
+        [--replace]   a soft 3D pack (rounded pillow, print round the rim) from its pictures, saved as a brand asset for a
+        model scene or a product-demo hero; transparent or black margins are trimmed (a pack shot on white keeps its margin, cut it first)
 `;
 
 /** `banner` flags, in the shape writeBanner takes (it validates them). */
@@ -191,7 +195,11 @@ async function main(argv) {
       console.log(sheet ? `sheet: ${jobFile(project, id, sheet)}` : 'sheet: none yet (it appears on the next prepare)');
       return;
     }
-    case 'approve': console.log(approve(project, id, by).status); return;
+    // Approval stays in the UI so no coding agent, named or not, can pass the person's review from a shell.
+    case 'approve': {
+      const { host, port } = loadStudioConfig().server;
+      throw new StudioError(`A person approves in the UI: open http://${host}:${port}, pick the job, then Approve. The CLI cannot approve.`, 403);
+    }
     case 'render': {
       const st = await render(project, id, by);
       console.log(`${st.status}: ${JSON.stringify(st.outputs)}`);
@@ -247,6 +255,11 @@ async function main(argv) {
     }
     case 'evidence': return evidence(args);
     case 'banner': console.log(writeBanner(project, banner)); return;
+    case 'pack-glb': {
+      const r = await makePackGlb(project, { front: flag(args, 'front'), back: flag(args, 'back'), name: flag(args, 'name'), depth: flag(args, 'depth', 0.3), replace: args.includes('--replace') });
+      console.log(`${r.name}: ${r.bytes} bytes, pack ${r.crop.w}x${r.crop.h} at ${r.crop.x},${r.crop.y}, aspect ${r.aspect}`);
+      return;
+    }
     case 'reset-dirty': {
       const st = markDirty(project, id, extra, { force: args.includes('--force'), by });
       console.log(`${st.status} from step ${st.dirty_from}`);

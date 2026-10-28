@@ -33,9 +33,27 @@ export function applyShot(scene, field, shot) {
 }
 
 /* ---------------- assets ---------------- */
-const KIND_RE = { image: /\.(png|jpe?g|webp|svg)$/i, audio: /\.(wav|mp3|m4a)$/i, video: /\.(mp4|webm|mov)$/i, font: /\.(woff2?|ttf|otf)$/i, model: /\.glb$/i };
-/** What an asset file is, from its extension: image, audio, video, font, model or other. */
+const KIND_RE = { image: /\.(png|jpe?g|webp|svg)$/i, audio: /\.(wav|mp3|m4a)$/i, video: /\.(mp4|webm|mov)$/i, font: /\.(woff2?|ttf|otf)$/i, model: /\.glb$/i, animation: /\.json$/i };
+/** What an asset file is, from its extension: image, audio, video, font, model, animation (Lottie) or other. */
 export const assetKind = (name) => Object.keys(KIND_RE).find((k) => KIND_RE[k].test(String(name || ''))) || 'other';
+
+/**
+ * The asset picker of a Script tab field: which brand assets it lists and which files its Upload button accepts, or
+ * null for a field that names no file. `footage` is the template's footage mode (true or 'audio'): its `asset` picks
+ * clips (and sound files with 'audio') instead of pictures.
+ */
+export function assetPick(field, footage = false) {
+  const pictures = { re: /\.(png|jpe?g|webp|svg)$/i, accept: '.png,.jpg,.jpeg,.webp,.svg' };
+  const clips = { re: /\.(mp4|webm|mov)$/i, accept: '.mp4,.webm,.mov' };
+  switch (field) {
+    case 'asset': return footage === 'audio' ? { re: /\.(mp4|webm|mov|wav|mp3)$/i, accept: '.mp4,.webm,.mov,.wav,.mp3' } : footage ? clips : pictures;
+    case 'image': return pictures;
+    case 'video': return clips;
+    case 'model': return { re: /\.glb$/i, accept: '.glb' };
+    case 'lottie': return { re: /\.json$/i, accept: '.json' };
+    default: return null;
+  }
+}
 
 const VIDEO_EXT = ['mp4', 'webm', 'mov']; // engine/assets.mjs VIDEO_EXT: footage has the larger cap
 const MB = 1024 * 1024;

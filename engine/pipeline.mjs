@@ -13,6 +13,8 @@ import {
 import { iconsFor } from './icons.mjs';
 import { motionProfile } from './brand.mjs';
 import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, MAX_HOLD } from './script.mjs';
+import { repairScript } from './repair.mjs';
+import { lookBrand } from './looks.mjs';
 import { estimateTiming, toSrt, sceneGaps, resolvePace } from './timing.mjs';
 import { buildMixed } from './mix.mjs';
 import { ttsProvider, speakScript, voiceFor, voiceProblem, sapiCulture, sameLanguage } from './tts.mjs';
@@ -25,11 +27,11 @@ import { playCheck, freshLoad, PLAY_DEFAULTS } from './playcheck.mjs';
 import { pacing, sheetShots, cutShots, writeSheet, writeCutSheet, REVIEW_DIR, SHEET, CUT_SHEET, PACING } from './review.mjs';
 import { runQa } from './qa.mjs';
 import { buildHtmlVideo } from './htmlvideo.mjs';
-import { clipWords, sttStatus } from './stt.mjs';
+import { clipWords, sttStatus, decode, speechOnset } from './stt.mjs';
 import { clipGains } from './loudness.mjs';
 import { recordedVoice } from './voicetake.mjs';
 import { jobSfx, SFX_FILE } from './sfx.mjs';
-import { copyThree } from './vendor.mjs';
+import { copyThree, copyLottie } from './vendor.mjs';
 // sequences.mjs imports this module too; loopMusic is only called at run time, so the cycle is safe.
 import { loopMusic } from './sequences.mjs';
 
@@ -108,24 +110,40 @@ export function commit(project, id, kind, by) {
     storyboardMs: exists(page) ? fs.statSync(page).mtimeMs : null,
   });
   const existing = commitBase(project, id, kind);
-  const { doc, kept } = mergeRespectingLocks(kind, existing, draft);
+  let doc, kept, repairs = [];
   if (kind === 'source') {
+    ({ doc, kept } = mergeRespectingLocks(kind, existing, draft));
     const errs = validateSource(doc, { assets: listAssets(project) });
     if (errs.length) throw new StudioError(`source invalid:\n- ${errs.join('\n- ')}`, 400);
   } else {
-    const brief = loadBrief(project, id);
-    assertValidScript(doc, loadBriefTemplate(brief).beats, { assets: listAssets(project), icons: Object.keys(iconsFor(project)) });
-    const left = draftScenes(doc).map((s) => s.id);
-    if (left.length) throw new StudioError(`Draft scene(s) not filled: ${left.join(', ')}. Fill each one and remove its "draft" key, then commit again.`, 400);
+    const { beats } = loadBriefTemplate(loadBrief(project, id));
+    const icons = Object.keys(iconsFor(project));
+    // Mechanical fixes first, on the draft only: the merge then restores every locked field as the person left it.
+    const fixed = repairScript(draft, beats, { icons, existing });
+    repairs = fixed.repairs;
+    ({ doc, kept } = mergeRespectingLocks(kind, existing, fixed.doc));
+    try {
+      assertValidScript(doc, beats, { assets: listAssets(project), icons });
+      const left = draftScenes(doc).map((s) => s.id);
+      if (left.length) throw new StudioError(`Draft scene(s) not filled: ${left.join(', ')}. Fill each one and remove its "draft" key, then commit again.`, 400);
+    } catch (err) {
+      // The errors may name a repaired id or icon, so say what was repaired; the draft file itself is unchanged.
+      if (err instanceof StudioError && repairs.length) err.message += `\nRepaired before this check (fix these in the draft too):\n- ${repairs.join('\n- ')}`;
+      throw err;
+    }
   }
   writeJson(finalFile, doc);
   fs.unlinkSync(draftFile);
   const patch = kind === 'script'
     ? { status: 'scripted', step: 5, dirty_from: null, error: null, failed: null }
     : { status: 'scripting', step: 4, error: null, failed: null };
-  setStatus(project, id, patch, `${kind}.json committed${kept.length ? `, kept locked: ${kept.join(', ')}` : ''}`, by);
-  return { kept };
+  const event = `${kind}.json committed${kept.length ? `, kept locked: ${kept.join(', ')}` : ''}${repairs.length ? `, repaired: ${repairs.join('; ')}` : ''}`;
+  setStatus(project, id, patch, event, by);
+  return { kept, repairs };
 }
+
+/** The brand a job's video uses: the project brand with the script's look laid over it (engine/looks.mjs). */
+const jobBrand = (project, script) => lookBrand(script?.look, loadBrand(project));
 
 /* ---------- steps 5-7: timing, compose, stills + lint ---------- */
 export async function prepare(project, id, by = 'engine') {
@@ -138,13 +156,13 @@ export async function prepare(project, id, by = 'engine') {
   }
   const brief = loadBrief(project, id);
   const brandFile = loadBrand(project);
-  // This video's voice: the brand's, with the brief's language and voice on top.
-  const brand = { ...brandFile, voice: voiceFor(brandFile, brief) };
+  const script = readJson(jobFile(project, id, 'script.json'));
+  // This video's brand: the script's look under what the brand sets, then the brief's language and voice on top.
+  const brand = { ...lookBrand(script.look, brandFile), voice: voiceFor(brandFile, brief) };
   // A recorded take replaces the TTS voice, so the TTS voice's language limits do not apply.
   const problem = brief.voiceTake ? null : voiceProblem(brand.voice);
   if (problem) throw new StudioError(problem, 400);
   const { dir: tplDir, beats } = loadBriefTemplate(brief);
-  const script = readJson(jobFile(project, id, 'script.json'));
   readJson(jobFile(project, id, 'source.json'));
   const icons = iconsFor(project);
   const { warnings } = assertValidScript(script, beats, { assets: listAssets(project), icons: Object.keys(icons) });
@@ -166,6 +184,7 @@ export async function prepare(project, id, by = 'engine') {
     const heard = sttStatus().available ? clips.filter((c) => c.hasAudio && !c.text && (footage || c.caption)) : [];
     for (const c of heard) {
       c.words = await clipWords(project, c.asset, c.from, c.seconds, { lang: brand.voice.lang, cacheDir: jobFile(project, id, 'stt') });
+      if (c.words.length) c.words = startOnSpeech(c.words, speechOnset(await decode(c.file, c.from, c.seconds)));
       c.text = c.words.map((w) => w.w).join(' ');
     }
     // A typed caption wins over what was heard; without speech recognition it is spread over the clip.
@@ -219,6 +238,7 @@ export async function prepare(project, id, by = 'engine') {
       if (sc.asset) used.add(sc.asset);
       if (sc.image) used.add(sc.image);
       if (sc.model) used.add(sc.model);
+      if (sc.lottie) used.add(sc.lottie);
       for (const sh of sc.shots || []) used.add(sh.asset);
       for (const p of Array.isArray(sc.photos) ? sc.photos : []) if (p?.asset) used.add(p.asset);
     }
@@ -230,6 +250,7 @@ export async function prepare(project, id, by = 'engine') {
     };
     fs.writeFileSync(path.join(dir, 'index.html'), await page(brief.format, size), 'utf8');
     if (script.scenes.some((sc) => sc.model)) copyThree(dir);
+    if (script.scenes.some((sc) => sc.lottie)) copyLottie(dir);
     // Extra cuts: the same script and timing laid out at each other size, one page each.
     const cuts = [];
     for (const format of brief.alsoFormats || []) {
@@ -391,6 +412,21 @@ export function typedWords(typed, heard, seconds) {
   });
 }
 
+/**
+ * Speech recognition often stamps a clip's first words from 0 s, before anyone speaks. The words stamped before the
+ * speech is heard (`onset`, clip seconds) are spread from there to the first word placed after it; every other word
+ * keeps its time.
+ */
+export function startOnSpeech(words, onset) {
+  if (!words.length || !(onset > words[0].start)) return words;
+  const k = words.findIndex((w) => w.start >= onset);
+  const lead = k < 0 ? words.length : k;
+  const until = k < 0 ? Math.max(words.at(-1).end, onset + 0.2 * lead) : words[k].start;
+  if (until - onset < 0.05 * lead) return words;
+  const slot = (until - onset) / lead;
+  return words.map((w, i) => (i < lead ? { ...w, start: round(onset + slot * i, 2), end: round(onset + slot * (i + 1) - 0.02, 2) } : w));
+}
+
 /** Adds the words recognised in each clip's sound to the timing as that scene's caption words, at real times. */
 export function heardWords(timing, clips) {
   for (const c of clips) {
@@ -547,8 +583,8 @@ export async function playJob(project, id) {
   const { beats } = loadBriefTemplate(brief);
   const dir = jobDir(project, id);
   if (!exists(path.join(dir, 'index.html'))) throw new StudioError('This job has no composition yet: run prepare first', 409);
-  const { oneScene } = motionProfile(loadBrand(project));
-  const pages = [{ format: brief.format, page: 'index.html', ...sizeFor(beats, brief.format) }, ...(st.cuts || []).filter((c) => exists(path.join(dir, c.page)))];
+  const { oneScene } = motionProfile(jobBrand(project, readJson(jobFile(project, id, 'script.json'), null)));
+  const pages =[{ format: brief.format, page: 'index.html', ...sizeFor(beats, brief.format) }, ...(st.cuts || []).filter((c) => exists(path.join(dir, c.page)))];
   const out = [];
   for (const p of pages) {
     const t0 = Date.now();
@@ -660,8 +696,10 @@ export async function render(project, id, by = 'engine') {
   if (st.status === 'error' && STORYBOARD_FILES.some((f) => !exists(jobFile(project, id, f)))) {
     throw new StudioError('The storyboard files are gone: run prepare again, then approve and render.', 409);
   }
-  assertNoDrafts(readJson(jobFile(project, id, 'script.json'), null));
-  const brand = loadBrand(project);
+  const script = readJson(jobFile(project, id, 'script.json'), null);
+  assertNoDrafts(script);
+  // The music of the final mix follows the look prepare laid over the brand.
+  const brand = jobBrand(project, script);
   const brief = loadBrief(project, id);
   const { beats } = loadBriefTemplate(brief);
   const dir = jobDir(project, id);

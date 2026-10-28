@@ -22,6 +22,7 @@ import {
 } from '../engine/sequences.mjs';
 import { validateScript, validateSource, assertNoDrafts } from '../engine/script.mjs';
 import { validateBrand } from '../engine/brand.mjs';
+import { LOOK_NAMES, lookBrand, lookProblem } from '../engine/looks.mjs';
 import { saveAsset, deleteAsset, maxBytesFor, MAX_ASSET_BYTES, MAX_VIDEO_BYTES, ASSET_TYPES } from '../engine/assets.mjs';
 import { listVoices, previewVoice, voiceFor, voiceProblem } from '../engine/tts.mjs';
 import { MUSIC, ensureMusic, musicPath, SFX, ensureSfx, sfxPath } from '../engine/library.mjs';
@@ -304,9 +305,10 @@ function providersPublic() {
   };
 }
 
-// The brand's background track for the preview: a built-in track or a project asset, at its mix level.
-function musicFor(project) {
-  const m = loadBrand(project).music || {};
+// The job's background track for the preview (the brand's, or the script's look's when the brand has none): a built-in
+// track or a project asset, at its mix level. A hand-edited bad look is ignored here, so the job still opens to fix it.
+function musicFor(project, look) {
+  const m = lookBrand(lookProblem(look) ? null : look, loadBrand(project)).music || {};
   if (!m.file) return null;
   const url = String(m.file).startsWith('library:') ? `/api/music/${encodeURIComponent(m.file.slice(8))}` : `/assets/${encodeURIComponent(project)}/${encodeURIComponent(m.file)}`;
   return { url, gainDb: Number(m.gainDb ?? -18) };
@@ -317,17 +319,19 @@ function jobDetail(project, id) {
   const status = getStatus(project, id);
   const f = (n) => jobFile(project, id, n);
   const { beats } = loadBriefTemplate(brief);
+  const script = readJson(f('script.json'), null);
   return {
     brief, status, steps: STEPS,
     source: readJson(f('source.json'), null),
-    script: readJson(f('script.json'), null),
+    script,
     timing: readJson(f('timing.json'), null),
     has: {
       index: exists(f('index.html')), final: exists(f('final.mp4')), captions: exists(f('captions.srt')),
       voice: exists(f('voice.wav')), footage: exists(f('footage.wav')), sfx: exists(f('sfx.wav')),
     },
     running: running.get(`${project}/${id}`) || null,
-    music: musicFor(project),
+    music: musicFor(project, script?.look),
+    looks: LOOK_NAMES,
     template: beats,
     help: sceneHelp(beats),
     assets: listAssets(project),

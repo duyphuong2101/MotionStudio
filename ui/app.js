@@ -1,4 +1,4 @@
-import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt } from './shots.js';
+import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, assetPick, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt } from './shots.js';
 
 const S = {
   state: null, project: null, jobs: [], briefForm: null, sel: null, detail: null, sub: 'preview', view: 'auto', paneDirty: false, lastStamp: null,
@@ -38,11 +38,13 @@ const WHO = { human: 'human', director: 'director', tool: 'tool' };
 const FIELD_LABEL = {
   vo: 'Voice-over', layout: 'Layout', zoom: 'Zoom', nav: 'Nav item', page: 'Page title', data: 'Screen data', assistant: 'Assistant turns', title: 'Title', subtitle: 'Subtitle', kicker: 'Kicker', text: 'Text line', chip: 'Chip',
   stat: 'Number', icon: 'Icon', shots: 'Shots (image, focus, cursor, click)', pace: 'Pace', decor: 'Decor', check: 'Check mark', button: 'CTA button', url: 'URL', asset: 'Image', packLine: 'Pack line', source: 'Claim source',
-  video: 'Video clip', sound: 'Sound', image: 'Cover art', name: 'Name', role: 'Role', in: 'Starts at (s)', out: 'Ends at (s)', code: 'Code', before: 'Before', after: 'After', lang: 'Window label', file: 'File name', files: 'Changed files', lines: 'Terminal lines', highlight: 'Lines to light up', periods: 'Periods', series: 'Series (one value per period)', values: 'Values', finish: 'Ends as', top: 'Bars shown', items: 'Items', points: 'Points', parts: 'Parts', labels: 'Axis labels', band: 'Highlight band', ref: 'Reference line', theme: 'Theme',
+  video: 'Video clip', sound: 'Sound', image: 'Cover art', model: '3D model', lottie: 'Animation (Lottie)', spin: 'Spin', view: 'Camera pose', path: 'Camera path', explode: 'Exploded parts', gap: 'Part gap', decal: 'Decal', env: 'Lighting', shadow: 'Shadow', loop: 'Loop', fit: 'Fit', name: 'Name', role: 'Role', in: 'Starts at (s)', out: 'Ends at (s)', code: 'Code', before: 'Before', after: 'After', lang: 'Window label', file: 'File name', files: 'Changed files', lines: 'Terminal lines', highlight: 'Lines to light up', periods: 'Periods', series: 'Series (one value per period)', values: 'Values', finish: 'Ends as', top: 'Bars shown', items: 'Items', points: 'Points', parts: 'Parts', labels: 'Axis labels', band: 'Highlight band', ref: 'Reference line', theme: 'Theme',
 };
 
 // Review link (npm run ui:review): the same UI, read-only. app.css hides the edit controls; the server refuses every write anyway.
 const REVIEW = document.documentElement.dataset.review === '1';
+// The Script tab's look that keeps the brand as set (engine/looks.mjs BRAND_LOOK); the job route lists the others.
+const LOOK_BRAND = 'brand';
 // Every write (and TTS, which the review link never runs) passes here first: api(), uploads, the CSV and the voice sample.
 function assertWritable() {
   if (REVIEW) throw new Error('This is a read-only review link. Changes are made on the Motion Studio computer.');
@@ -756,8 +758,8 @@ function paneScript(pane) {
   const clipRe = tpl.footage === 'audio' ? /\.(mp4|webm|mov|wav|mp3)$/i : /\.(mp4|webm|mov)$/i;
   const pictures = d.assets.filter((a) => /\.(png|jpe?g|webp|svg)$/i.test(a));
   const images = footage ? d.assets.filter((a) => clipRe.test(a)) : pictures;
-  const uploadHint = ` ${footage ? 'Upload clips' : 'Upload images'} in the Brand tab → Assets.`;
-  const JSON_FIELDS = new Set(['data', 'assistant', 'shots', 'items', 'parts', 'people', 'points', 'labels', 'before', 'after', 'periods', 'series', 'values', 'lines', 'files', 'highlight', 'band', 'ref', 'photos', 'view']);
+  const uploadHint = ' Upload… adds a file to the brand assets and picks it here.';
+  const JSON_FIELDS = new Set(['data', 'assistant', 'shots', 'items', 'parts', 'people', 'points', 'labels', 'before', 'after', 'periods', 'series', 'values', 'lines', 'files', 'highlight', 'band', 'ref', 'photos', 'view', 'path', 'explode', 'decal']);
   // Code listings keep their line breaks and indentation, so they get a monospace text area.
   const BLOCK_FIELDS = new Set(['code', 'before', 'after']);
 
@@ -833,14 +835,17 @@ function paneScript(pane) {
     return used >= max ? `at most ${max} in this video` : 'not allowed at this position';
   };
 
+  // A cta's image is its background photo; everywhere else the shared label.
+  const labelOf = (s, f) => (f === 'image' && bare(s.kind) === 'cta' ? 'Background photo' : FIELD_LABEL[f] || f);
   const fieldHtml = (s, f) => {
     const id = esc(`sc-${s.id}-${f}`), sid = esc(s.id);
     const lk = locks[`scene:${s.id}.${f}`];
     const lock = lk ? `<span class="lock">locked by ${esc(lk.by)}</span>` : '';
-    const label = `<label for="${id}">${esc(FIELD_LABEL[f] || f)} ${lock}</label>`;
+    const label = `<label for="${id}">${esc(labelOf(s, f))} ${lock}</label>`;
     const { limits = {}, enums = {}, marks } = rulesFor(s.kind);
     const markable = marks === true && MARK_FIELDS.includes(f);
-    const hint = (help.fields[s.kind]?.[f] || '') + (f === 'asset' || f === 'shots' ? uploadHint : '') + (markable ? MARK_HINT : '');
+    const pick = assetPick(f, footage ? tpl.footage || true : false);
+    const hint = (help.fields[s.kind]?.[f] || '') + (pick ? uploadHint : f === 'shots' ? ' Upload images in the Brand tab → Assets.' : '') + (markable ? MARK_HINT : '');
     const tip = hint ? `<span class="hint muted" id="${id}-h">${esc(hint.trim())}</span>` : '';
     const attrs = `id="${id}" data-s="${sid}" data-f="${esc(f)}"${hint ? ` aria-describedby="${id}-h"` : ''}`;
     // A mark's [[style:…]] does not count toward the limit; the server checks the text as it reads on screen.
@@ -857,11 +862,16 @@ function paneScript(pane) {
         <optgroup label="Built-in">${builtIn.map(opt).join('')}</optgroup>${own.length ? `<optgroup label="This brand">${own.map(opt).join('')}</optgroup>` : ''}</select>
         <span class="iconprev" id="${id}-prev">${iconSvg(d.icons[s.icon])}</span></div>${tip}</div>`;
     }
-    if (f === 'asset') return `<div class="f">${label}<select ${attrs}><option value="">(none)</option>${images.map((a) => `<option ${s.asset === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>${tip}</div>`;
-    if (f === 'video') return `<div class="f">${label}<select ${attrs}><option value="">(none)</option>${d.assets.filter((a) => /\.(mp4|webm|mov)$/i.test(a)).map((a) => `<option ${s.video === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>${tip}</div>`;
+    // A file field: the brand assets of its type, and an Upload button that adds one and picks it.
+    if (pick) {
+      const list = d.assets.filter((a) => pick.re.test(a));
+      const known = !s[f] || list.includes(s[f]);
+      return `<div class="f">${label}<div class="row"><select ${attrs}><option value="">(none)</option>${list.map((a) => `<option ${s[f] === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}${known ? '' : `<option selected>${esc(s[f])}</option>`}</select>
+        <button class="btn sm" type="button" data-pickup="${id}">Upload…</button><input type="file" id="${id}-file" data-ups="${sid}" data-upf="${esc(f)}" accept="${pick.accept}" hidden></div>
+        <span class="small" id="${id}-up" role="status"></span>${tip}</div>`;
+    }
     if (f === 'sound') return `<div class="f">${label}<label class="chk"><input ${attrs} type="checkbox" ${s.sound ? 'checked' : ''}> Play the clip's own sound</label>${tip}</div>`;
     if (f === 'shadow') return `<div class="f">${label}<label class="chk"><input ${attrs} type="checkbox" ${s.shadow === false ? '' : 'checked'}> Soft shadow under the model</label>${tip}</div>`;
-    if (f === 'image') return `<div class="f">${label}<select ${attrs}><option value="">(none)</option>${pictures.map((a) => `<option ${s.image === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>${tip}</div>`;
     if (f === 'source') return `<div class="f">${label}${sourceSelect(s, attrs)}${shotNote(s)}${tip}</div>`;
     if (enums[f]) return `<div class="f">${label}<select ${attrs}><option value="">(default)</option>${enums[f].map((n) => `<option value="${esc(n)}"${s[f] === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>${tip}</div>`;
     if (JSON_FIELDS.has(f) || (s[f] && typeof s[f] === 'object')) {
@@ -930,6 +940,23 @@ function paneScript(pane) {
       <button class="btn" type="button" data-add="${at}" data-asdraft="1">+ Draft for Director</button></div>`;
   };
 
+  // The files a scene uses (every file field its kind has), each with a preview: Upload new replaces it, Remove clears
+  // an optional one, Add fills an empty one. The fields below hold the same values; this is the quick way in.
+  const assetSrc = (a) => `/assets/${encodeURIComponent(S.project)}/${encodeURIComponent(a)}`;
+  const GLYPHS = { video: '▶', model: '3D', animation: '✦', audio: '♪' };
+  const mediaStrip = (s, spec) => {
+    const fields = [...spec.required, ...spec.optional].filter((f) => assetPick(f));
+    if (!fields.length) return '<p class="muted small media-none">This scene kind uses no picture, clip or model.</p>';
+    return `<div class="media" aria-label="Files in ${esc(s.id)}">${fields.map((f) => {
+      const id = esc(`sc-${s.id}-${f}`), v = s[f], req = spec.required.includes(f);
+      const kind = v ? assetKind(v) : '';
+      const prev = !v ? '<span class="mprev empty" aria-hidden="true">+</span>'
+        : kind === 'image' ? `<img class="mprev" src="${assetSrc(v)}" alt="">` : `<span class="mprev glyph" aria-hidden="true">${GLYPHS[kind] || '·'}</span>`;
+      return `<div class="mitem">${prev}<div class="mtxt"><span class="small muted">${esc(labelOf(s, f))}${req ? '' : ' (optional)'}</span><span class="mono small">${v ? esc(v) : 'none'}</span>
+        <span class="row"><button class="btn sm" type="button" data-pickup="${id}">${v ? 'Upload new…' : 'Add…'}</button>${v && !req ? `<button class="btn sm" type="button" data-mclear="${esc(s.id)}:${esc(f)}">Remove</button>` : ''}</span></div></div>`;
+    }).join('')}</div>`;
+  };
+
   const draw = () => {
     $('#sc-list').innerHTML = addRow(0) + scenes.map((s, i) => {
       const t = timingOf(s.id);
@@ -946,6 +973,7 @@ function paneScript(pane) {
           <button class="btn sm" type="button" data-del="${i}" aria-label="Delete ${esc(s.id)}">Delete</button>
         </span></div>
         ${help.kinds[s.kind] ? `<p class="muted kindhelp">${esc(help.kinds[s.kind])}</p>` : ''}
+        ${s.draft ? '' : mediaStrip(s, spec)}
         ${s.draft ? draftHtml(s, fields) : `<div class="grid2">${fields.map((f) => fieldHtml(s, f)).join('')}</div>`}</div>${addRow(i + 1)}`;
     }).join('');
     drawChecks();
@@ -953,6 +981,8 @@ function paneScript(pane) {
 
   const saved = S.scriptWarnings;
   S.scriptWarnings = null;
+  // The script's look (engine/looks.mjs); undefined keeps the brand. Picking Brand on a script without one changes nothing.
+  let look = sc.look;
   pane.innerHTML = `<fieldset class="stack ed" id="pane-ed" style="max-width:none">
     <details class="howto"><summary>How scenes work</summary><ul>
       <li>A scene is one shot on screen plus one voice line. It lasts as long as its voice line.</li>
@@ -964,6 +994,9 @@ function paneScript(pane) {
     </ul></details>
     <p class="muted">Edit, add, duplicate, delete or reorder scenes. Saving locks what you changed (and the scene order) and moves the job to "re-run from step 5". The template checks the order and required fields on save.</p>
     ${locks.scenes ? `<p class="lock">Scene order locked by ${esc(locks.scenes.by)}: the Director keeps this order.</p>` : ''}
+    <div class="f lookrow"><label for="sc-look">Look ${locks.look ? `<span class="lock">locked by ${esc(locks.look.by)}</span>` : ''}</label>
+      <select id="sc-look" aria-describedby="sc-look-h">${[LOOK_BRAND, ...(d.looks || [])].map((n) => `<option value="${esc(n)}"${n === (look ?? LOOK_BRAND) ? ' selected' : ''}>${esc(n === LOOK_BRAND ? 'Brand (as set in the Brand tab)' : n[0].toUpperCase() + n.slice(1))}</option>`).join('')}</select>
+      <span class="hint muted" id="sc-look-h">Motion, backdrop, cut sound and music for this video. What the Brand tab sets wins; the look fills the rest. Applies on the next prepare.</span></div>
     ${saved?.length ? `<div class="banner warn" role="status"><p>Saved with warnings:<br>${saved.map(esc).join('<br>')}</p></div>` : ''}
     <div class="scenes" id="sc-list"></div>
     <div class="savebar">
@@ -986,6 +1019,10 @@ function paneScript(pane) {
 
   const find = (id) => scenes.find((s) => s.id === id);
   const drawChecksSoon = () => queueMicrotask(drawChecks);
+  $('#sc-look').addEventListener('change', (e) => {
+    look = e.target.value === LOOK_BRAND && sc.look === undefined ? undefined : e.target.value;
+    S.paneDirty = true;
+  });
   pane.addEventListener('input', (e) => {
     const el = e.target;
     if (!el.dataset.f) return;
@@ -1014,12 +1051,45 @@ function paneScript(pane) {
       try { s[f] = JSON.parse(el.value); el.setCustomValidity(''); } catch { el.setCustomValidity('Invalid JSON'); }
     } else if (el.tagName === 'SELECT' && el.value === '') delete s[f];
     else s[f] = el.value;
+    // A file picked in a field shows at once in the scene's file strip.
+    if (assetPick(f)) { draw(); $(`#${CSS.escape(`sc-${s.id}-${f}`)}`)?.focus(); }
     if (f === 'source') {
       const field = imageField(s), shot = bulletShot(src, s.source);
       if (shotAction(s, field, shot, images[0]) === 'set') scenes[scenes.indexOf(s)] = applyShot(s, field, shot);
       draw();
       $(`#${CSS.escape(`sc-${s.id}-source`)}`)?.focus();
     }
+  });
+  // Upload from a file field: the file goes to the brand assets (the Brand tab's checks and route), then the scene picks it.
+  pane.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-pickup]');
+    if (b) $(`#${CSS.escape(b.dataset.pickup)}-file`)?.click();
+    const c = e.target.closest('button[data-mclear]');
+    if (c) {
+      const [sid, f] = c.dataset.mclear.split(':');
+      delete find(sid)[f];
+      S.paneDirty = true;
+      draw();
+    }
+  });
+  pane.addEventListener('change', async (e) => {
+    const el = e.target;
+    if (!el.dataset.upf || !el.files?.length) return;
+    const file = el.files[0], s = find(el.dataset.ups), f = el.dataset.upf;
+    el.value = '';
+    const st = $(`#${CSS.escape(`sc-${s.id}-${f}`)}-up`);
+    const say = (text, cls) => { if (st) { st.className = `small ${cls}`; st.textContent = text; } };
+    try {
+      const o = S.options || (S.options = await api('/options'));
+      const why = uploadProblem(file, o.assetTypes, o.maxAssetMB * 1024 * 1024, o.maxVideoMB * 1024 * 1024);
+      if (why) { say(why, 'bad-t'); return; }
+      const data = await postFile(`/projects/${encodeURIComponent(S.project)}/assets?name=${encodeURIComponent(file.name)}&replace=0`, file, 'application/octet-stream', (p) => say(`uploading ${Math.round(p * 100)}%`, 'muted'));
+      if (!d.assets.includes(data.name)) d.assets = [...d.assets, data.name].sort();
+      s[f] = data.name;
+      S.paneDirty = true;
+      draw();
+      toast(`Uploaded ${data.name} and picked it for ${s.id}`);
+    } catch (err) { say(err.message, 'bad-t'); }
   });
   pane.addEventListener('click', (e) => {
     const go = e.target.closest('button[data-goto]');
@@ -1064,6 +1134,7 @@ function paneScript(pane) {
     if (bad) throw new Error(`Fix the JSON in ${bad.dataset.s} → ${bad.dataset.f} first`);
     const doc = { ...sc, scenes };
     delete doc.locks;
+    if (look === undefined) delete doc.look; else doc.look = look;
     const r = await api(`/jobs/${jobPath()}/script`, { method: 'PUT', body: { doc, note: $('#sc-note').value } });
     S.paneDirty = false;
     S.scriptWarnings = r.warnings || null;
@@ -2382,7 +2453,7 @@ async function renderBrand() {
   const isAudio = (a) => assetKind(a) === 'audio';
   const isVideo = (a) => assetKind(a) === 'video';
   const isFont = (a) => assetKind(a) === 'font';
-  const GLYPH = { audio: '♪', video: '▶', font: 'Aa', model: '3D', other: '·' };
+  const GLYPH = { audio: '♪', video: '▶', font: 'Aa', model: '3D', animation: '✦', other: '·' };
   const assetUrl = (a) => `/assets/${P}/${encodeURIComponent(a)}`;
   // Built-in tracks, voices and cut sounds come from /options; fetched again after the assets change.
   const refreshOptions = () => api('/options').then((o) => { S.options = opts = o; if ($('#br-assets')) drawAssets(); }).catch(() => {});

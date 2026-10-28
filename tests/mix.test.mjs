@@ -103,16 +103,16 @@ test('each scene follows the limits of its own template', () => {
   const long = 'x'.repeat(95);
   const script = { scenes: [scene(c, 'title', 't'), scene(c, 'step', 's1', { text: long }), scene(c, 'data-story.stat', 'st', { text: long })] };
   const { errors } = validateScript(script, c);
-  assert.deepEqual(errors, ['st: text is 95 chars, limit 90']);
+  assert.deepEqual(errors, ['st: text is 95 chars, limit 90: cut 5']);
 });
 
 test('voice-line word limits come from the scene template', () => {
   const ds = composeBeats(rules('explainer'), [rules('data-story')]);
   const over = { scenes: [scene(ds, 'title', 't'), scene(ds, 'data-story.bars', 'b', { vo: words(35) })] };
-  assert.ok(validateScript(over, ds).errors.includes('b: voice line has 35 words, limit 34'));
+  assert.ok(validateScript(over, ds).errors.includes('b: voice line has 35 words, limit 34: cut 1'));
   const ev = composeBeats(rules('event'), [rules('data-story')]);
   const script = { scenes: [scene(ev, 'poster', 'p'), scene(ev, 'data-story.bars', 'b', { vo: words(32) }), scene(ev, 'speakers', 'sp', { vo: words(32) })] };
-  assert.deepEqual(validateScript(script, ev).errors, ['sp: voice line has 32 words, limit 30']);
+  assert.deepEqual(validateScript(script, ev).errors, ['sp: voice line has 32 words, limit 30: cut 2']);
 });
 
 test('enums come from the scene template', () => {

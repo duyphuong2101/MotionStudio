@@ -1,0 +1,235 @@
+{
+  "id": "product-tour",
+  "label": "Product tour",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "title": "Opening card over the product as it rises into view.",
+      "step": "One stop of the tour: the camera glides to this step's pose with no cut, the caption changes, and named parts of the model can come out.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": {
+      "model": "The 3D model (.glb, glTF 2.0 binary) from the project assets. Every step names the same model; the tour shows one model.",
+      "view": "This step's camera pose as JSON, each key optional: {\"azimuth\": 30, \"elevation\": 12, \"zoom\": 1}. azimuth -180 to 180 degrees round the model, elevation -30 to 60 above it, zoom 0.6 (farther) to 1.6 (closer). A missing key keeps the previous step's value; the first step starts about 29 degrees round, 13 up, zoom 1.",
+      "explode": "Parts of the model out at this step, as JSON: 1-6 node names of the .glb, e.g. [\"front\"] (a pack from pack-glb has front, back and rim). Parts not listed go back in.",
+      "gap": "How far this step's parts move: 0.1 to 1 of the model's size (default 0.45).",
+      "title.theme": "dark: a centred title on the brand dark colour, for a cold open; accent: the same on the brand secondary colour.",
+      "title.env": "Lighting for the whole tour: studio (default), brand (a room in the brand colours reflects in the model) or none (plain lamps).",
+      "title.decal": "Optional sticker for the whole tour: a brand or built-in icon on the model's front face, e.g. {\"icon\": \"shield\", \"at\": [0.85, 0.15], \"size\": 0.28, \"part\": \"front\"}; at as fractions of the face, size 0.1-0.6 of its height, part the node it rides on.",
+      "cta.image": "Optional background photo from the project assets (e.g. the pack or a lifestyle shot), faded under the brand colour on the text side so the button still reads."
+    }
+  },
+  "description": "A 3D product tour: one model (a .glb asset, e.g. a pack built with pack-glb) stays on screen for the whole video while the camera glides from step to step with no cut, like a guided walk round the product. Each step changes the caption and can pull named parts of the model out. A title opens over the model rising into view, a call to action closes.",
+  "formats": [
+    "16:9",
+    "1:1",
+    "9:16",
+    "4:5"
+  ],
+  "sizes": {
+    "16:9": [
+      1920,
+      1080
+    ],
+    "1:1": [
+      1080,
+      1080
+    ],
+    "9:16": [
+      1080,
+      1920
+    ],
+    "4:5": [
+      1080,
+      1350
+    ]
+  },
+  "durations": [
+    15,
+    90
+  ],
+  "directors": [
+    "seat",
+    "claude",
+    "gemini"
+  ],
+  "sequence": [
+    {
+      "kind": [
+        "title"
+      ],
+      "min": 1,
+      "max": 1
+    },
+    {
+      "kind": [
+        "step"
+      ],
+      "min": 1,
+      "max": 8
+    },
+    {
+      "kind": [
+        "cta"
+      ],
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "fields": {
+    "title": {
+      "required": [
+        "vo",
+        "title",
+        "model"
+      ],
+      "optional": [
+        "kicker",
+        "subtitle",
+        "source",
+        "theme",
+        "pace",
+        "sfx",
+        "env",
+        "decal"
+      ]
+    },
+    "step": {
+      "required": [
+        "vo",
+        "title",
+        "model",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "text",
+        "view",
+        "explode",
+        "gap",
+        "pace",
+        "sfx"
+      ]
+    },
+    "cta": {
+      "required": [
+        "vo",
+        "title",
+        "button"
+      ],
+      "optional": [
+        "kicker",
+        "url",
+        "image",
+        "source",
+        "pace",
+        "sfx"
+      ]
+    }
+  },
+  "limits": {
+    "title": 44,
+    "subtitle": 70,
+    "kicker": 24,
+    "text": 110,
+    "button": 24,
+    "url": 40,
+    "voWords": 34
+  },
+  "enums": {
+    "pace": [
+      "quick",
+      "normal",
+      "focus"
+    ],
+    "sfx": [
+      "whoosh",
+      "hit",
+      "riser",
+      "click",
+      "none"
+    ],
+    "theme": [
+      "light",
+      "dark",
+      "accent"
+    ],
+    "env": [
+      "studio",
+      "brand",
+      "none"
+    ]
+  },
+  "data": {
+    "step": {
+      "view": {
+        "azimuth": [
+          -180,
+          180
+        ],
+        "elevation": [
+          -30,
+          60
+        ],
+        "zoom": [
+          0.6,
+          1.6
+        ]
+      },
+      "explode": {
+        "parts": [
+          1,
+          6
+        ],
+        "gap": [
+          0.1,
+          1
+        ]
+      }
+    },
+    "title": {
+      "decal": {
+        "size": [
+          0.1,
+          0.6
+        ]
+      }
+    }
+  },
+  "defaults": {
+    "title": {
+      "title": "Meet the product",
+      "subtitle": "A closer look from every side"
+    },
+    "step": {
+      "kicker": "Step 1",
+      "title": "Built to last",
+      "text": "One sentence about this part of the product.",
+      "view": {
+        "azimuth": -35,
+        "elevation": 15,
+        "zoom": 1.2
+      }
+    },
+    "cta": {
+      "title": "See it for yourself",
+      "button": "Shop now"
+    }
+  },
+  "pace": {
+    "quick": {
+      "perShot": 2,
+      "minScene": 2.5,
+      "tail": 0.3
+    },
+    "normal": {
+      "perShot": 3.2,
+      "minScene": 3.8
+    },
+    "focus": {
+      "perShot": 4.5,
+      "minScene": 5.5,
+      "tail": 1
+    }
+  }
+}

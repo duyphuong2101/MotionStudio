@@ -31,7 +31,7 @@ After you update the code, restart `npm run ui`. The page reloads its own files,
    - **Language** and **Voice** override the brand's voice for this one video.
    - **Cut scenes on the music beat** stretches each scene a little so it ends on a beat of the brand's music.
    - **Motion blur on fast moves** renders about 4 times slower; the storyboard does not change.
-3. Run the Director. Click **Save and run Director**, or **Run Director** on the job. You can also type `/studio run` in Claude Code in this folder. The Director writes `source.json` (the facts) and `script.json` (the scenes), then builds the storyboard.
+3. Run the Director. Click **Save and run Director**, or **Run Director** on the job. You can also type `/studio run` in the agent chat of Claude Code, Cursor, GitHub Copilot or Google Antigravity in this folder. The Director writes `source.json` (the facts) and `script.json` (the scenes), then builds the storyboard.
 4. Review. On the job's **Preview** tab, press Play. The composition plays with the voice-over, so you hear what you will get. Click a still to jump to that scene, or **Edit in Script** to change it.
 5. Edit if needed.
    - Script tab: change a scene's text, order, pace or image. Click a scene's thumbnail to see it in Preview. To ask for a new scene in words, use **Draft for Director**.
@@ -98,6 +98,7 @@ The Claude seat is company-owned, so the Director is kept on a short leash:
 - It is the native `claude.exe` on your own login. No token is read and no API key is added. It gets a fixed list of tools (`config/studio.json` → `director`).
 - Caps: one run at a time, at most 5 jobs per run, 20 runs per day and 15 minutes per job.
 - It never renders and never approves. A person does both.
+- In Cursor, Copilot or Antigravity, `/studio run` runs on that tool's own model and account, not on the Claude seat. The same skill holds it to the Director's commands. No agent can approve: `node engine/cli.mjs approve` refuses and points to the UI, and a render needs that approval. Copilot and Cursor also ask you before `render` or `sequence`.
 - If Claude reports a usage limit, runs pause (60 minutes by default). **Clear pause** on the Jobs tab lifts it.
 - It may only read pages on hosts listed in the brand's allowed hosts (Brand → Sources and tone → Allowed data hosts).
 

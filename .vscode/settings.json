@@ -1,0 +1,5 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "/\\bengine[\\\\/]cli\\.mjs[\"']?\\s+(approve|render|sequence|sequence-preview)\\b/": false
+  }
+}

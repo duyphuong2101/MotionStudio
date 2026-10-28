@@ -15,6 +15,7 @@ Brief-to-video tool. A director (Claude Code on a company seat, started by a per
 - `npm run ui` — start the UI on http://127.0.0.1:4780
 - `node engine/cli.mjs help` — engine commands
 - `npm test` — unit tests (the only verification gate; there is no build)
+- `/studio run [project/job …]`, `/studio status` — the Director, in any agent: Claude Code (skill `studio`), Cursor (`.cursor/commands/studio.md`), GitHub Copilot (`.github/prompts/studio.prompt.md`), Google Antigravity (`.agents/workflows/studio.md`). All follow one skill; edit `.claude/skills/studio/SKILL.md` and run `node .ai/scripts/sync-director-prompt.js`. Never run `node engine/cli.mjs approve`, `render` or `sequence` for the person.
 
 ## Docs
 `.ai/docs/conventions.md` (rules, source of truth), `.ai/docs/architecture.md`, `.ai/docs/file-index.md`, `.ai/docs/common-patterns.md`.
@@ -25,7 +26,7 @@ Brief-to-video tool. A director (Claude Code on a company seat, started by a per
 <!-- BEGIN:NEVER (generated from conventions.md — do not edit) -->
 - NEVER use `Math.random`, `Date.now`, `setTimeout` or `setInterval` to drive what a template shows → everything visible is a function of `seek(t)`
 - NEVER invent a claim in a script → every on-screen claim traces to `source.json` bullets/facts via `source`
-- NEVER let the director run `render` or `approve` → a person approves in the UI
+- NEVER let the director run `render`, `approve` or `sequence` → a person approves and renders in the UI. Approval is UI-only: `node engine/cli.mjs approve` refuses for everyone, and render needs that approval, so no coding agent (named or not) can pass the review from a shell. Copilot (`.vscode/settings.json`) and Cursor (`.cursor/hooks/ask-before-render.js`) also ask before `render` or `sequence`
 - NEVER add an npm dependency or a framework for something Node's standard library does
 - NEVER show non-English text in product chrome (UI labels, server errors, CLI output, template chrome) → video copy follows `brand.voice.lang`
 **Security (NEVER — the Floor; never override, ask the user instead):**

@@ -165,7 +165,7 @@ export function deleteJob(project, id) {
 export function listAssets(project) {
   const dir = path.join(profileDir(project), 'assets');
   if (!exists(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => /\.(png|jpe?g|webp|svg|wav|mp3|m4a|mp4|webm|mov)$/i.test(f)).sort();
+  return fs.readdirSync(dir).filter((f) => /\.(png|jpe?g|webp|svg|wav|mp3|m4a|mp4|webm|mov|glb|json)$/i.test(f)).sort();
 }
 
 export function assetPath(project, name) {
@@ -413,7 +413,12 @@ function carryLocks(prev, oldBeats, newBeats) {
     }
     if (held) out.scenes.push(scene);
   }
-  return out.scenes.length ? out : null;
+  // The look sets the brand overlay, not a template rule, so a person's look carries to any template.
+  if (locks[LOOK_LOCK]) {
+    out.locks[LOOK_LOCK] = locks[LOOK_LOCK];
+    if (prev.look !== undefined) out.look = prev.look;
+  }
+  return out.scenes.length || out.locks[LOOK_LOCK] ? out : null;
 }
 
 /**
@@ -484,6 +489,8 @@ const sceneFieldNames = () => sceneFields ||= [...new Set(listTemplates().flatMa
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Lock key for an edit that changed only bullet screenshots: no claim changed, so the Director may still rewrite bullets.
 export const BULLET_ASSET_LOCK = 'bullets.asset';
+// Lock key for the script's look (engine/looks.mjs): one top-level field, kept like a scene field.
+const LOOK_LOCK = 'look';
 const withoutAssets = (bullets) => (Array.isArray(bullets) ? bullets.map((b) => (b && typeof b === 'object' ? { ...b, asset: undefined } : b)) : bullets);
 
 export function diffLocks(kind, before, after) {
@@ -497,6 +504,7 @@ export function diffLocks(kind, before, after) {
     const bIds = (before?.scenes || []).map((s) => s.id);
     const aIds = (after?.scenes || []).map((s) => s.id);
     if (!same(bIds, aIds)) keys.push('scenes');
+    if (!same(before?.look, after?.look)) keys.push(LOOK_LOCK);
     const byId = Object.fromEntries((before?.scenes || []).map((s) => [s.id, s]));
     for (const s of after?.scenes || []) {
       const old = byId[s.id];
@@ -594,6 +602,13 @@ export function mergeRespectingLocks(kind, existing, draft) {
     if (locks[`scene:${id}.kind`] && exById[id]) { base.kind = exById[id].kind; kept.push(`scene:${id}.kind`); }
     return base;
   });
+  const doc = { ...draft, scenes };
+  // A look the person picked (or cleared) stays, whatever template the scenes follow.
+  if (locks[LOOK_LOCK]) {
+    if (existing.look === undefined) delete doc.look; else doc.look = existing.look;
+    kept.push(LOOK_LOCK);
+  }
   // A carried lock the new script did not use lapses, so it cannot pin a later scene of another kind.
-  return { doc: { ...draft, scenes, locks: carried ? Object.fromEntries(kept.map((k) => [k, locks[k]])) : locks }, kept };
+  doc.locks = carried ? Object.fromEntries(kept.map((k) => [k, locks[k]])) : locks;
+  return { doc, kept };
 }

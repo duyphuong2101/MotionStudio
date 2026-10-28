@@ -14,7 +14,7 @@ import { sampleScript } from '../engine/template-preview.mjs';
 
 const brand = readJson(path.join(DIRS.profiles, 'nsc', 'brand.json'));
 const cfg = loadStudioConfig();
-const ASSETS = ['photo.jpg', 'clip.mp4', 'model.glb'];
+const ASSETS = ['photo.jpg', 'clip.mp4', 'model.glb', 'anim.json'];
 
 const withDefaults = listTemplates().filter((t) => t.defaults);
 
@@ -83,7 +83,11 @@ const PARTS_BASELINE = {
   // video, flash and model baselines below moved with it.
   // Updated 2026-10-26: the model scene gets studio lighting, a contact shadow, view/shadow/env fields and the reveal
   // and detail spins (only MODEL_JS changed; NO_MODEL_BASELINE is untouched).
-  explainer: { '16:9': '96a3de55a13610f781bd6351f8bf81d594a0aee5', '1:1': '00072698000c618c280d6a4ec4a4a824eda88b1d', '9:16': '8d7e4293d57b60ebcb55b84f5c205a9c4ccf64c9', '4:5': 'e1f634022f9f13ba301136833a359a7d1d278ec3', '2:3': 'a42a65c8d7c4b2b0fcaae118dafdb44f2c37856d', '21:9': '60ac5a76a194340d9c7ff7f7fe9cd61bf0b6c6e1' },
+  // Updated 2026-10-27: a model scene takes a camera path, exploded parts, a decal and a brand environment, a tour canvas, and the anim (Lottie) kind joined the sample (only MODEL_JS and the new kind; the pre-kind baselines leave anim out).
+  // Updated 2026-10-28: a softer model contact shadow (a wider PCF blur, lighter ground); only MODEL_JS changed.
+  // Updated 2026-10-28: 1:1 only, the standard layout's diagram uses the square node rule (4+ nodes stack) so a
+  // 4-node row no longer runs past both edges; NO_FLASH_BASELINE and NO_MODEL_BASELINE 1:1 changed with it.
+  explainer: { '16:9': '3b373dff28a62da9e70c91f50b8e0d4420269304', '1:1': '0a35eda4e378e7aee57dfa1b478479f686a5a3d4', '9:16': '62b0dec3f9e04550aa5cbbca84a24a12e7fe479f', '4:5': '2a9521fc9934796310533f9b7febce13f9f745e4', '2:3': '2300eee0516261cd627e44680ba82222f9ae80b6', '21:9': 'f17bf5e18d66b5f32fce2f2710921c8f3921693a' },
   // Updated 2026-10-14 for the race and stripes kinds: the earlier scenes' markup is unchanged, only css and js were added.
   // Updated 2026-10-22: the line's end value sits right of its last point (the plot leaves a column for it) instead of
   // the chart's top-right corner.
@@ -97,7 +101,7 @@ const HASH_TIMING = { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0
 // The explainer page from before the video kind existed: a script without a video scene must still build it exactly.
 test('explainer: a script without a video scene builds the same page as before the video kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'video' && k !== 'flash' && k !== 'model') })) });
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'video' && k !== 'flash' && k !== 'model' && k !== 'anim') })) });
   const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   const html = build({ brief: { format: '16:9' }, brand: HASH_BRAND, script, timing, size: sizeFor(beats, '16:9') });
@@ -107,11 +111,11 @@ test('explainer: a script without a video scene builds the same page as before t
 // The explainer pages from before the flash kind (PARTS_BASELINE of 2026-10-22): flash css and js are written only
 // when a script holds a flash scene, so every existing explainer page stays the same in every format.
 // Updated 2026-10-23: the sample's clip seek changed (see PARTS_BASELINE).
-const NO_FLASH_BASELINE = { '16:9': 'a58adc032794ad63058fb51a27151b4061860200', '1:1': 'bcbe80feb10972c0d744eaeb6c6fa208ce255d91', '9:16': '5fcf022542c4b91abcc80655edabcce6e2760bf0', '4:5': '52fc32f2c9cec766c7bdd307f6dc04c1d61fed53', '2:3': '7e758f84bedb2d339f3b6c356a8ccbc7c1066d5f', '21:9': 'a15c8681987b978573082bfef30ccae6232acda5' };
+const NO_FLASH_BASELINE = { '16:9': 'a58adc032794ad63058fb51a27151b4061860200', '1:1': 'aac2a52242dae17ee3e55039122195345fdd0d3b', '9:16': '5fcf022542c4b91abcc80655edabcce6e2760bf0', '4:5': '52fc32f2c9cec766c7bdd307f6dc04c1d61fed53', '2:3': '7e758f84bedb2d339f3b6c356a8ccbc7c1066d5f', '21:9': 'a15c8681987b978573082bfef30ccae6232acda5' };
 
 test('explainer: a script without a flash scene builds the same page as before the flash kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'flash' && k !== 'model') })) });
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'flash' && k !== 'model' && k !== 'anim') })) });
   const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   for (const [format, sha] of Object.entries(NO_FLASH_BASELINE)) {
@@ -124,11 +128,11 @@ test('explainer: a script without a flash scene builds the same page as before t
 // The explainer pages from before the model kind (PARTS_BASELINE of 2026-10-22): model css, js and three.js are
 // written only when a script holds a model scene, so every existing explainer page stays the same in every format.
 // Updated 2026-10-23: the sample's clip seek changed (see PARTS_BASELINE).
-const NO_MODEL_BASELINE = { '16:9': '27ff4df8e16509a76846be5d6ee128f3f28e6dfc', '1:1': '66c7bb3da7289b3c44bd7dacaf4553f21a88693f', '9:16': '0724b68ad0539eb0f491f9bddc57adfe8f4d95bd', '4:5': '22c251dc18dab81f3b619ddbf4062fffbda848d8', '2:3': 'e532a86242de0cba32fb7264a8c58dcb010c75c3', '21:9': 'f00b2a4769ead54f5367063f4f784e53cc355d52' };
+const NO_MODEL_BASELINE = { '16:9': '27ff4df8e16509a76846be5d6ee128f3f28e6dfc', '1:1': '2d098b35bf3db410a7f6123876394ebdbd314bb8', '9:16': '0724b68ad0539eb0f491f9bddc57adfe8f4d95bd', '4:5': '22c251dc18dab81f3b619ddbf4062fffbda848d8', '2:3': 'e532a86242de0cba32fb7264a8c58dcb010c75c3', '21:9': 'f00b2a4769ead54f5367063f4f784e53cc355d52' };
 
 test('explainer: a script without a model scene builds the same page as before the model kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'model') })) });
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'model' && k !== 'anim') })) });
   const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   for (const [format, sha] of Object.entries(NO_MODEL_BASELINE)) {

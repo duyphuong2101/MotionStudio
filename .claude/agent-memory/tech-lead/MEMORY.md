@@ -3,3 +3,4 @@
 - [Gemini API docs state](reference_gemini_api_docs.md) — contract pinned in the plan; docs moved to Interactions API, Imagen shut down, Veo ids are preview; re-verify before use
 - [API Director: two backends](project_api_director_two_backends.md) — 2026-10-23: seat stays default; API loop on the `default` provider with a key; picked at click time, no mid-run fallback
 - [Motion presets decision](project_motion_presets.md) — 2026-10-23: clean/editorial/kinetic/parallax planned as a profile table; clean keeps the stage layout for the award film; wait for review-fixes to land first
+- [Quick mode plan](project_quick_mode_plan.md) — 2026-10-28: outline-in, engine-expands Director mode; fixed decisions, API worker never ran a job yet, 3 open questions

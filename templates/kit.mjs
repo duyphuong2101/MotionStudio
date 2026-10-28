@@ -6,6 +6,7 @@ import { SUBTITLE_STYLES, SUBTITLE_FONTS, motionProfile } from '../engine/brand.
 import { marksToHtml } from '../engine/marks.mjs';
 import { glLayers, glBackdropHtml, glWipeHtml, glCss, glData, glJs, cutWindows } from './gl.mjs';
 import { hasModels, MODEL_HEAD, MODEL_WAIT, MODEL_JS } from './model3d.mjs';
+import { hasLotties, LOTTIE_WAIT, LOTTIE_JS } from './lottie.mjs';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const FONT = /^[A-Za-z0-9 ]{1,40}$/;
@@ -634,6 +635,8 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
   if (GLL?.backdrop) particles = false;
   // A 3D model scene loads three.js as a module; build() waits for every model (templates/model3d.mjs).
   const models = hasModels(body);
+  // A Lottie scene loads lottie-web and seeks every animation with the page clock (templates/lottie.mjs).
+  const lotties = hasLotties(body);
   // A profile without particles draws film grain and a vignette (bg 'grain'; brand.film: false keeps the frame clean) or nothing.
   if (M.bg !== 'particles') particles = false;
   const film = M.bg === 'grain' && !transparent && brand.film !== false;
@@ -906,13 +909,13 @@ function drawBg(t) {
     ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, p.s, 0, 6.283); ctx.fill();
   }
 }
-let afterSeek = null;${clipJs}${models ? MODEL_WAIT : ''}${film ? GRAIN_JS : ''}
+let afterSeek = null;${clipJs}${models ? MODEL_WAIT : ''}${lotties ? LOTTIE_WAIT : ''}${film ? GRAIN_JS : ''}
 // GSAP skips a seek to the time it already sits at, so the first frame (t = 0, where the timeline starts) is forced.
-window.seek = (t) => { t = Math.min(Math.max(+t || 0, 0), D.duration); if (t === 0) tl.render(0, false, true); else tl.seek(t, false);${particles ? ' drawBg(t);' : ''}${film ? ' drawGrain(t);' : ''}${GLL ? ' GL.draw(t);' : ''}${models ? ' if (window.__drawModels) window.__drawModels(t);' : ''} ${clipJs ? 'const r = afterSeek ? afterSeek(t) : t; return Promise.resolve(r).then(() => seekClips(t)).then(() => r);' : 'return afterSeek ? afterSeek(t) : t;'} };
+window.seek = (t) => { t = Math.min(Math.max(+t || 0, 0), D.duration); if (t === 0) tl.render(0, false, true); else tl.seek(t, false);${particles ? ' drawBg(t);' : ''}${film ? ' drawGrain(t);' : ''}${GLL ? ' GL.draw(t);' : ''}${models ? ' if (window.__drawModels) window.__drawModels(t);' : ''}${lotties ? ' if (window.__drawLotties) window.__drawLotties(t);' : ''} ${clipJs ? 'const r = afterSeek ? afterSeek(t) : t; return Promise.resolve(r).then(() => seekClips(t)).then(() => r);' : 'return afterSeek ? afterSeek(t) : t;'} };
 window.__studio = { duration: D.duration, width: D.W, height: D.H, scenes: ${studioScenes}, stills: D.stills };
 const imgs = [...document.images].map((im) => (im.decode ? im.decode().catch(() => {}) : null));
-Promise.all([document.fonts.ready, ...imgs${clipJs ? ', ...clipsLoaded' : ''}${models ? ', modelsLoaded' : ''}]).then(async () => { build(); if (window.__prepare) await window.__prepare(); await window.seek(0); window.__ready = true; });
-</script>${models ? MODEL_JS : ''}
+Promise.all([document.fonts.ready, ...imgs${clipJs ? ', ...clipsLoaded' : ''}${models ? ', modelsLoaded' : ''}${lotties ? ', lottiesLoaded' : ''}]).then(async () => { build(); if (window.__prepare) await window.__prepare(); await window.seek(0); window.__ready = true; });
+</script>${models ? MODEL_JS : ''}${lotties ? LOTTIE_JS : ''}
 </body>
 </html>
 `;

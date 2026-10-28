@@ -174,3 +174,23 @@ export function voicedSpan(samples, rate = SAMPLE_RATE) {
   let b = samples.length - win; while (b > a && !loud(b)) b -= win;
   return { start: a / rate, end: Math.min(samples.length, b + win) / rate };
 }
+
+/** The pauses inside the voiced span (seconds), each at least `min` long, on the same loudness rule as voicedSpan. */
+export function voicedPauses(samples, rate = SAMPLE_RATE, min = 0.08) {
+  const win = Math.round(rate * 0.02);
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) peak = Math.max(peak, Math.abs(samples[i]));
+  const thr = peak * 0.06;
+  const span = voicedSpan(samples, rate);
+  const out = [];
+  let quiet = -1;
+  const stop = Math.round(span.end * rate);
+  for (let i = Math.round(span.start * rate); i < stop; i += win) {
+    let m = 0;
+    for (let j = i; j < Math.min(samples.length, i + win); j++) m = Math.max(m, Math.abs(samples[j]));
+    if (m <= thr) { if (quiet < 0) quiet = i; continue; }
+    if (quiet >= 0 && (i - quiet) / rate >= min) out.push({ start: quiet / rate, end: i / rate });
+    quiet = -1;
+  }
+  return out;
+}

@@ -34,6 +34,8 @@ const optsOf = (opts) => ({ ...REVIEW_DEFAULTS, ...opts });
 export function pacing(timing, script, opts = {}) {
   const o = optsOf(opts);
   const kinds = new Map((script?.scenes || []).map((s) => [s.id, s.kind]));
+  // A scene with a 3D model, its own camera pose or exploded parts (a product-tour step, a model scene) shows a different picture.
+  const posed = new Set((script?.scenes || []).filter((s) => s.view || s.path || s.explode || s.model).map((s) => s.id));
   // A clip that plays its own sound is heard even with no words over it.
   const sounding = [...(timing.videos || []).filter((v) => v.sound), ...(timing.footage || []).filter((f) => f.hasAudio)];
   const clips = new Map(sounding.map((c) => [c.id, c.seconds]));
@@ -68,7 +70,7 @@ export function pacing(timing, script, opts = {}) {
   let run = 0;
   scenes.forEach((r, i) => {
     run = i && r.kind && r.kind === scenes[i - 1].kind ? run + 1 : 1;
-    if (run >= o.sameKindRun && !FOOTAGE_KIND.test(r.kind)) r.flags.push('repeat');
+    if (run >= o.sameKindRun && !FOOTAGE_KIND.test(r.kind) && !posed.has(r.id)) r.flags.push('repeat');
   });
   const duration = timing.duration;
   const silence = duration > 0 ? round(Math.max(0, 1 - heard / duration), 3) : 0;

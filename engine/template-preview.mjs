@@ -12,7 +12,9 @@ import { estimateTiming } from './timing.mjs';
 import { ffmpeg, BT709_VF, BT709_TAGS } from './media.mjs';
 import { sizeFor } from './pipeline.mjs';
 import { sampleGlb } from './glb.mjs';
-import { copyThree } from './vendor.mjs';
+import { sampleLottie } from './lottie.mjs';
+import { hasLotties } from '../templates/lottie.mjs';
+import { copyThree, copyLottie } from './vendor.mjs';
 import { hasModels } from '../templates/model3d.mjs';
 
 const require = createRequire(import.meta.url);
@@ -21,7 +23,7 @@ const VENDOR = ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 
 const ROOT = () => path.join(DIRS.out, '_preview');
 const SAMPLE = { photo: 'sample-photo.jpg', clip: 'sample-clip.mp4' };
 // The sample scenes name these files; the preview fills them with neutral generated media.
-const FILL = { vo: 'A short line for this scene.', source: 'bullets[0]', video: 'clip.mp4', model: 'model.glb', shots: [{ asset: 'photo.jpg', focus: null }] };
+const FILL = { vo: 'A short line for this scene.', source: 'bullets[0]', video: 'clip.mp4', model: 'model.glb', lottie: 'anim.json', shots: [{ asset: 'photo.jpg', focus: null }] };
 const IMG_RE = /\.(png|jpe?g|webp|svg)$/i;
 
 /** One scene of every kind each slot allows, filled from the template's own defaults. */
@@ -99,8 +101,10 @@ export async function templatePreview(project, templateId, { readOnly = false } 
     if (own.has(name)) fs.copyFileSync(assetPath(project, name), to);
     else if (IMG_RE.test(name)) fs.copyFileSync(media.photo, to);
     else if (/\.glb$/i.test(name)) fs.writeFileSync(to, sampleGlb());
+    else if (/\.json$/i.test(name)) fs.writeFileSync(to, sampleLottie());
   }
   if (hasModels(html)) copyThree(out);
+  if (hasLotties(html)) copyLottie(out);
   for (const [, id] of html.matchAll(/clips\/([a-z0-9-]+)\.mp4/g)) fs.copyFileSync(media.clip, path.join(out, 'clips', `${id}.mp4`));
   fs.writeFileSync(path.join(out, 'index.html'), html, 'utf8');
   return previewInfo(project, templateId, format, size, timing);

@@ -65,7 +65,7 @@ The shared rules below name actions. Here each one is a tool call:
 | write the source draft | \`write_draft\` with kind \`source\` and the whole JSON as \`content\` |
 | commit the source | \`commit\` with kind \`source\` |
 | write the script draft | \`write_draft\` with kind \`script\` and the whole JSON as \`content\` |
-| commit the script | \`commit\` with kind \`script\`; its result lists the fields it kept locked |
+| commit the script | \`commit\` with kind \`script\`; its result lists the fields it kept locked and any \`repairs\` |
 | build the storyboard | \`prepare\`; its result holds the status, the duration, the lint findings and the stills |
 | read the pacing | \`read_job_file\` with \`timing.json\`: compare each voice line's words with its time ("fast" is well over 2.6 words per second) and each scene's length with its voice ("long tail"), and look for three scenes of one kind in a row in \`script.json\` ("same layout", the context's \`layoutRule\`) |
 | read each still | ${img.still} |

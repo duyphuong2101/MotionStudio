@@ -122,11 +122,11 @@ export function toolsFor(ctx) {
         writeJson(jobFile(project, job, `${kind}.draft.json`), content);
         return { bytes };
       }],
-    ['commit', 'Validate the draft and commit it. Locked fields a person edited are kept.', schema({ kind: { type: 'string', enum: KINDS } }, ['kind']),
+    ['commit', 'Validate the draft and commit it. Locked fields a person edited are kept; mechanical repairs (ids, icons, enum values, extra scenes) are listed.', schema({ kind: { type: 'string', enum: KINDS } }, ['kind']),
       ({ kind }) => {
         assertWritable(project, job);
-        const { kept } = commit(project, job, kind, by);
-        return { status: getStatus(project, job).status, kept };
+        const { kept, repairs } = commit(project, job, kind, by);
+        return { status: getStatus(project, job).status, kept, ...(repairs.length ? { repairs } : {}) };
       }],
     ['prepare', `Build the storyboard: timing, composition, stills and lint. At most ${g.maxPrepareRounds} times per job.`, schema(),
       async () => {

@@ -17,6 +17,14 @@ const THREE_FILES = {
   'RoomEnvironment.js': 'examples/jsm/environments/RoomEnvironment.js',
 };
 
+// lottie-web's SVG player for a page with a Lottie scene (templates/lottie.mjs): the one file the page loads.
+const LOTTIE_FILE = require.resolve('lottie-web/build/player/lottie_svg.min.js');
+
+export function copyLottie(dir) {
+  fs.mkdirSync(path.join(dir, 'vendor'), { recursive: true });
+  fs.copyFileSync(LOTTIE_FILE, path.join(dir, 'vendor', 'lottie.min.js'));
+}
+
 export function copyThree(dir) {
   fs.mkdirSync(path.join(dir, 'vendor'), { recursive: true });
   for (const [name, rel] of Object.entries(THREE_FILES)) {

@@ -4,20 +4,25 @@
   "marks": true,
   "help": {
     "kinds": { "reveal": "The brand logo revealed, with an optional tagline." },
-    "fields": { "vo": "Optional voice line, 14 words at most. Leave empty for a silent sting." }
+    "fields": {
+      "vo": "Optional voice line, 14 words at most. Leave empty for a silent sting.",
+      "notesCue": "Optional, with notes: the word of the voice line where it starts reading the notes, e.g. \"Made\" in \"… own outcomes. Made with Claude …\". The logo lifts and the notes roll from that word, and the captions step aside since the notes show the same words. The voice line may then run to 34 words.",
+      "notes": "Optional lines in small type under the tagline, 1-6 lines of at most 90 characters, one item a line, e.g. end notes listing the AI tools used to make the video. The reveal plays as usual; once the voice is done the logo lifts and the notes roll up from below the frame like film credits and settle under it, to the end. The voice reads them only if the line goes on after the main message: set notesCue to its first word there. Set pace to focus so the sting holds about 6 s after the voice: the roll, then time to read."
+    }
   },
   "description": "A short brand sting for the start or end of other videos: the brand logo (file or logo text) revealed by a drawn ring, a burst of rays or sliding color panels, then an optional tagline. The voice line is optional.",
   "formats": ["16:9", "1:1", "9:16", "4:5", "2:3", "21:9"],
   "sizes": { "16:9": [1920, 1080], "1:1": [1080, 1080], "9:16": [1080, 1920], "4:5": [1080, 1350], "2:3": [1080, 1620], "21:9": [2520, 1080] },
-  "durations": [3, 10],
+  "durations": [3, 16],
   "directors": ["seat", "claude", "gemini", "grok"],
   "sequence": [
     { "kind": ["reveal"], "min": 1, "max": 1 }
   ],
   "fields": {
-    "reveal": { "required": [], "optional": ["vo", "tagline", "style", "theme", "url", "source", "pace", "sfx"] }
+    "reveal": { "required": [], "optional": ["vo", "tagline", "notes", "notesCue", "style", "theme", "url", "source", "pace", "sfx"] }
   },
   "limits": { "tagline": 50, "url": 40, "voWords": 14 },
+  "data": { "reveal": { "notes": [1, 6], "chars": 90, "voWithNotes": 34 } },
   "enums": { "pace": ["quick", "normal", "focus"], "style": ["draw", "burst", "slide"], "theme": ["light", "dark"], "sfx": ["whoosh", "hit", "riser", "click", "none"] },
   "defaults": {
     "reveal": { "style": "draw", "theme": "dark", "tagline": "Your tagline here" }
@@ -25,6 +30,6 @@
   "pace": {
     "quick": { "perShot": 3.0, "minScene": 3.0, "tail": 0.4 },
     "normal": { "perShot": 4.2, "minScene": 4.2 },
-    "focus": { "perShot": 5.5, "minScene": 5.5, "tail": 1.0 }
+    "focus": { "perShot": 10.5, "minScene": 10.5, "tail": 5.8 }
   }
 }

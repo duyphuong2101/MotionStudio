@@ -22,6 +22,26 @@ test('the studio skill carries the shared rules byte for byte between the marker
   assert.equal(skill.slice(start + BEGIN.length, end), `\n${RULES.trimEnd()}\n`, 'run node .ai/scripts/sync-director-prompt.js');
 });
 
+test('Cursor, Copilot and Antigravity get the studio skill byte for byte, and each /studio entry points at it', () => {
+  const skill = fs.readFileSync(path.join(ROOT, '.claude', 'skills', 'studio', 'SKILL.md'), 'utf8');
+  for (const dir of ['.cursor', '.agents']) {
+    const copy = fs.readFileSync(path.join(ROOT, dir, 'skills', 'studio', 'SKILL.md'), 'utf8');
+    assert.equal(copy, skill, `${dir}/skills/studio/SKILL.md: run node .ai/scripts/sync-director-prompt.js`);
+  }
+  assert.ok(!/--by claude-seat/.test(skill), 'the skill takes --by <actor>, not a fixed seat name');
+  const entries = {
+    '.cursor/commands/studio.md': ['.cursor/skills/studio/SKILL.md', 'cursor-agent'],
+    '.github/prompts/studio.prompt.md': ['.agents/skills/studio/SKILL.md', 'copilot-agent'],
+    '.agents/workflows/studio.md': ['.agents/skills/studio/SKILL.md', 'antigravity-agent'],
+  };
+  for (const [file, [target, actor]] of Object.entries(entries)) {
+    const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    assert.ok(text.includes(target) && text.includes(actor), `${file} names ${target} and ${actor}`);
+    assert.ok(skill.includes(`\`${actor}\``), `the skill lists ${actor}`);
+    assert.match(text, /Never run `approve`, `render`, `sequence`/, file);
+  }
+});
+
 test('the shared rules name actions, not Claude Code commands or tools', () => {
   for (const s of ['node engine/cli.mjs', 'claude-seat', 'WebFetch', '/studio', 'read_image', 'write_draft', 'out/<project>']) {
     assert.ok(!RULES.includes(s), s);

@@ -6,7 +6,7 @@ import { ROOT, StudioError, round, readJson, writeJson, keyFreeEnv } from './cor
 import { ffmpeg, killTree, mediaTimeoutMs } from './media.mjs';
 import { wordsOf } from './script.mjs';
 import { resolvePace, sceneGaps } from './timing.mjs';
-import { kokoroStatus, kokoroSpeak, kokoroVoices, writeWav, voicedSpan } from './tts/kokoro.mjs';
+import { kokoroStatus, kokoroSpeak, kokoroVoices, writeWav, voicedSpan, voicedPauses, SAMPLE_RATE as KOKORO_RATE } from './tts/kokoro.mjs';
 
 const VOICE_RE = /^[A-Za-z0-9 _()-]{1,60}$/;
 const TTS_TIMEOUT_MS = 60000;
@@ -156,41 +156,123 @@ function readWav(file) {
 
 const wavSeconds = (file) => { const w = readWav(file); return w.data.length / w.byteRate; };
 
-/** Where the voice starts and stops in a 16-bit WAV (seconds), or null when it is silent or another format. */
-function wavVoicedSpan(file) {
+/** The first channel of a 16-bit WAV as floats, or null for another format. */
+function wavSamples(file) {
   const w = readWav(file);
   if (w.bits !== 16) return null;
   const step = 2 * w.channels;
   const samples = new Float32Array(Math.floor(w.data.length / step));
   for (let i = 0; i < samples.length; i++) samples[i] = w.data.readInt16LE(i * step) / 32768;
-  const span = voicedSpan(samples, w.rate);
+  return { samples, rate: w.rate };
+}
+
+/** Where the voice starts and stops in a 16-bit WAV (seconds), or null when it is silent or another format. */
+function wavVoicedSpan(file) {
+  const s = wavSamples(file);
+  if (!s) return null;
+  const span = voicedSpan(s.samples, s.rate);
   return span.end > span.start ? span : null;
 }
 
+// How far (s) from its estimated place a punctuation mark may be pinned to a pause the voice really makes.
+const PIN_REACH = 0.7;
+// Bumped when kokoroWords changes, so cached lines get their word times again from the cached audio.
+const KOKORO_WORDS_V = 5;
+
 /**
- * Kokoro reports no word timing: spread the words over the voiced part of the clip, weighted by
- * each word's phoneme length plus a pause for its trailing punctuation.
+ * The word boundaries inside one script word that the voice says as several (brand voice.say: "AMAD" → "Eh Em Eh Dee"),
+ * from spokenLine's groups: boundary i lies between spoken words i and i + 1. A pause there is never a pin.
  */
-function kokoroWords(text, samples) {
-  const span = voicedSpan(samples);
-  const tokens = wordsOf(text);
-  const weight = (w) => w.replace(/[^A-Za-z0-9$%]/g, '').length + 2 + (/[.!?]$/.test(w) ? 6 : /[,;:]$/.test(w) ? 3 : 0) + (/\d/.test(w) ? w.length * 2 : 0);
-  const ws = tokens.map(weight);
-  const total = ws.reduce((a, b) => a + b, 0) || 1;
-  let acc = 0;
-  return tokens.map((w, i) => { const at = span.start + ((span.end - span.start) * acc) / total; acc += ws[i]; return { w, at: round(at) }; });
+export function innerBoundaries(groups) {
+  if (!Array.isArray(groups)) return null;
+  const set = new Set();
+  let k = 0;
+  for (const n of groups) { for (let j = 0; j < n - 1; j++) set.add(k + j); k += n; }
+  return set.size ? set : null;
 }
 
-async function speakKokoro(dir, text, voice, speed) {
+// A pause at least this long (s) is a word boundary even where the line has no punctuation (Kokoro breathes about
+// 0.1 s before a name it spells out, e.g. "AMAD"; a stop consonant inside a word stays under 0.08 s).
+const CLEAR_PAUSE = 0.1;
+
+/**
+ * Kokoro reports no word timing. Each word is weighted by its letters (digits count more) plus a pause for its
+ * trailing punctuation; every punctuation mark is pinned to the longest real pause in the audio near where the
+ * weights put it, then any clear pause still free is pinned to the word boundary nearest to it. The words between
+ * two pins are spread over that stretch only, so a pause never lets the words after it drift.
+ */
+export function kokoroWords(text, samples, rate = KOKORO_RATE, { inner = null } = {}) {
+  const tokens = wordsOf(text);
+  if (!tokens.length) return [];
+  const span = voicedSpan(samples, rate);
+  const mark = (w) => (/[.!?]$/.test(w) ? 6 : /[,;:]$/.test(w) ? 3 : 0);
+  const base = (w) => w.replace(/[^A-Za-z0-9$%]/g, '').length + 2 + (/\d/.test(w) ? w.length * 2 : 0);
+  const ws = tokens.map((w) => base(w) + mark(w));
+  const sum = (a, b) => ws.slice(a, b).reduce((x, y) => x + y, 0);
+  // Start times of every word with these pins ({ i: last word before the pause, start, end }), sorted by i.
+  const spread = (pins) => {
+    const at = [];
+    let a = span.start, first = 0;
+    for (const p of [...pins, { i: tokens.length - 1, start: span.end, end: span.end }]) {
+      // The last word before a pin ends at the pause, so its own punctuation weight is the pause, not speech.
+      const seg = tokens.slice(first, p.i + 1).map((w, k, arr) => (k === arr.length - 1 ? base(w) : ws[first + k]));
+      const total = seg.reduce((x, y) => x + y, 0) || 1;
+      let acc = 0;
+      for (const wt of seg) { at.push(a + ((p.start - a) * acc) / total); acc += wt; }
+      a = p.end; first = p.i + 1;
+    }
+    return at;
+  };
+  const pauses = voicedPauses(samples, rate);
+  const used = new Set();
+  const pins = [];
+  let from = 0, start = span.start, first = 0;
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (!mark(tokens[i])) continue;
+    const est = start + ((span.end - start) * sum(first, i + 1)) / (sum(first, tokens.length) || 1);
+    let best = -1;
+    for (let k = from; k < pauses.length; k++) {
+      const p = pauses[k];
+      if (p.start <= start || p.end < est - PIN_REACH || p.start > est + PIN_REACH) continue;
+      if (best < 0 || p.end - p.start > pauses[best].end - pauses[best].start) best = k;
+    }
+    if (best < 0) continue;
+    pins.push({ i, ...pauses[best] });
+    used.add(best);
+    from = best + 1; start = pauses[best].end; first = i + 1;
+  }
+  pauses.forEach((p, k) => {
+    if (used.has(k) || p.end - p.start < CLEAR_PAUSE) return;
+    const at = spread(pins);
+    let best = -1;
+    for (let i = 0; i < tokens.length - 1; i++) {
+      if (pins.some((q) => q.i === i) || inner?.has(i) || Math.abs(at[i + 1] - p.end) > PIN_REACH) continue;
+      if (best < 0 || Math.abs(at[i + 1] - p.end) < Math.abs(at[best + 1] - p.end)) best = i;
+    }
+    if (best < 0) return;
+    const next = [...pins, { i: best, ...p }].sort((x, y) => x.i - y.i);
+    if (next.every((q, n) => !n || q.start >= next[n - 1].end)) pins.splice(0, pins.length, ...next);
+  });
+  return spread(pins).map((at, i) => ({ w: tokens[i], at: round(at) }));
+}
+
+async function speakKokoro(dir, text, voice, speed, inner = null) {
   const lang = kokoroLang(voice);
   if (!lang) throw new StudioError(`Kokoro voice ${voice} needs a phonemizer for its language, and this machine only has English`, 400);
   const key = crypto.createHash('sha1').update(`kokoro|${voice}|${speed}|${lang}|${text}`).digest('hex').slice(0, 16);
   const wav = path.join(dir, `${key}.wav`);
   const meta = path.join(dir, `${key}.json`);
-  if (fs.existsSync(wav) && fs.existsSync(meta)) return { wav, ...readJson(meta) };
+  if (fs.existsSync(wav) && fs.existsSync(meta)) {
+    const m = readJson(meta);
+    const s = m.wordsV === KOKORO_WORDS_V ? null : wavSamples(wav);
+    if (!s) return { wav, ...m };
+    const fresh = { seconds: m.seconds, words: kokoroWords(text, s.samples, s.rate, { inner }), wordsV: KOKORO_WORDS_V };
+    writeJson(meta, fresh);
+    return { wav, ...fresh };
+  }
   const { samples } = await kokoroSpeak(text, voice, speed, lang);
   writeWav(wav, samples);
-  const result = { seconds: round(samples.length / 24000), words: kokoroWords(text, samples) };
+  const result = { seconds: round(samples.length / KOKORO_RATE), words: kokoroWords(text, samples, KOKORO_RATE, { inner }), wordsV: KOKORO_WORDS_V };
   writeJson(meta, result);
   return { wav, ...result };
 }
@@ -255,7 +337,7 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     const rate = Math.max(-10, Math.min(10, Math.round((speed - 1) * 20)));
     const cache = path.join(jobDirPath, 'tts');
     fs.mkdirSync(cache, { recursive: true });
-    speak = (sc, text) => (provider === 'kokoro' ? speakKokoro(cache, text, voice, speed) : speakLine(cache, text, voice, rate));
+    speak = (sc, text, groups) => (provider === 'kokoro' ? speakKokoro(cache, text, voice, speed, innerBoundaries(groups)) : speakLine(cache, text, voice, rate));
   }
 
   const scenes = [];
@@ -266,7 +348,7 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     const text = String(sc.vo || '').trim();
     // A recorded take is the person's own reading: brand.voice.say changes only what TTS says.
     const sp = take ? { text, groups: null } : spokenLine(text, brand.voice?.say);
-    const line = !text ? silent : await speak(sc, sp.text);
+    const line = !text ? silent : await speak(sc, sp.text, sp.groups);
     const last = idx === script.scenes.length - 1;
     const pace = resolvePace(paceCfg, sc);
     const shots = Array.isArray(sc.shots) && sc.shots.length ? sc.shots.length : 1;

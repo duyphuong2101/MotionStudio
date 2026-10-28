@@ -140,7 +140,7 @@ export function parts({ brand, script, size }) {
           <path class="area" id="${id}-area"${C.fade ? ` fill="url(#${id}-grad)"` : ''} d="${line} L${Wc} ${Hc} L0 ${Hc} Z"/><path class="ln" id="${id}-ln" d="${line}"/>
           <circle class="dot" id="${id}-dot" cx="${last[0]}" cy="${last[1]}" r="12"/></svg>${band?.label ? `
           <div class="blab" id="${id}-bl" data-lint style="left:${inPlot(bx[0] / Wc)};width:${inPlot((bx[1] - bx[0]) / Wc)};justify-content:${bmid < 0.2 ? 'flex-start' : bmid > 0.8 ? 'flex-end' : 'center'}">${h(band.label)}</div>` : ''}${ref?.label ? `
-          <div class="rlab" id="${id}-rl" data-lint style="top:${px(ry - MK - 10)}">${h(ref.label)}</div>` : ''}
+          <div class="rlab" id="${id}-rl" data-lint style="top:calc(${((ry / Hc) * 100).toFixed(2)}% - ${px(MK + 10)})">${h(ref.label)}</div>` : ''}
           <div class="lval${toneClass(sc)}" id="${id}-lv" style="left:calc(100% - ${px(col - LV_GAP)});top:${px(lvTop)}" data-count="${pts[pts.length - 1] || 0}" data-format="${h(f)}" data-dec="${dec}">0</div>
           ${Array.isArray(sc.labels) ? `<div class="axis" style="right:${px(col)}"><span>${h(sc.labels[0] || '')}</span><span>${h(sc.labels[1] || '')}</span></div>` : ''}</div>
         ${sc.text ? `<div class="dsub" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);

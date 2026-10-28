@@ -8,7 +8,7 @@ A rule, convention, pattern, safety rule, workflow or hook change is not done un
 
 1. Edit the source of truth: `.ai/docs/conventions.md` (rules), `.ai/docs/common-patterns.md` (patterns), `.ai/docs/architecture.md` / `file-index.md` (structure).
 2. Regenerate the rule mirrors: `node .claude/scripts/generate-mirrors.js`. It rewrites only the marked NEVER/ALWAYS blocks in `.cursor/rules/project.mdc`, `.claude/skills/project-conventions/SKILL.md`, `AGENTS.md` and `.github/copilot-instructions.md`.
-3. Update by hand what references the change: `CLAUDE.md` (every security NEVER must appear there), `.claude/agents/*.md`, `.cursor/agents/*.md`, `.claude/skills/*/SKILL.md`, `.cursor/rules/*.mdc`, `.claude/commands/*.md`, `.cursor/commands/*.md`.
+3. Update by hand what references the change: `CLAUDE.md` (every security NEVER must appear there), `.claude/agents/*.md`, `.cursor/agents/*.md`, `.claude/skills/*/SKILL.md`, `.cursor/rules/*.mdc`, `.claude/commands/*.md`, `.cursor/commands/*.md`, `.agents/rules/motion-studio.md` (Antigravity). A change to the studio skill is made in `.claude/skills/studio/SKILL.md` only, then `node .ai/scripts/sync-director-prompt.js` copies it to `.cursor/skills/studio/` and `.agents/skills/studio/`.
 4. Verify:
    ```bash
    node .claude/scripts/check-propagation.js
@@ -49,7 +49,7 @@ Cursor mirrors them in `.cursor/agents/` (plus `senior-dev-deep`).
 
 | Skill | Purpose |
 |---|---|
-| `studio` | The `/studio run` director |
+| `studio` | The `/studio run` director (also `/studio` in Cursor, Copilot and Antigravity, see below) |
 | `project-conventions` | Rule summary (generated NEVER/ALWAYS) |
 | `template-authoring` | Create or change a video template |
 | `server-route` | Add or change a UI server route |
@@ -58,6 +58,21 @@ Cursor mirrors them in `.cursor/agents/` (plus `senior-dev-deep`).
 | `frontend-design` | UI and template layout planning |
 | `qa-test` | Browser QA persona and report |
 | `explain-code`, `refactor-guide`, `update-propagation`, `agent-teams-workflow` | General |
+
+## Other coding agents
+
+The Director runs in any agent a person types `/studio run` into. Each one reads the same skill and its own entry file:
+
+Approval is UI-only for every agent: `node engine/cli.mjs approve` refuses (`tests/cli-approve.test.mjs`), and render needs that approval. The last column is the extra check before `render` or `sequence`.
+
+| Agent | Always-on rules | `/studio` | Skill copy | Asks before render/sequence |
+|---|---|---|---|---|
+| Claude Code | `CLAUDE.md` | skill `studio` | `.claude/skills/studio/` (the source) | seat allowlist (`director.allowedTools`) refuses them |
+| Cursor | `AGENTS.md`, `.cursor/rules/` | `.cursor/commands/studio.md` | `.cursor/skills/studio/` | `.cursor/hooks/ask-before-render.js` |
+| GitHub Copilot | `.github/copilot-instructions.md` | `.github/prompts/studio.prompt.md` | `.agents/skills/studio/` | `.vscode/settings.json` → `chat.tools.terminal.autoApprove` |
+| Google Antigravity | `.agents/rules/motion-studio.md` (+ `AGENTS.md` on versions that read it) | `.agents/workflows/studio.md` | `.agents/skills/studio/` | none in the repo (optional: the terminal deny list in Antigravity's settings) |
+
+Outside the seat the Director runs on that tool's own model and account; the caps are the ones the skill states (`director.maxJobsPerRun` through `list --queued`, two fix rounds, one run at a time). `tests/worker-prompt.test.mjs` fails when a skill copy drifts.
 
 ## Commands
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Copies server/worker/director-prompt.md into .claude/skills/studio/SKILL.md between the DIRECTOR-RULES markers.
+// Copies server/worker/director-prompt.md into .claude/skills/studio/SKILL.md between the DIRECTOR-RULES markers,
+// then copies that skill byte for byte to the other agents' skill folders (MIRRORS).
 // Nothing outside the markers changes. tests/worker-prompt.test.mjs fails until this has run after an edit.
 //
 // Usage: node .ai/scripts/sync-director-prompt.js
@@ -10,6 +11,11 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const RULES = path.join(ROOT, 'server', 'worker', 'director-prompt.md');
 const SKILL = path.join(ROOT, '.claude', 'skills', 'studio', 'SKILL.md');
+// Cursor reads .cursor/skills; GitHub Copilot and Google Antigravity read .agents/skills.
+const MIRRORS = [
+  path.join(ROOT, '.cursor', 'skills', 'studio', 'SKILL.md'),
+  path.join(ROOT, '.agents', 'skills', 'studio', 'SKILL.md'),
+];
 const BEGIN = '<!-- BEGIN:DIRECTOR-RULES (generated from server/worker/director-prompt.md) -->';
 const END = '<!-- END:DIRECTOR-RULES -->';
 
@@ -26,4 +32,15 @@ if (next === skill) {
 } else {
   fs.writeFileSync(SKILL, next);
   console.log('studio skill: rules block rewritten from server/worker/director-prompt.md');
+}
+
+for (const file of MIRRORS) {
+  const rel = path.relative(ROOT, file);
+  if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === next) {
+    console.log(`${rel}: already current`);
+    continue;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, next);
+  console.log(`${rel}: copied from .claude/skills/studio/SKILL.md`);
 }

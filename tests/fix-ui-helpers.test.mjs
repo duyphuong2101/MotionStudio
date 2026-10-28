@@ -1,10 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assetKind, uploadProblem, fmtSize, parseNum, parseSay, sayText, paletteProblems, guessFont } from '../ui/shots.js';
+import { assetKind, assetPick, uploadProblem, fmtSize, parseNum, parseSay, sayText, paletteProblems, guessFont } from '../ui/shots.js';
 import { ASSET_TYPES, MAX_ASSET_BYTES, MAX_VIDEO_BYTES } from '../engine/assets.mjs';
 
 const TYPES = Object.keys(ASSET_TYPES);
 const file = (name, size) => ({ name, size });
+
+test('assetPick lists the right files for every Script tab file field and nothing for the rest', () => {
+  const names = ['pack.png', 'logo.svg', 'clip.mp4', 'take.wav', 'pack.glb', 'spin.json', 'font.woff2'];
+  const of = (f, footage) => names.filter((n) => assetPick(f, footage).re.test(n));
+  assert.deepEqual(of('asset'), ['pack.png', 'logo.svg']);
+  assert.deepEqual(of('asset', true), ['clip.mp4']);
+  assert.deepEqual(of('asset', 'audio'), ['clip.mp4', 'take.wav']);
+  assert.deepEqual(of('image', true), ['pack.png', 'logo.svg']);
+  assert.deepEqual(of('video'), ['clip.mp4']);
+  assert.deepEqual(of('model'), ['pack.glb']);
+  assert.deepEqual(of('lottie'), ['spin.json']);
+  for (const f of ['title', 'shots', 'decal', 'view']) assert.equal(assetPick(f), null, f);
+  // Every type an Upload button accepts is one the server takes.
+  for (const f of ['asset', 'image', 'video', 'model', 'lottie']) for (const ext of assetPick(f, f === 'asset' ? 'audio' : false).accept.split(',')) assert.ok(TYPES.includes(ext.slice(1)), `${f} ${ext}`);
+  assert.equal(assetKind('spin.json'), 'animation');
+});
 
 test('assetKind tells fonts, models and m4a apart from audio', () => {
   assert.equal(assetKind('take.m4a'), 'audio');

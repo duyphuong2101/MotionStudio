@@ -30,7 +30,7 @@ async function chromeOrSkip(t) {
 async function openSample(t, id, format) {
   const { dir, beats } = loadTemplate(id);
   // The sample without footage or a 3D model: a clip needs prepare, a model three.js; a photo is drawn here.
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((sl) => ({ ...sl, kind: sl.kind.filter((k) => k !== 'video' && k !== 'model') })) });
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((sl) => ({ ...sl, kind: sl.kind.filter((k) => k !== 'video' && k !== 'model' && k !== 'anim') })) });
   const timing = estimateTiming(script, TIMING, 'en', beats.pace || null);
   const size = sizeFor(beats, format);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);

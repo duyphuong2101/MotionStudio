@@ -209,7 +209,9 @@ test('a band tints its span of points under a label; a reference value draws a d
   // 90 is above every point, so it becomes the top of the scale; under a band label the top is 10 + 28 * 1.3 + 14 = 60,
   // so the line keeps clear of the label (a peak ran through "Q3", NSC s5, 2026-10-26).
   assert.match(p.body, /<path class="ref" id="l-ref" d="M0 60 H1400"\/>/);
-  assert.match(p.body, /<div class="rlab" id="l-rl" data-lint style="top:22px">Target<\/div>/);
+  // The label sits just above its line as a share of the chart height (60 / 420), so it follows the line when the
+  // chart is shorter than its viewBox (the cinematic layout squeezes it; the label used to land on the line).
+  assert.match(p.body, /<div class="rlab" id="l-rl" data-lint style="top:calc\(14\.29% - 38px\)">Target<\/div>/);
   // Without a band label the scale top stays at 40.
   assert.match(lineParts({ band: { from: 2, to: 2 }, ref: { value: 90, label: 'Target' } }).body, /<path class="ref" id="l-ref" d="M0 40 H1400"\/>/);
   assert.ok(p.css.includes('.band{fill:var(--secondary);fill-opacity:.22}') && p.css.includes('stroke-dasharray:14 10'));

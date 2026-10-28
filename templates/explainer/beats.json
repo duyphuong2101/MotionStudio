@@ -10,7 +10,8 @@
       "cta": "Closing card: the one action viewers should take, with a button.",
       "video": "Real footage in a window, e.g. a screen recording or research film: it plays under the voice, or with its own sound.",
       "flash": "Kinetic type: 2-12 words flash full frame one at a time on the beat of the voice, then an optional title lands and holds, e.g. nine workstreams ending on \"One partnership.\"",
-      "model": "A 3D model of the product (a .glb file) in studio light with a soft shadow, turning slowly on the scene background under a title: for a physical product or device the viewer should see from every side."
+      "model": "A 3D model of the product (a .glb file) in studio light with a soft shadow, turning slowly on the scene background under a title: for a physical product or device the viewer should see from every side.",
+      "anim": "A Lottie animation (a .json export from After Effects or LottieFiles, uploaded in the Brand tab) playing in a window under a title: for motion a designer authored, e.g. a product icon animation or an animated diagram."
     },
     "fields": {
       "step.icon": "An icon for this step. One icon morphs from step to step.",
@@ -27,8 +28,16 @@
       "model.spin": "turn (default): the model turns on its axis; orbit: the camera circles it; hero: it sways while the camera eases in; reveal: it rises and grows into place in the first second, then turns slowly; detail: the camera pushes in to a close-up, e.g. for a finish or a texture.",
       "model.view": "Optional start pose as JSON, each key optional: {\"azimuth\": 30, \"elevation\": 12, \"zoom\": 1}. azimuth -180 to 180 degrees round the model, elevation -30 to 60 degrees above it, zoom 0.6 (farther) to 1.6 (closer). Empty keeps the spin's own pose (about 29 degrees round, 13 up, zoom 1).",
       "model.shadow": "true (default): a soft contact shadow under the model; false drops it, e.g. for a model that floats.",
-      "model.env": "studio (default): studio light reflects in the model, so metal and glass read; none: plain lamps only.",
-      "hold": "With sound on: seconds (0-3) the scene keeps the clip's last frame after the clip ends, so a short bite does not cut away at once."
+      "model.env": "studio (default): studio light reflects in the model, so metal and glass read; brand: the same room in the brand colours, so the reflections carry the brand; none: plain lamps only.",
+      "hold": "With sound on: seconds (0-3) the scene keeps the clip's last frame after the clip ends, so a short bite does not cut away at once.",
+      "model.path": "Optional camera path as JSON: 2-4 poses shaped like view, e.g. [{\"azimuth\": -40, \"zoom\": 1}, {\"azimuth\": 30, \"elevation\": 20, \"zoom\": 1.4}]. The camera glides from pose to pose across the scene, settling at each; a missing key keeps the start pose's value. Replaces the spin's own camera move; the spin still turns the model.",
+      "model.explode": "Optional exploded view as JSON: 1-6 part names of the model, e.g. [\"front\", \"core\"] (the node names in the .glb; a pack from pack-glb has front, back and rim). The parts move out from the centre a third of the way into the scene and stay out.",
+      "model.gap": "How far exploded parts move: 0.1 to 1 of the model's size (default 0.45).",
+      "model.decal": "Optional sticker as JSON: a brand or built-in icon stamped on the model's front face, e.g. {\"icon\": \"shield\", \"at\": [0.85, 0.15], \"size\": 0.28, \"part\": \"front\"}. at is [x, y] as fractions of the face (0,0 top-left), size its height as a fraction of the face (0.1-0.6), part the node it rides on (so it explodes with it). Drawn in the brand secondary on a white plate.",
+      "lottie": "The Lottie animation (.json) from the project assets.",
+      "anim.loop": "true (default): a short animation repeats until the scene ends; false: it plays once and holds its last frame.",
+      "anim.fit": "contain (default): the whole animation fits the window; cover: it fills the window, edges cropped.",
+      "cta.image": "Optional background photo from the project assets (e.g. the pack or a lifestyle shot), faded under the brand colour on the text side so the button still reads."
     }
   },
   "description": "Explains how something works: a title, numbered steps where one icon morphs from step to step with a progress bar, flow diagrams whose boxes and arrows draw in order, real footage in a window, a 3D model of the product turning on the scene background, full-frame kinetic type that flashes words on the beat, then the call to action. Body scenes can switch to a dark or accent background.",
@@ -80,7 +89,8 @@
     "diagram",
     "video",
     "flash",
-    "model"
+    "model",
+    "anim"
   ],
   "sequence": [
     {
@@ -96,7 +106,8 @@
         "diagram",
         "video",
         "flash",
-        "model"
+        "model",
+        "anim"
       ],
       "min": 1,
       "max": 10
@@ -195,6 +206,7 @@
       "optional": [
         "kicker",
         "url",
+        "image",
         "source",
         "pace",
         "sfx"
@@ -212,8 +224,29 @@
         "text",
         "spin",
         "view",
+        "gap",
+        "decal",
+        "explode",
+        "path",
         "shadow",
         "env",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "anim": {
+      "required": [
+        "vo",
+        "title",
+        "lottie",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "text",
+        "loop",
+        "fit",
         "theme",
         "pace",
         "sfx"
@@ -261,7 +294,16 @@
     ],
     "env": [
       "studio",
+      "brand",
       "none"
+    ],
+    "loop": [
+      true,
+      false
+    ],
+    "fit": [
+      "contain",
+      "cover"
     ]
   },
   "data": {
@@ -285,6 +327,26 @@
         "zoom": [
           0.6,
           1.6
+        ]
+      },
+      "path": [
+        2,
+        4
+      ],
+      "explode": {
+        "parts": [
+          1,
+          6
+        ],
+        "gap": [
+          0.1,
+          1
+        ]
+      },
+      "decal": {
+        "size": [
+          0.1,
+          0.6
         ]
       }
     }
@@ -329,6 +391,10 @@
       "spin": "turn",
       "shadow": true,
       "env": "studio"
+    },
+    "anim": {
+      "title": "See it move",
+      "text": "One sentence about what the animation shows."
     }
   },
   "pace": {

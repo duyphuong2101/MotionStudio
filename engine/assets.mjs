@@ -3,6 +3,7 @@ import path from 'node:path';
 import { StudioError, FILE_RE, within, exists } from './core.mjs';
 import { profileDir } from './jobs.mjs';
 import { isGlb } from './glb.mjs';
+import { isLottie } from './lottie.mjs';
 
 const extOf = (name) => path.extname(name).slice(1).toLowerCase();
 
@@ -12,6 +13,7 @@ export const ASSET_TYPES = {
   mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
   woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf',
   glb: 'model/gltf-binary',
+  json: 'application/json',
 };
 export const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
 export const VIDEO_EXT = ['mp4', 'webm', 'mov'];
@@ -61,8 +63,9 @@ function checkContent(name, buf) {
     ttf: () => (head[0] === 0 && head[1] === 1 && head[2] === 0 && head[3] === 0) || ascii(0, 4) === 'true',
     otf: () => ascii(0, 4) === 'OTTO',
     glb: () => isGlb(buf),
+    json: () => isLottie(buf),
   }[ext];
-  if (!ok || !ok()) throw new StudioError(`${name} does not look like a real .${ext} file`, 400);
+  if (!ok || !ok()) throw new StudioError(ext === 'json' ? `${name} is not a Lottie animation (a .json export from After Effects or LottieFiles with v, fr and layers)` : `${name} does not look like a real .${ext} file`, 400);
   if (ext === 'svg') assertSafeSvg(name, buf.toString('utf8'));
 }
 

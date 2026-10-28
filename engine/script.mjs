@@ -2,8 +2,13 @@ import { StudioError, assertFileName } from './core.mjs';
 import { ICON_NAMES } from '../motion-kit/icons.mjs';
 import { splitKind } from './mix.mjs';
 import { MARK_FIELDS, stripMarks, hasMarkup, markErrors } from './marks.mjs';
+import { PART_RE, DECAL_SIZE } from './model-rules.mjs';
+import { lookProblem } from './looks.mjs';
 
 const wordsOf = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
+export const SCENE_ID_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+// Every limit error ends with how much to cut, in the unit of the limit.
+const overLimit = (at, what, n, unit, max) => `${at}: ${what} ${unit === 'words' ? 'has' : 'is'} ${n} ${unit}, limit ${max}: cut ${n - max}`;
 
 // A scene a person left for the Director: `draft: { note, by, at }` on an otherwise placeholder scene.
 export const DRAFT_NOTE_MAX = 300;
@@ -21,7 +26,7 @@ export function assertNoDrafts(script) {
 function draftErrors(s) {
   const note = s.draft?.note;
   if (typeof note !== 'string' || !note.trim()) return [`${s.id}: a draft scene needs a note for the Director`];
-  if (note.length > DRAFT_NOTE_MAX) return [`${s.id}: draft note is ${note.length} chars, limit ${DRAFT_NOTE_MAX}`];
+  if (note.length > DRAFT_NOTE_MAX) return [overLimit(s.id, 'draft note', note.length, 'chars', DRAFT_NOTE_MAX)];
   return [];
 }
 
@@ -34,10 +39,12 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
   const warnings = [];
   const scenes = Array.isArray(script?.scenes) ? script.scenes : null;
   if (!scenes) return { errors: ['script.scenes must be an array'], warnings };
+  const look = lookProblem(script.look);
+  if (look) errors.push(look);
 
   const ids = new Set();
   for (const s of scenes) {
-    if (!s || typeof s.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(s.id)) errors.push(`scene id "${s?.id}" must be a-z, 0-9, dashes`);
+    if (!s || typeof s.id !== 'string' || !SCENE_ID_RE.test(s.id)) errors.push(`scene id "${s?.id}" must be a-z, 0-9, dashes`);
     else if (ids.has(s.id)) errors.push(`duplicate scene id ${s.id}`);
     else ids.add(s.id);
   }
@@ -72,11 +79,13 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
     for (const [f, max] of Object.entries(L)) {
       if (f === 'voWords') continue;
       const len = typeof s[f] === 'string' ? stripMarks(s[f]).length : 0;
-      if (len > max) errors.push(`${s.id}: ${f} is ${len} chars, limit ${max}`);
+      if (len > max) errors.push(overLimit(s.id, f, len, 'chars', max));
     }
     errors.push(...sceneMarkErrors(s, rules.marks === true));
     const vw = wordsOf(s.vo).length;
-    if (vw > L.voWords) errors.push(`${s.id}: voice line has ${vw} words, limit ${L.voWords}`);
+    // A scene with end notes may also read them (logo-reveal `data.reveal.voWithNotes`).
+    const voMax = s.notes !== undefined && rules.data?.[kind]?.voWithNotes ? rules.data[kind].voWithNotes : L.voWords;
+    if (vw > voMax) errors.push(overLimit(s.id, 'voice line', vw, 'words', voMax));
     if (s.icon && !icons.includes(s.icon)) errors.push(`${s.id}: icon "${s.icon}" is not a motion-kit or brand icon (${icons.join(', ')})`);
     for (const [field, allowed] of Object.entries(rules.enums || {})) {
       if (s[field] !== undefined && !allowed.includes(s[field])) errors.push(`${s.id}: ${field} must be ${allowed.join('|')}`);
@@ -95,6 +104,10 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
       }
     }
     if ((s.layout === 'split' || s.layout === 'pip') && !s.image) errors.push(`${s.id}: layout ${s.layout} needs an image, the screenshot shown beside or behind the speaker`);
+    if (s.lottie !== undefined) {
+      if (typeof s.lottie !== 'string' || !/\.json$/i.test(s.lottie)) errors.push(`${s.id}: lottie must be a .json Lottie file`);
+      else if (!assets.includes(s.lottie)) errors.push(`${s.id}: lottie "${s.lottie}" is not in the project assets`);
+    }
     if (s.video !== undefined) {
       if (typeof s.video !== 'string' || !/\.(mp4|webm|mov)$/i.test(s.video)) errors.push(`${s.id}: video must be a .mp4, .webm or .mov file`);
       else if (!assets.includes(s.video)) errors.push(`${s.id}: video "${s.video}" is not in the project assets`);
@@ -109,7 +122,7 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
     if (s.hold !== undefined && s.hold !== '' && !(Number(s.hold) >= 0 && Number(s.hold) <= MAX_HOLD)) errors.push(`${s.id}: hold must be 0 to ${MAX_HOLD} seconds`);
     if (s.video && s.sound === true && wordsOf(s.vo).length) warnings.push(`${s.id}: the clip plays its own sound under the voice line; if the voice runs longer than the clip, the scene holds the clip's last frame until the voice ends`);
     if (s.shots !== undefined) errors.push(...validateShots(s, rules, assets));
-    if (rules.data?.[kind]) errors.push(...validateData(s, kind, rules.data[kind]));
+    if (rules.data?.[kind]) errors.push(...validateData(s, kind, rules.data[kind], icons));
   }
   return { errors, warnings };
 }
@@ -142,7 +155,7 @@ const shortText = (v, max) => typeof v === 'string' && v.trim() && v.length <= m
  * malformed list. race: periods + series (one value per period); stripes: a list of numbers; line: band and ref;
  * flash: a short list of short items.
  */
-export function validateData(s, kind, d) {
+export function validateData(s, kind, d, icons = ICON_NAMES) {
   const errs = [];
   if (kind === 'race') {
     const P = s.periods, S = s.series;
@@ -186,11 +199,53 @@ export function validateData(s, kind, d) {
     if (!Array.isArray(I) || I.length < d.items[0] || I.length > d.items[1]) errs.push(`${s.id}: items must list ${d.items[0]}-${d.items[1]} words or short phrases`);
     else I.forEach((x, i) => { if (!shortText(x, d.chars)) errs.push(`${s.id}.items[${i}]: text is required, at most ${d.chars} characters`); });
   }
-  // explainer model: an optional start pose, each number inside its range (templates/model3d.mjs VIEW_RANGE).
-  if (kind === 'model' && s.view !== undefined) {
-    const v = s.view, keys = Object.keys(d.view);
-    if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some((k) => !keys.includes(k))) errs.push(`${s.id}: view must be { "azimuth": 30, "elevation": 12, "zoom": 1 }, each key optional`);
-    else for (const [k, [lo, hi]] of Object.entries(d.view)) if (v[k] !== undefined && !(finite(v[k]) && v[k] >= lo && v[k] <= hi)) errs.push(`${s.id}: view.${k} must be a number from ${lo} to ${hi}`);
+  // logo-reveal notes: optional silent lines under the tagline (end notes).
+  if (kind === 'reveal' && s.notes !== undefined) {
+    const N = s.notes;
+    if (!Array.isArray(N) || N.length < d.notes[0] || N.length > d.notes[1]) errs.push(`${s.id}: notes must list ${d.notes[0]}-${d.notes[1]} short lines`);
+    else N.forEach((x, i) => { if (!shortText(x, d.chars)) errs.push(`${s.id}.notes[${i}]: text is required, at most ${d.chars} characters`); });
+  }
+  // notesCue: the word of the voice line where it starts reading the notes; the roll starts there.
+  if (kind === 'reveal' && s.notesCue !== undefined) {
+    const key = (w) => String(w).toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (s.notes === undefined) errs.push(`${s.id}: notesCue needs notes`);
+    else if (typeof s.notesCue !== 'string' || !key(s.notesCue) || !wordsOf(s.vo).some((w) => key(w) === key(s.notesCue))) errs.push(`${s.id}: notesCue "${s.notesCue}" is not a word of the voice line`);
+  }
+  // A model scene (data.view): an optional start pose, each number inside its range (templates/model3d.mjs
+  // VIEW_RANGE); an optional camera path of 2-4 such poses; optional exploded parts (named nodes of the .glb).
+  if (d.view) {
+    const keys = Object.keys(d.view);
+    const poseErrs = (v, what) => {
+      if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some((k) => !keys.includes(k))) return errs.push(`${s.id}: ${what} must be { "azimuth": 30, "elevation": 12, "zoom": 1 }, each key optional`);
+      for (const [k, [lo, hi]] of Object.entries(d.view)) if (v[k] !== undefined && !(finite(v[k]) && v[k] >= lo && v[k] <= hi)) errs.push(`${s.id}: ${what}.${k} must be a number from ${lo} to ${hi}`);
+    };
+    if (s.view !== undefined) poseErrs(s.view, 'view');
+    if (s.path !== undefined) {
+      const [lo, hi] = d.path || [2, 4];
+      if (!Array.isArray(s.path) || s.path.length < lo || s.path.length > hi) errs.push(`${s.id}: path must list ${lo}-${hi} poses shaped like view`);
+      else s.path.forEach((p, i) => poseErrs(p, `path[${i}]`));
+    }
+    if (s.explode !== undefined) {
+      const [lo, hi] = d.explode?.parts || [1, 6];
+      if (!Array.isArray(s.explode) || s.explode.length < lo || s.explode.length > hi || s.explode.some((p) => typeof p !== 'string' || !PART_RE.test(p))) errs.push(`${s.id}: explode must list ${lo}-${hi} part names of the model (letters, digits, _ . -)`);
+    }
+    if (s.gap !== undefined) {
+      const [lo, hi] = d.explode?.gap || [0.1, 1];
+      if (!(finite(s.gap) && s.gap >= lo && s.gap <= hi)) errs.push(`${s.id}: gap must be a number from ${lo} to ${hi}`);
+    }
+  }
+  // A decal: an icon stamped on the model's front face, placed by fractions of it, sized by its height.
+  if (d.decal) {
+    if (s.decal !== undefined) {
+      const dc = s.decal, [lo, hi] = d.decal?.size || DECAL_SIZE;
+      if (!dc || typeof dc !== 'object' || Array.isArray(dc) || Object.keys(dc).some((k) => !['icon', 'at', 'size', 'part'].includes(k))) errs.push(`${s.id}: decal must be { "icon": "shield", "at": [0.85, 0.15], "size": 0.28, "part": "front" }, icon required`);
+      else {
+        if (typeof dc.icon !== 'string' || !icons.includes(dc.icon)) errs.push(`${s.id}: decal.icon must be an icon name from the context's icons list`);
+        if (dc.at !== undefined && !(Array.isArray(dc.at) && dc.at.length === 2 && dc.at.every((v) => finite(v) && v >= 0 && v <= 1))) errs.push(`${s.id}: decal.at must be [x, y], each 0 to 1`);
+        if (dc.size !== undefined && !(finite(dc.size) && dc.size >= lo && dc.size <= hi)) errs.push(`${s.id}: decal.size must be a number from ${lo} to ${hi}`);
+        if (dc.part !== undefined && !(typeof dc.part === 'string' && PART_RE.test(dc.part))) errs.push(`${s.id}: decal.part must be a part name of the model`);
+      }
+    }
   }
   // lifestyle gallery: a few photos dropped as prints, each with an optional short caption.
   if (kind === 'gallery') {

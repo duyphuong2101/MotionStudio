@@ -35,7 +35,7 @@ Write the script draft following the template rules exactly:
 - Bullet screenshots: a bullet's optional `asset` is the image that shows that claim (`screenshots` in the context lists them). When a scene's `source` names such a bullet, use that image for `shots[0].asset` (shot/screen) or `asset`. You may set a bullet's `asset` yourself only to a .png/.jpg/.webp listed in `assets` that clearly shows that bullet (read the image first); never invent a file name. A person's choice is locked (`locks["bullets.asset"]`) and the commit restores it.
 - Follow `voiceNotes` for tone. Write in the video's language: `brief.lang` when the brief sets it, else `brand.voice.lang`. Set `script.lang` to that code. Claims keep their meaning from the source; translate them faithfully, never add to them.
 
-Then commit the script. The commit keeps every field a person locked; if it reports fields it kept locked, do not try to change those fields.
+Then commit the script. The commit keeps every field a person locked; if it reports fields it kept locked, do not try to change those fields. It also repairs mechanical slips and lists each one (an unknown icon swapped for the nearest, an off-list value removed, scenes past a template's maximum dropped, a missing or bad scene id replaced); it never changes words. Write the next draft without those slips.
 
 ## Storyboard (steps 5-7)
 
@@ -56,7 +56,7 @@ A brief with `"mix": ["data-story", "testimonial"]` makes one video from the lea
 - When ui-story or feature-launch leads, keep the top-level `script.app` as for a plain ui-story script.
 - Every on-screen claim and number still traces to `source.json` through `source`. A chart or quote scene needs a real figure or a real customer line from the source; if the source has none, leave that extra out and say so in your report rather than invent one.
 - Keep the total voice inside the brief duration: about 2.6 words per second plus about 0.7 s per scene, as for any brief. Extras add scenes, so trim the lead's body scenes rather than overrun.
-- Validation errors name the template and its limit (`stat-1: text is 95 chars, limit 90`; `kind x.y comes from template x, which is not in this brief's mix`). Fix and commit the script again within the usual fix rounds.
+- Validation errors name the template and its limit (`stat-1: text is 95 chars, limit 90: cut 5`; `kind x.y comes from template x, which is not in this brief's mix`). Fix and commit the script again within the usual fix rounds.
 
 ## When a person edited something
 

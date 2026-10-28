@@ -52,6 +52,17 @@ test('valid script passes, broken order and limits fail', () => {
   assert.ok(validateScript(missingAsset, beats, { assets: [] }).errors.some((e) => e.includes('asset')));
 });
 
+test('every limit error says how much to cut, in chars or in words', () => {
+  const ex = loadTemplate('explainer').beats;
+  const title = { id: 'intro', kind: 'title', vo: 'Hi.', title: 'x'.repeat(50) };
+  const step = { id: 's1', kind: 'step', vo: 'Ask.', title: 'Ask', icon: 'chat', source: 'bullets[0]' };
+  assert.deepEqual(validateScript({ scenes: [title, step] }, ex).errors, ['intro: title is 50 chars, limit 44: cut 6']);
+  const words = Array.from({ length: ex.limits.voWords + 3 }, () => 'word').join(' ');
+  assert.deepEqual(validateScript({ scenes: [{ ...title, title: 'Ok', vo: words }, step] }, ex).errors, [`intro: voice line has ${ex.limits.voWords + 3} words, limit ${ex.limits.voWords}: cut 3`]);
+  const long = script(); long.scenes[1].chip = 'x'.repeat(60);
+  assert.ok(validateScript(long, beats).errors.includes(`b1: chip is 60 chars, limit ${beats.limits.chip}: cut ${60 - beats.limits.chip}`));
+});
+
 test('source needs a ref for every claim', () => {
   assert.deepEqual(validateSource({ name: 'X', bullets: [{ text: 'a', ref: 'p1' }] }), []);
   assert.ok(validateSource({ name: 'X', bullets: [{ text: 'a' }] }).length);
