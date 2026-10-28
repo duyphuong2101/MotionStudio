@@ -45,6 +45,56 @@ export function lineDiff(before, after) {
   return out;
 }
 
+// Tokens of one line for the in-line diff: whitespace runs, words, numbers, then single characters (so `=` → `===`
+// keeps one `=` and adds two).
+const TOKEN_SPLIT = /\s+|[A-Za-z_$][\w$]*|\d[\d_.]*|./g;
+// A removed line followed by an added one becomes one changed line when they share this much of their non-space text.
+const PAIR_MIN = 0.5;
+
+/** Token diff of two lines by longest common subsequence: [{ op: ' ' | '-' | '+', text }], runs of one op merged. */
+export function tokenDiff(before, after) {
+  const a = before.match(TOKEN_SPLIT) || [], b = after.match(TOKEN_SPLIT) || [];
+  const L = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const out = [];
+  const push = (op, text) => { const last = out[out.length - 1]; if (last && last.op === op) last.text += text; else out.push({ op, text }); };
+  let i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { push(' ', a[i]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) push('-', a[i++]); else push('+', b[j++]);
+  }
+  while (i < a.length) push('-', a[i++]);
+  while (j < b.length) push('+', b[j++]);
+  return out;
+}
+
+const solid = (s) => s.replace(/\s/g, '').length;
+
+/**
+ * Pairs each run of removed lines with the added lines right after it: when every pair shares PAIR_MIN of its text,
+ * the pair becomes one changed line { op: '~', text, segs } (`text` holds every token, for sizing), then any lines
+ * left over follow. A run that does not pair stays as it was.
+ */
+export function pairChanges(ops) {
+  const out = [];
+  for (let i = 0; i < ops.length;) {
+    if (ops[i].op !== '-') { out.push(ops[i++]); continue; }
+    let j = i;
+    while (j < ops.length && ops[j].op === '-') j++;
+    let k = j;
+    while (k < ops.length && ops[k].op === '+') k++;
+    const dels = ops.slice(i, j), adds = ops.slice(j, k), n = Math.min(dels.length, adds.length);
+    const pairs = dels.slice(0, n).map((d, p) => {
+      const segs = tokenDiff(d.text, adds[p].text), len = Math.max(solid(d.text), solid(adds[p].text));
+      return len && segs.filter((s) => s.op === ' ').reduce((x, s) => x + solid(s.text), 0) / len >= PAIR_MIN ? segs : null;
+    });
+    if (n && pairs.every(Boolean)) {
+      out.push(...pairs.map((segs) => ({ op: '~', text: segs.map((s) => s.text).join(''), segs })), ...dels.slice(n), ...adds.slice(n));
+    } else out.push(...dels, ...adds);
+    i = k;
+  }
+  return out;
+}
+
 /** Font size (px at U=1) so the longest line fits the panel: never above `max`, never below 16. */
 const fitFont = (lines, panelW, max) => Math.max(16, Math.min(max, Math.floor(panelW / (Math.max(20, ...lines.map((l) => l.length)) * 0.61))));
 
@@ -78,10 +128,13 @@ export function parts({ brand, script, size }) {
       blocks.push(`<div class="sc fill" id="g-${id}"><div class="box">${head(sc)}${panel(id, sc.lang || '', inner, fs)}${sub(sc)}</div></div>`);
       scenes.push({ id, kind: 'code', n: lines.length, hi: [...hi].filter((x) => x >= 1 && x <= lines.length).map((x) => x - 1) });
     } else if (sc.kind === 'diff') {
-      const ops = lineDiff(sc.before, sc.after).slice(0, 30);
+      const ops = pairChanges(lineDiff(sc.before, sc.after)).slice(0, 30);
       const fs = fitFont(ops.map((o) => `  ${o.text}`), panelW - 80, port ? 28 : 32);
-      const cls = { ' ': 'ctx', '-': 'del', '+': 'add' };
-      const inner = ops.map((o, k) => `<div class="ln ${cls[o.op]}" id="${id}-l${k}"><b>${o.op === ' ' ? '' : o.op === '-' ? '−' : '+'}</b><code>${highlightLine(o.text) || ' '}</code></div>`).join('');
+      const cls = { ' ': 'ctx', '-': 'del', '+': 'add', '~': 'chg' };
+      const mark = { ' ': '', '-': '−', '+': '+', '~': '±' };
+      // A changed line: its kept tokens plain, the removed ones in .xd and the added ones in .xa (like a pull request).
+      const segHtml = (segs) => segs.map((s) => (s.op === ' ' ? highlightLine(s.text) : `<span class="${s.op === '-' ? 'xd' : 'xa'}">${highlightLine(s.text)}</span>`)).join('');
+      const inner = ops.map((o, k) => `<div class="ln ${cls[o.op]}" id="${id}-l${k}"><b>${mark[o.op]}</b><code>${(o.segs ? segHtml(o.segs) : highlightLine(o.text)) || ' '}</code></div>`).join('');
       blocks.push(`<div class="sc fill" id="g-${id}"><div class="box">${head(sc)}${panel(id, sc.file || '', inner, fs)}${sub(sc)}</div></div>`);
       scenes.push({ id, kind: 'diff', ops: ops.map((o) => o.op) });
     } else if (sc.kind === 'tree') {
@@ -134,6 +187,7 @@ export function parts({ brand, script, size }) {
 .ln b{flex:none;width:3.2em;text-align:right;padding-right:1em;color:#6e7681;font-weight:400}.ln code{font:inherit;white-space:pre}
 .ln.hl{background:rgba(56,139,253,.18);box-shadow:inset ${px(5)} 0 0 var(--secondary)}
 .ln.del{background:rgba(248,81,73,.16)}.ln.del b{color:#f85149}.ln.add{background:rgba(63,185,80,.18)}.ln.add b{color:#3fb950}
+.ln.chg{background:rgba(210,153,34,.12)}.ln.chg b{color:#d29922}.xd,.xa{display:inline-block;white-space:pre;vertical-align:bottom;overflow:hidden;border-radius:.15em}.xd{background:rgba(248,81,73,.4)}.xa{background:rgba(63,185,80,.42)}
 .ln.cmd b{color:var(--secondary)}.ln.out{color:#c9d1d9}.ln.good{color:#3fb950}.ln.bad{color:#f85149}
 .tk{color:#ff7b72}.ts{color:#a5d6ff}.tn{color:#79c0ff}.tc{color:#8b949e;font-style:italic}.tf{color:#d2a8ff}
 .tree{display:flex;flex-direction:column;gap:${px(14)};max-width:${px(1400)}}
@@ -165,7 +219,8 @@ const KINDS = {
   },
   diff(sc, s) {
     const g = lead(sc, s);
-    // Context and removed lines show first; at the cue the removed lines fade and strike, then the added lines open in place.
+    // Context and removed lines show first; at the cue the removed lines fade and strike, then the added lines open in
+    // place. A changed line shows its old text; at the cue its removed tokens close up and its added tokens open.
     const at = Math.max(s + 1.0, cue(sc, 0.35));
     sc.ops.forEach((op, k) => {
       const ln = $(sc.id + '-l' + k);
@@ -175,6 +230,11 @@ const KINDS = {
       } else {
         tl.fromTo(ln, { opacity: 0 }, { opacity: 1, duration: 0.3, immediateRender: false }, s + 0.45 + k * 0.04);
         if (op === '-') tl.to(ln, { opacity: 0.45, textDecoration: 'line-through', duration: 0.3 }, at + k * 0.03);
+        if (op === '~') {
+          // Widths are read now, in the plain layout, before any tween of the scene sets them.
+          ln.querySelectorAll('.xd').forEach((x) => tl.fromTo(x, { maxWidth: x.offsetWidth, opacity: 1 }, { maxWidth: 0, opacity: 0, duration: 0.35, ease: XIO, immediateRender: false }, at + k * 0.03));
+          ln.querySelectorAll('.xa').forEach((x) => tl.fromTo(x, { maxWidth: 0, opacity: 0 }, { maxWidth: x.offsetWidth, opacity: 1, duration: 0.45, ease: XIO, immediateRender: false }, at + 0.3 + k * 0.03));
+        }
       }
     });
     fadeUp(g.querySelector('.csub'), cue(sc, 0.75));

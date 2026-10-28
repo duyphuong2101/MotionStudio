@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import {
   ROOT, StudioError, readJson, writeJson, exists, loadStudioConfig, round,
@@ -31,13 +30,9 @@ import { clipWords, sttStatus, decode, speechOnset } from './stt.mjs';
 import { clipGains } from './loudness.mjs';
 import { recordedVoice } from './voicetake.mjs';
 import { jobSfx, SFX_FILE } from './sfx.mjs';
-import { copyThree, copyLottie } from './vendor.mjs';
+import { copyThree, copyLottie, copyGsap } from './vendor.mjs';
 // sequences.mjs imports this module too; loopMusic is only called at run time, so the cycle is safe.
 import { loopMusic } from './sequences.mjs';
-
-const require = createRequire(import.meta.url);
-const GSAP_DIST = path.dirname(require.resolve('gsap/dist/gsap.min.js'));
-const VENDOR = ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js'];
 
 /** Frame size for this brief: a multi-format template lists one size per format. */
 export function sizeFor(beats, format) {
@@ -200,7 +195,7 @@ export async function prepare(project, id, by = 'engine') {
     const snap = beat?.grid ? beatSnap(beat.grid) : null;
     // A tight motion profile (cinematic and others) cuts close around each line instead of leaving a pause on both sides.
     const tight = motionProfile(brand).tight;
-    const take = brief.voiceTake ? await recordedVoice(project, jobDir(project, id), brief.voiceTake, script, { lang: brand.voice.lang, opts: cfg.voiceTake }) : null;
+    const take = brief.voiceTake ? await recordedVoice(project, jobDir(project, id), brief.voiceTake, script, { lang: brand.voice.lang, opts: { ...cfg.voiceTake, cleanup: brand.voice.cleanup === true } }) : null;
     const timeScript = (lengths) => (take || tts.available
       ? speakScript(jobDir(project, id), script, brand, cfg.timing, beats.pace || null, lengths, snap, tight, take)
       : estimateTiming(script, cfg.timing, script.lang || brand.voice.lang, beats.pace || null, lengths, snap, tight));
@@ -230,8 +225,7 @@ export async function prepare(project, id, by = 'engine') {
 
     setStatus(project, id, { step: 6 }, `timing ${timing.source}: ${timing.duration}s`, by);
     const dir = jobDir(project, id);
-    fs.mkdirSync(path.join(dir, 'vendor'), { recursive: true });
-    for (const f of VENDOR) fs.copyFileSync(path.join(GSAP_DIST, f), path.join(dir, 'vendor', f));
+    copyGsap(dir);
     fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
     const used = new Set(brandAssets(brand));
     for (const sc of script.scenes) {

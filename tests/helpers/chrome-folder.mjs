@@ -3,13 +3,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { ffmpeg } from '../../engine/media.mjs';
 import { sampleGlb } from '../../engine/glb.mjs';
 import { sampleLottie } from '../../engine/lottie.mjs';
-import { copyThree, copyLottie } from '../../engine/vendor.mjs';
-
-const GSAP = ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js'];
+import { copyThree, copyLottie, copyGsap } from '../../engine/vendor.mjs';
 
 /** True when playwright-core can start the configured Chrome. */
 export async function hasChrome(channel) {
@@ -21,9 +18,8 @@ export async function hasChrome(channel) {
 export async function chromeFolder(t, prefix = 'ms-chrome-') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const gsapDir = path.dirname(createRequire(import.meta.url).resolve('gsap/dist/gsap.min.js'));
   for (const d of ['vendor', 'assets', 'clips']) fs.mkdirSync(path.join(dir, d));
-  for (const f of GSAP) fs.copyFileSync(path.join(gsapDir, f), path.join(dir, 'vendor', f));
+  copyGsap(dir);
   copyThree(dir);
   copyLottie(dir);
   const photo = path.join(dir, 'sample.jpg'), clip = path.join(dir, 'sample.mp4');

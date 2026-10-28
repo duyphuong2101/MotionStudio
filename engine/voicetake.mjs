@@ -263,6 +263,16 @@ export function takeGain(level, { targetLufs = TAKE_DEFAULTS.targetLufs, maxGain
  * Prepare's recorded voice: transcribes the take (cached in the job's stt/), aligns it to the script, and cuts one
  * WAV per voiced scene into take/. Returns what speakScript needs: per scene id { wav, seconds, words: [{ w, at }] }.
  */
+// brand.voice.cleanup: a home or phone recording loses its rumble below 80 Hz, steady background noise, harsh "s"
+// sounds and some of its level swings. Off by default: a studio take needs none of it.
+const CLEANUP = 'highpass=f=80,afftdn=nf=-25,deesser,acompressor=threshold=-20dB:ratio=3:attack=5:release=120:makeup=2';
+
+/** The -af chain of one scene's cut of the take: optional cleanup, the level match, short fades in and out. */
+export function takeFilter({ gainDb = 0, len, cleanup = false }) {
+  const parts = [cleanup ? CLEANUP : '', gainDb ? `volume=${gainDb}dB` : '', `afade=t=in:d=${FADE}`, `afade=t=out:st=${Math.max(0, len - FADE).toFixed(3)}:d=${FADE}`];
+  return parts.filter(Boolean).join(',');
+}
+
 export async function recordedVoice(project, dir, asset, script, { lang = 'en', opts = {} } = {}) {
   const o = { ...TAKE_DEFAULTS, ...opts };
   if (!VOICE_TAKE_RE.test(asset)) throw new StudioError(`The recorded voice ${asset} must be a .wav, .mp3 or .m4a asset`, 400);
@@ -290,9 +300,8 @@ export async function recordedVoice(project, dir, asset, script, { lang = 'en', 
     const { from, to } = cuts[i];
     const len = round(to - from);
     const wav = within(out, `${sc.id}.wav`);
-    const gain = gainDb ? `volume=${gainDb}dB,` : '';
     await ffmpeg(['-y', '-i', file, '-ss', String(from), '-t', String(len), '-vn',
-      '-af', `${gain}afade=t=in:d=${FADE},afade=t=out:st=${Math.max(0, len - FADE).toFixed(3)}:d=${FADE}`,
+      '-af', takeFilter({ gainDb, len, cleanup: o.cleanup }),
       '-ac', '1', '-ar', '48000', '-c:a', 'pcm_s16le', wav], { timeoutMs: CUT_TIMEOUT_MS });
     result[sc.id] = { wav, seconds: len, words: sc.words.map((w) => ({ w: w.w, at: round(Math.max(0, w.start - from)) })) };
   }

@@ -105,15 +105,16 @@ export function paletteProblems(palette) {
   return out;
 }
 
-// The Brand tab's Motion style choices, in engine/brand.mjs MOTIONS order (a test keeps the two in step). `film`: the
+// The Brand tab's Motion style choices, in engine/brand.mjs MOTIONS order (a test keeps the two in step). `reveal`:
+// the style takes the brand's heading reveal (templates/kit.mjs revealable). `film`: the
 // profile draws film grain and a vignette, so the "Film grain and vignette" box shows.
 export const MOTION_OPTIONS = [
-  { id: 'standard', label: 'Standard', hint: 'Things slide and pop in, scenes fade into each other over soft floating shapes. Fits most videos. Applies on the next prepare.' },
+  { id: 'standard', label: 'Standard', reveal: true, hint: 'Things slide and pop in, scenes fade into each other over soft floating shapes. Fits most videos. Applies on the next prepare.' },
   { id: 'cinematic', label: 'Cinematic', film: true, carry: true, hint: 'Text comes into focus word by word, the camera keeps pushing in, film grain, full-frame footage. Fits brand films. Applies on the next prepare.' },
-  { id: 'clean', label: 'Clean', carry: true, hint: 'Sharp text slides in short and quick, fast fades between scenes, no grain or floating shapes, centred layout. Fits award and corporate films. Applies on the next prepare.' },
+  { id: 'clean', label: 'Clean', carry: true, reveal: true, hint: 'Sharp text slides in short and quick, fast fades between scenes, no grain or floating shapes, centred layout. Fits award and corporate films. Applies on the next prepare.' },
   { id: 'editorial', label: 'Editorial', hint: 'Headlines rise line by line out of a mask, other things wipe in, and a brand-coloured panel sweeps across at every cut. Fits stories and reports. Applies on the next prepare.' },
-  { id: 'kinetic', label: 'Kinetic', hint: 'Big, fast moves that overshoot and settle, zoom and slide cuts, floating shapes behind. Fits social clips and launches. Applies on the next prepare.' },
-  { id: 'parallax', label: 'Parallax', hint: 'The camera drifts slowly while text and pictures move at their own speed, long soft entrances, gentle fades. Fits product and brand stories. Applies on the next prepare.' },
+  { id: 'kinetic', label: 'Kinetic', reveal: true, hint: 'Big, fast moves that overshoot and settle, zoom and slide cuts, floating shapes behind. Fits social clips and launches. Applies on the next prepare.' },
+  { id: 'parallax', label: 'Parallax', reveal: true, hint: 'The camera drifts slowly while text and pictures move at their own speed, long soft entrances, gentle fades. Fits product and brand stories. Applies on the next prepare.' },
 ];
 /** The option for a stored motion name; absent or unknown is Standard, as the engine reads it. */
 export const motionOpt = (id) => MOTION_OPTIONS.find((o) => o.id === id) || MOTION_OPTIONS[0];

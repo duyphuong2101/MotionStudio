@@ -34,7 +34,8 @@ const USAGE = `Motion Studio engine
   node engine/cli.mjs find    <project> <asset> "<words>"   where the words are said, from the asset's stored transcript
   node engine/cli.mjs clip    <project> <asset> --in <s> --out <s> --name <new.mp4> [--fill cover|blur-fill]
         [--crop-top <%>] [--crop-bottom <%>] [--crop x:y:w:h] [--blur x:y:w:h ...] [--keep cx:cy:rx:ry]
-        [--gain <dB>] [--mute] [--speed <x>] [--size 1920x1080] [--replace]   cut a new brand asset from a video asset
+        [--gain <dB>] [--mute] [--speed <x>] [--smooth blend|motion|none] [--size 1920x1080] [--replace]   cut a new brand asset from a video asset
+        (a slower clip blends neighbouring frames by default; motion follows the movement, up to 20 s out, and is slow to make)
   node engine/cli.mjs qa      <project> <job>       check a done job's final.mp4 again: loudness, black/frozen picture, size, captions
   node engine/cli.mjs sequence <project> <sequence>  join the parts' final.mp4 files into out/<project>/<sequence>/final.mp4
   node engine/cli.mjs sequence-preview <project> <sequence>  a quick low-resolution preview.mp4 of the same joins
@@ -127,7 +128,7 @@ function clipOptions(args) {
   const top = flag(args, 'crop-top'), bottom = flag(args, 'crop-bottom'), crop = flag(args, 'crop'), keep = flag(args, 'keep'), size = flag(args, 'size');
   const [width, height] = size ? size.split('x').map(Number) : [];
   return {
-    in: flag(args, 'in'), out: flag(args, 'out'), name: flag(args, 'name'), fill: flag(args, 'fill'), gainDb: flag(args, 'gain'), speed: flag(args, 'speed'),
+    in: flag(args, 'in'), out: flag(args, 'out'), name: flag(args, 'name'), fill: flag(args, 'fill'), gainDb: flag(args, 'gain'), speed: flag(args, 'speed'), smooth: flag(args, 'smooth'),
     mute: args.includes('--mute'), replace: args.includes('--replace'), blurRegions, width, height,
     ...(top || bottom ? { band: { top, bottom } } : {}),
     ...(crop ? { crop: tuple(crop, ['x', 'y', 'w', 'h'], 'crop') } : {}),

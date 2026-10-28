@@ -3,7 +3,6 @@
 // no model, no render: the UI plays the composition in an iframe through its seek(t) contract.
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { DIRS, StudioError, assertId, within, exists, loadStudioConfig } from './core.mjs';
 import { loadTemplate, loadBrand, listAssets, assetPath } from './jobs.mjs';
@@ -14,12 +13,9 @@ import { sizeFor } from './pipeline.mjs';
 import { sampleGlb } from './glb.mjs';
 import { sampleLottie } from './lottie.mjs';
 import { hasLotties } from '../templates/lottie.mjs';
-import { copyThree, copyLottie } from './vendor.mjs';
+import { copyThree, copyLottie, copyGsap } from './vendor.mjs';
 import { hasModels } from '../templates/model3d.mjs';
 
-const require = createRequire(import.meta.url);
-const GSAP_DIST = path.dirname(require.resolve('gsap/dist/gsap.min.js'));
-const VENDOR = ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js'];
 const ROOT = () => path.join(DIRS.out, '_preview');
 const SAMPLE = { photo: 'sample-photo.jpg', clip: 'sample-clip.mp4' };
 // The sample scenes name these files; the preview fills them with neutral generated media.
@@ -92,7 +88,7 @@ export async function templatePreview(project, templateId, { readOnly = false } 
   fs.mkdirSync(path.join(out, 'vendor'), { recursive: true });
   fs.mkdirSync(path.join(out, 'assets'), { recursive: true });
   fs.mkdirSync(path.join(out, 'clips'), { recursive: true });
-  for (const f of VENDOR) fs.copyFileSync(path.join(GSAP_DIST, f), path.join(out, 'vendor', f));
+  copyGsap(out);
   const media = await sampleMedia();
   const own = new Set(listAssets(project));
   // Every file the page asks for: the brand's own (logo, fonts), else the sample photo for an image.

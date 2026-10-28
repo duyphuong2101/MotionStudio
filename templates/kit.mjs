@@ -2,7 +2,7 @@
 // subtitles, scene show/hide, and the seek(t) / __studio / __ready contract the engine renders against.
 import { escapeHtml as h, jsonForScript, StudioError } from '../engine/core.mjs';
 import { paletteCss } from './shared.mjs';
-import { SUBTITLE_STYLES, SUBTITLE_FONTS, motionProfile } from '../engine/brand.mjs';
+import { SUBTITLE_STYLES, SUBTITLE_FONTS, REVEALS, brandEase, motionProfile } from '../engine/brand.mjs';
 import { marksToHtml } from '../engine/marks.mjs';
 import { glLayers, glBackdropHtml, glWipeHtml, glCss, glData, glJs, cutWindows } from './gl.mjs';
 import { hasModels, MODEL_HEAD, MODEL_WAIT, MODEL_JS } from './model3d.mjs';
@@ -281,6 +281,8 @@ function carryCuts() {
 // Helper sets that are their own string; every other profile entrance comes from ENTRANCE.
 const HELPERS = { cine: CINE_HELPERS, editorial: EDITORIAL_HELPERS };
 const helpersFor = (M) => HELPERS[M.entrance] ?? entranceJs(ENTRANCE[M.entrance]);
+/** Whether brand.reveal applies to a motion profile: only the plain entrance; the others reveal headings already. */
+export const revealable = (M) => !Object.hasOwn(HELPERS, M.entrance);
 
 // The scene show/hide block of build(), one entry per motion profile `cut`, written per scene with s, e, g, first, last.
 const CUTS = {
@@ -460,6 +462,51 @@ function shine(g, s, e) {
     for (const t of e - at > 3.4 ? [at, e - 1.4] : [at]) tl.fromTo(band, { x: -bw * 1.3, skewX: -20 }, { x: w + bw * 0.3, skewX: -20, duration: 0.8, ease: 'power2.inOut', immediateRender: false }, t);
   });
 }`;
+
+// brand.reveal: the plain entrance helpers with fadeUp renamed, and a fadeUp that splits a text-only heading with
+// SplitText first (D.reveal: chars rise one by one, lines rise out of their own masks). Anything else falls through.
+const revealHelpers = (helpers) => `${helpers.replace('const fadeUp = ', 'const fadeUpBase = ')}
+const revealHd = (el, at) => {
+  const text = el.textContent.trim();
+  if (el.children.length || el.dataset.count !== undefined || !text || text.length > 120) return false;
+  const lines = D.reveal === 'lines';
+  const sp = SplitText.create(el, lines ? { type: 'lines', mask: 'lines', linesClass: 'rl' } : { type: 'words,chars', wordsClass: 'rw', charsClass: 'rc' });
+  tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.01, ease: 'none', immediateRender: false }, at);
+  if (lines) tl.fromTo(sp.lines, { yPercent: 110 }, { yPercent: 0, duration: 0.75, ease: 'power4.out', stagger: 0.1, immediateRender: false }, at);
+  else tl.fromTo(sp.chars, { yPercent: 70, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.5, ease: X, stagger: Math.min(0.03, 0.6 / sp.chars.length), immediateRender: false }, at);
+  return true;
+};
+const fadeUp = (el, at, o = {}) => { if (el && el.classList.contains('hd') && revealHd(el, at)) return; fadeUpBase(el, at, o); };`;
+// A masked line keeps its descenders: the padding is taken back by a negative margin, so the line height stays.
+const REVEAL_CSS = `
+.rl-mask{padding:.06em 0 .16em;margin:-.06em 0 -.16em}`;
+
+// brand.confetti: a burst of brand-coloured pieces from each call-to-action button as it lands. Each piece flies on
+// Physics2D (position is worked out from the time alone, so any seek lands on the same frame) with its size, speed,
+// angle and spin from a sine hash of its index and the scene start, so every render is the same.
+const CONFETTI_N = 42;
+const CONFETTI_JS = String.raw`
+function confetti(g, s, e) {
+  const b = g.querySelector('.btn');
+  if (!b) return;
+  const at = Math.min(shownBy(b, g, s, e) + 0.05, e - 1.2);
+  if (at < s) return;
+  const gr = g.getBoundingClientRect(), br = b.getBoundingClientRect();
+  const box = document.createElement('div');
+  box.className = 'cft'; box.setAttribute('aria-hidden', 'true'); g.appendChild(box);
+  for (let i = 0; i < ${CONFETTI_N}; i++) {
+    const r = (n) => { const x = Math.sin(i * 91.7 + n * 47.3 + s * 13.1) * 43758.5453; return x - Math.floor(x); };
+    const p = document.createElement('i'), w = (8 + r(1) * 10) * U;
+    Object.assign(p.style, { background: D.confetti[i % D.confetti.length], width: w.toFixed(1) + 'px', height: (w * (0.4 + r(2) * 0.5)).toFixed(1) + 'px',
+      left: (br.left + br.width / 2 - gr.left).toFixed(1) + 'px', top: (br.top + br.height / 2 - gr.top).toFixed(1) + 'px' });
+    box.appendChild(p);
+    tl.fromTo(p, { opacity: 0 }, { opacity: 1, duration: 0.01, ease: 'none', immediateRender: false }, at);
+    tl.fromTo(p, { x: 0, y: 0, rotation: 0 }, { physics2D: { velocity: (700 + r(3) * 900) * U, angle: -90 + (r(4) - 0.5) * 110, gravity: 1800 * U }, rotation: (r(5) - 0.5) * 1440, duration: 1.6, ease: 'none', immediateRender: false }, at);
+    tl.to(p, { opacity: 0, duration: 0.4, ease: 'none' }, at + 1.2);
+  }
+}`;
+const CONFETTI_CSS = `
+.cft{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:6}.cft i{position:absolute;opacity:0;border-radius:2px}`;
 
 // brand.leaks: at every cut a warm glow (and one in the brand accent) flares across the frame, peaks on the cut
 // and fades. Directions and drift come from the cut's index, so every render is the same. D.leaks holds each cut's
@@ -646,6 +693,12 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
   const carry = !!M.carrier && brand.carry === true && !transparent && scenes.length > 1;
   // Parallax layer drift; a renderer whose scenes are one drawn surface (ui-story's app window) passes layers: false.
   const drift = !!M.layers && layers;
+  // Opt-in GSAP plugins, written into a page only when its brand asks: SplitText for brand.reveal (the profiles with
+  // the plain entrance only), CustomEase for brand.ease, Physics2D for brand.confetti.
+  const reveal = REVEALS.includes(brand.reveal) && revealable(M) ? brand.reveal : null;
+  const ease = brandEase(brand.ease);
+  const confetti = !!brand.confetti && !transparent && /class="btn[" ]/.test(body);
+  const plugins = [reveal && 'SplitText', ease && 'CustomEase', confetti && 'Physics2DPlugin'].filter(Boolean);
   const g = geometry(size);
   const BS = brand.subtitles || null;
   // A brand preset replaces every other subtitle look, so each clip of the brand reads the same.
@@ -683,7 +736,7 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
     if (caps) return caps[s.id].map(([a, b], k) => `<div class="subt${dark.has(s.id) ? ' subdark' : ''}" id="sub-${s.id}-${k}" data-lint><div class="sw">${P?.style === 'pill' ? '<i class="pl"></i>' : ''}${ws.slice(a, b + 1).map((w, i) => span(w, a + i)).join(' ')}</div></div>`).join('');
     return ws.length ? `<div class="subt${dark.has(s.id) ? ' subdark' : ''}" id="sub-${s.id}" data-lint><div class="sw">${ws.map(span).join(' ')}</div></div>` : '';
   }).join('') : '';
-  const data = { duration: timing.duration, W, H, U: g.U, land: g.land, port: g.port, scenes: sceneData, words: timing.words, stills, ink: c.ink, particle: rgb(c.primary2), ...(S ? { subs: { lit: S.lit, darkLit: S.darkLit } } : {}), ...(caps ? { caps } : {}), ...(GLL ? { gl: glData(GLL, c, cuts) } : {}), ...(leaks ? { leaks: cutWindows(cuts, LEAK_BEFORE, LEAK_AFTER) } : {}), ...(panel ? { cutPanel: cutWindows(cuts, PANEL_BEFORE, PANEL_AFTER).map((w, k) => [...w, scenes[k + 1].dark ? 1 : 0]) } : {}), ...extra };
+  const data = { duration: timing.duration, W, H, U: g.U, land: g.land, port: g.port, scenes: sceneData, words: timing.words, stills, ink: c.ink, particle: rgb(c.primary2), ...(S ? { subs: { lit: S.lit, darkLit: S.darkLit } } : {}), ...(caps ? { caps } : {}), ...(GLL ? { gl: glData(GLL, c, cuts) } : {}), ...(leaks ? { leaks: cutWindows(cuts, LEAK_BEFORE, LEAK_AFTER) } : {}), ...(panel ? { cutPanel: cutWindows(cuts, PANEL_BEFORE, PANEL_AFTER).map((w, k) => [...w, scenes[k + 1].dark ? 1 : 0]) } : {}), ...(reveal ? { reveal } : {}), ...(ease ? { ease } : {}), ...(confetti ? { confetti: [c.secondary, c.primary, c.primary2] } : {}), ...extra };
   // Pages with <video data-clip data-start data-end> (footage inside a motion scene) seek each clip with the page clock.
   // Written only when such a clip exists, so every other page stays byte for byte the same.
   const clipJs = /<video[^>]* data-clip/.test(body) ? `
@@ -751,7 +804,7 @@ ${css}${transparent ? '\nhtml,body,#stage{background:transparent!important}#bgc{
 .subt{left:${padX(70)};right:${padX(70)};bottom:${px(70)}}
 .sw,.subdark .sw{font-size:${px(g.port ? 50 : 40)};font-weight:700;color:rgba(255,255,255,.7);background:rgba(15,23,42,.72)}` : ''}${M.caps === 'lines' && !BS ? `
 .sw{line-height:1.25;border-radius:${px(10)};padding:${px(8)} ${px(24)} ${px(10)}}
-.sw span{color:#ffffff;opacity:.7}.sw span.hl{color:var(--secondary)}` : ''}${marks ? MARK_CSS : ''}${shines ? SHINE_CSS : ''}${leaks ? `
+.sw span{color:#ffffff;opacity:.7}.sw span.hl{color:var(--secondary)}` : ''}${marks ? MARK_CSS : ''}${shines ? SHINE_CSS : ''}${confetti ? CONFETTI_CSS : ''}${reveal === 'lines' ? REVEAL_CSS : ''}${leaks ? `
 #leak{position:absolute;inset:0;z-index:20;pointer-events:none;opacity:0;overflow:hidden}
 #leak i{position:absolute;left:50%;top:50%;width:${px(1500)};height:${px(1500)};margin:${px(-750)} 0 0 ${px(-750)};border-radius:50%}
 #leak i:first-child{background:radial-gradient(circle,rgba(255,170,90,.62) 0%,rgba(255,122,60,.3) 34%,rgba(255,96,64,0) 68%)}
@@ -767,21 +820,21 @@ ${css}${transparent ? '\nhtml,body,#stage{background:transparent!important}#bgc{
 <script src="vendor/gsap.min.js"></script>
 <script src="vendor/DrawSVGPlugin.min.js"></script>
 <script src="vendor/MorphSVGPlugin.min.js"></script>
-<script src="vendor/TextPlugin.min.js"></script>
+<script src="vendor/TextPlugin.min.js"></script>${plugins.map((p) => `\n<script src="vendor/${p}.min.js"></script>`).join('')}
 <script>
 const D = ${jsonForScript(data)};
-gsap.registerPlugin(DrawSVGPlugin, MorphSVGPlugin, TextPlugin);
+gsap.registerPlugin(DrawSVGPlugin, MorphSVGPlugin, TextPlugin);${plugins.length ? `\ngsap.registerPlugin(${plugins.join(', ')});` : ''}${ease ? "\nCustomEase.create('brand', D.ease);" : ''}
 const $ = (id) => document.getElementById(id);
 const U = D.U;
-const X = 'power3.out', XI = 'power2.in', XIO = 'power2.inOut';
+const X = ${ease ? "'brand'" : "'power3.out'"}, XI = 'power2.in', XIO = 'power2.inOut';
 const tl = gsap.timeline({ paused: true, defaults: { ease: X } });
 const fmt = (v, f, dec) => f === 'money' ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: dec ?? 2, maximumFractionDigits: dec ?? 2 })
   : f === 'pct' ? v.toFixed(dec ?? 1) + '%' : f === 'dec' ? v.toFixed(dec ?? 1) : Math.round(v).toLocaleString('en-US');
 const words = (id) => D.words.filter((w) => w.scene === id);
 const cue = (sc, frac) => { const ws = words(sc.id); if (!ws.length) return sc.start + 0.3 + frac * Math.max(0, sc.end - sc.start - 1); return ws[Math.min(ws.length - 1, Math.floor(frac * ws.length))].start; };
-${helpersFor(M)}
+${reveal ? revealHelpers(helpersFor(M)) : helpersFor(M)}
 const typeText = (el, at, dur) => { if (!el) return; el.textContent = ''; tl.to(el, { text: el.dataset.text, duration: dur, ease: 'none' }, at); };
-const draw = (els, at, dur = 1, o = {}) => { if (!els || (els.length === 0)) return; tl.fromTo(els, { drawSVG: '0%' }, { drawSVG: '100%', duration: dur, stagger: o.stagger ?? 0, ease: o.ease || 'power2.inOut', immediateRender: false }, at); };${marks || shines ? SHOWN_JS : ''}${marks ? MARK_JS : ''}${shines ? SHINE_JS : ''}${leaks ? LEAK_JS : ''}${panel ? PANEL_JS : ''}${veil ? VEIL_JS : ''}${carry ? CARRY_JS : ''}${drift ? LAYER_JS : ''}${bug ? SURFACE_JS : ''}${GLL ? glJs(GLL) : ''}
+const draw = (els, at, dur = 1, o = {}) => { if (!els || (els.length === 0)) return; tl.fromTo(els, { drawSVG: '0%' }, { drawSVG: '100%', duration: dur, stagger: o.stagger ?? 0, ease: o.ease || 'power2.inOut', immediateRender: false }, at); };${marks || shines || confetti ? SHOWN_JS : ''}${marks ? MARK_JS : ''}${shines ? SHINE_JS : ''}${confetti ? CONFETTI_JS : ''}${leaks ? LEAK_JS : ''}${panel ? PANEL_JS : ''}${veil ? VEIL_JS : ''}${carry ? CARRY_JS : ''}${drift ? LAYER_JS : ''}${bug ? SURFACE_JS : ''}${GLL ? glJs(GLL) : ''}
 
 ${js}
 
@@ -886,7 +939,8 @@ ${bug ? `    // Corner logo: the dark-surface logo on a dark scene, the light-su
 ` : ''}    const fn = KINDS[${kindKey}];
     if (fn) fn(sc, s, e, { last, first, i, g });${marks ? `
     if (g) drawMarks(sc, g, s, e);` : ''}${shines ? `
-    if (g) shine(g, s, e);` : ''}${drift ? `
+    if (g) shine(g, s, e);` : ''}${confetti ? `
+    if (g) confetti(g, s, e);` : ''}${drift ? `
     if (g) layerDrift(g, s, e);` : ''}
     if (g) preset(g, s);
   });${leaks ? '\n  lightLeaks();' : ''}${panel ? '\n  panelCuts();' : ''}${veil ? '\n  veilCuts();' : ''}

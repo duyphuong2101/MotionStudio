@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { DIRS, readJson } from '../engine/core.mjs';
-import { ffmpeg, probeMedia, videoInfo } from '../engine/media.mjs';
+import { ffmpeg, ffmpegReport, probeMedia, videoInfo } from '../engine/media.mjs';
 import {
   validateClipOptions, clipName, cutTimes, shotsFromCuts, lastCrop, barsFrom, maskFrame, maskExpr, maskArgs, clipGraph, clipArgs, tempo, searchWords,
   footageDir, footageImage, clipSidecar, analyseFootage, findWords, makeClip, previewFrame, forgetFootage, rhythmOf,
@@ -230,4 +231,36 @@ test('real footage: a hard cut is found, white bars detected, clips and sidecars
 
   forgetFootage(P, 'phone-wide.mp4');
   assert.ok(!fs.existsSync(clipSidecar(P, 'phone-wide.mp4')));
+});
+
+// A slower clip fills the frames between the source's: blended by default, by motion when asked (short clips only).
+test('slow clips: blend by default, motion or none on request, faster clips keep their shape', async () => {
+  const slow = opts({ in: 1, out: 4, speed: 0.5 });
+  assert.equal(slow.smooth, 'blend');
+  assert.ok(clipGraph(slow, INFO).includes('setpts=PTS/0.5,minterpolate=fps=30:mi_mode=blend,setsar=1'));
+  assert.ok(clipGraph(opts({ in: 1, out: 4, speed: 0.5, smooth: 'motion' }), INFO).includes('setpts=PTS/0.5,minterpolate=fps=30:mi_mode=mci,setsar=1'));
+  assert.ok(clipGraph(opts({ in: 1, out: 4, speed: 0.5, smooth: 'none' }), INFO).includes('setpts=PTS/0.5,setsar=1'), 'none repeats frames as before');
+  assert.ok(!('smooth' in opts({ in: 1, out: 4, speed: 2, smooth: 'motion' })), 'a faster clip has nothing to fill');
+  assert.throws(() => opts({ speed: 0.5, smooth: 'magic' }), /smooth must be blend, motion, none/);
+  assert.throws(() => opts({ in: 0, out: 6, speed: 0.25, smooth: 'motion' }), /up to 20 s after the speed change/);
+  const frame = clipArgs(slow, INFO, { src: 's.mp4', out: 'p.jpg', frame: true });
+  assert.ok(!frame.join(' ').includes('minterpolate'), 'the one-frame preview skips the fill');
+
+  // The filter runs: a 1 s source at half speed becomes 2 s with no repeated frame.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-slow-'));
+  try {
+    const src = path.join(dir, 's.mp4'), out = path.join(dir, 'o.mp4');
+    await ffmpeg(['-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=30:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', src], { timeoutMs: 60000 });
+    const small = { duration: 1, width: 320, height: 180, hasAudio: false };
+    const o = validateClipOptions({ in: 0, out: 1, speed: 0.5, width: 320, height: 180 }, small, 120);
+    await ffmpeg(clipArgs(o, small, { src, out }), { timeoutMs: 120000 });
+    const info = await probeMedia(out);
+    // It ends on the source's last frame, one source frame (1/15 s at half speed) short of 2 s.
+    assert.ok(Math.abs(info.duration - 2) <= 0.15, `${info.duration} s`);
+    const report = await ffmpegReport(['-i', out, '-vf', 'mpdecimate', '-f', 'null', '-']);
+    const kept = Number(/frame=\s*(\d+)/g.exec(report.split('\n').reverse().find((l) => /frame=\s*\d+/.test(l)))?.[1]);
+    assert.ok(kept > 50, `${kept} distinct frames of 60: repeated frames would leave about 30`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

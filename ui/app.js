@@ -2257,6 +2257,8 @@ async function openTranscript(project, asset) {
 }
 
 /* ---------------- footage: shots, transcript search, clips (ffmpeg on this computer) ---------------- */
+// Clip playback speeds, inside engine/footage.mjs SPEED (0.25-4).
+const CLIP_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 const CLIP_PRESETS = [['cover', 'Cover (fill the frame)'], ['band', 'Crop bottom captions'], ['blur-fill', 'Vertical to 16:9 blur-fill'], ['keep', 'Blur background, keep subject']];
 const CLIP_SIZES = [['1920x1080', '16:9 · 1920×1080'], ['1080x1920', '9:16 · 1080×1920'], ['1080x1080', '1:1 · 1080×1080']];
 const sec = (v) => Math.round(v * 100) / 100;
@@ -2289,6 +2291,10 @@ async function openShots(project, asset, onMade) {
     <div class="row"><div class="f" style="width:200px"><label for="sh-size">Output</label><select id="sh-size">${CLIP_SIZES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select></div>
       <div class="f" style="width:120px"><label for="sh-gain">Gain (dB)</label><input id="sh-gain" type="number" min="-24" max="12" step="0.5" value="0"></div>
       <label class="chk" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="sh-mute"> Mute</label></div>
+    <div class="row"><div class="f" style="width:160px"><label for="sh-speed">Speed</label><select id="sh-speed">${CLIP_SPEEDS.map((v) => `<option value="${v}"${v === 1 ? ' selected' : ''}>${v === 1 ? 'Normal (1×)' : `${v}×${v < 1 ? ' slower' : ' faster'}`}</option>`).join('')}</select></div>
+      <div class="f" id="sh-smoothrow" hidden style="width:300px"><label for="sh-smooth">Slow motion</label><select id="sh-smooth" aria-describedby="sh-smoothhint">
+        <option value="blend">Blend frames (quick)</option><option value="motion">Follow the motion (slow to make, up to 20 s)</option><option value="none">Repeat frames</option></select>
+        <span class="muted small hint" id="sh-smoothhint">A slower clip needs frames between the real ones. Blend mixes neighbours; Follow the motion draws new ones and can take a few minutes.</span></div></div>
     <div class="row"><div class="f" style="flex:1 1 260px"><label for="sh-name">New file name</label><input id="sh-name" class="mono" maxlength="80" value="${esc(`${stem}-clip.mp4`)}"></div>
       <label class="chk" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="sh-replace"> Replace existing</label></div>
     <img class="shotprev" id="sh-prev" alt="Preview frame at the In point" hidden>
@@ -2299,8 +2305,10 @@ async function openShots(project, asset, onMade) {
   let poll = 0;
   const shots = () => st?.shots || null;
   const drawLen = () => {
-    const a = Number($('#sh-in').value), b = Number($('#sh-out').value);
-    $('#sh-len').textContent = $('#sh-in').value && $('#sh-out').value && b > a ? `${sec(b - a)} s` : '';
+    const a = Number($('#sh-in').value), b = Number($('#sh-out').value), sp = Number($('#sh-speed').value) || 1;
+    // At another speed the clip lasts the span over the speed.
+    $('#sh-len').textContent = $('#sh-in').value && $('#sh-out').value && b > a ? `${sec(b - a)} s${sp !== 1 ? ` → ${sec((b - a) / sp)} s` : ''}` : '';
+    $('#sh-smoothrow').hidden = sp >= 1;
   };
   const setRange = (a, b) => {
     const end = shots()?.duration;
@@ -2358,6 +2366,8 @@ async function openShots(project, asset, onMade) {
       ...(p === 'keep' ? { keep: { cx: n('#sh-cx'), cy: n('#sh-cy'), rx: n('#sh-rx'), ry: n('#sh-ry') } } : {}),
       ...(d?.bars && $('#sh-bars').checked ? { crop: d.bars.crop } : {}),
       gainDb: n('#sh-gain') ?? 0, mute: $('#sh-mute').checked,
+      ...(n('#sh-speed') !== 1 ? { speed: n('#sh-speed') } : {}),
+      ...(n('#sh-speed') < 1 ? { smooth: $('#sh-smooth').value } : {}),
     };
   };
 
@@ -2366,6 +2376,7 @@ async function openShots(project, asset, onMade) {
   $('#sh-preset').addEventListener('change', drawPreset);
   $('#sh-in').addEventListener('input', drawLen);
   $('#sh-out').addEventListener('input', drawLen);
+  $('#sh-speed').addEventListener('change', drawLen);
   $('#sh-head').addEventListener('click', (e) => {
     if (e.target.id !== 'sh-run') return;
     busy(e.target, async () => {
@@ -2516,6 +2527,14 @@ async function renderBrand() {
       <span class="muted hint" id="br-carryhint">A short bar in the accent colour sits under each scene's kicker or heading and glides to the next one at every cut, so the film reads as one piece. Applies on the next prepare.</span></div>
     <div class="f"><label class="chk"><input type="checkbox" id="br-leaks" ${b.leaks ? 'checked' : ''} aria-describedby="br-leakshint"> Light leaks at cuts</label>
       <span class="muted hint" id="br-leakshint">A warm glow, with a touch of the accent colour, flares across the frame at every scene change and fades. Applies on the next prepare.</span></div>
+    <div class="f"><label class="chk"><input type="checkbox" id="br-confetti" ${b.confetti ? 'checked' : ''} aria-describedby="br-confettihint"> Confetti on the call to action</label>
+      <span class="muted hint" id="br-confettihint">A short burst of pieces in the brand colours flies from the call-to-action button as it lands. Applies on the next prepare.</span></div>
+    <div class="f" id="br-revealrow" style="max-width:360px"><label for="br-reveal">Heading reveal</label><select id="br-reveal" aria-describedby="br-revealhint">
+      ${[['', 'Whole heading'], ['chars', 'Letter by letter'], ['lines', 'Line by line, out of a mask']].map(([v, l]) => `<option value="${v}"${(b.reveal || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <span class="muted hint" id="br-revealhint">How headings come in. Cinematic and Editorial reveal headings word by word on their own. Applies on the next prepare.</span></div>
+    <div class="f" style="max-width:360px"><label for="br-ease">Movement curve</label><select id="br-ease" aria-describedby="br-easehint">
+      ${[['', "The motion style's own"], ['snappy', 'Snappy: fast start, quiet stop'], ['soft', 'Soft: eases in and out'], ['spring', 'Spring: overshoots a little, then settles']].map(([v, l]) => `<option value="${v}"${(b.ease || '') === v ? ' selected' : ''}>${l}</option>`).join('')}${b.ease && !['snappy', 'soft', 'spring'].includes(b.ease) ? `<option value="${esc(b.ease)}" selected>Custom curve (from brand.json)</option>` : ''}</select>
+      <span class="muted hint" id="br-easehint">The curve every move without its own curve follows, so the brand moves the same way in every video. Applies on the next prepare.</span></div>
     <div class="grid2"><div class="f"><label for="br-backdrop">Backdrop (WebGL)</label><select id="br-backdrop" aria-describedby="br-gfxhint">${[['', 'None'], ...Object.entries(BACKDROP_NAMES)].map(([v, l]) => `<option value="${v}"${(b.backdrop || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="f"><label for="br-wipe">Cut wipe (WebGL)</label><select id="br-wipe" aria-describedby="br-gfxhint">${[['', 'None'], ['liquid', 'Liquid wipe']].map(([v, l]) => `<option value="${v}"${(b.wipe || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
     <span class="muted hint" id="br-gfxhint">Drawn in the brand colours. The backdrop moves slowly behind every scene that has no background of its own; the wipe sweeps a band across the frame at every scene change. Applies on the next prepare.</span>
@@ -2531,6 +2550,8 @@ async function renderBrand() {
       <span class="muted mono" id="br-vnote" style="align-self:flex-end"></span></div>
     <div class="f"><label for="br-say">Say as</label><textarea id="br-say" rows="3" placeholder="AMAD = A M A D&#10;.NET = dot net" aria-describedby="br-sayhint">${esc(sayText(b.voice?.say))}</textarea>
       <span class="muted hint" id="br-sayhint">One word per line: the word as written, =, then what the voice says. Captions keep the written word. Applies on the next prepare.</span></div>
+    <div class="f"><label class="chk"><input type="checkbox" id="br-cleanup" ${b.voice?.cleanup ? 'checked' : ''} aria-describedby="br-cleanuphint"> Clean up recorded voice</label>
+      <span class="muted hint" id="br-cleanuphint">For a voice take recorded at home or on a phone: removes low rumble, steady background noise and harsh "s" sounds, and evens out the level. Leave it off for a studio recording. Applies on the next prepare.</span></div>
 
     <h3>Background music</h3>
     <div class="grid2"><div class="f"><label for="br-music">Track</label><select id="br-music">${musicOptions(b.music?.file || '')}</select></div>
@@ -2645,6 +2666,7 @@ async function renderBrand() {
     $('#br-motionhint').textContent = o.hint;
     $('#br-filmrow').hidden = !o.film;
     $('#br-carryrow').hidden = !o.carry;
+    $('#br-revealrow').hidden = !o.reveal;
   };
   $('#br-motion').addEventListener('change', drawMotion);
   drawMotion();
@@ -3002,11 +3024,14 @@ async function renderBrand() {
         colors: Object.fromEntries(COLORS.map(([k]) => [k, $(`#brc-${k}`).value])),
         palette,
         fonts: { ...b.fonts, display: $('#br-fd').value.trim(), body: $('#br-fb').value.trim(), googleFonts: $('#br-gf').value.trim(), files: fontFiles },
-        voice: { ...b.voice, tts: $('#br-tts').value, voice: $('#br-voice').value, speed: num('#br-speed', 'Voice speed', 0.6, 1.5), say: parseSay($('#br-say').value) ?? undefined },
+        voice: { ...b.voice, tts: $('#br-tts').value, voice: $('#br-voice').value, speed: num('#br-speed', 'Voice speed', 0.6, 1.5), say: parseSay($('#br-say').value) ?? undefined, cleanup: $('#br-cleanup').checked || undefined },
         motion: $('#br-motion').value,
         film: motionOpt($('#br-motion').value).film && !$('#br-film').checked ? false : undefined,
         shine: $('#br-shine').checked,
         leaks: $('#br-leaks').checked,
+        confetti: $('#br-confetti').checked || undefined,
+        reveal: motionOpt($('#br-motion').value).reveal && $('#br-reveal').value ? $('#br-reveal').value : undefined,
+        ease: $('#br-ease').value || undefined,
         carry: motionOpt($('#br-motion').value).carry && $('#br-carry').checked ? true : undefined,
         backdrop: $('#br-backdrop').value || undefined,
         wipe: $('#br-wipe').value || undefined,

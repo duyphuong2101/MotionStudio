@@ -38,6 +38,30 @@ const WEIGHT = (v) => Number.isInteger(v) && v >= 100 && v <= 900 && v % 100 ===
 // aurora curtains, topographic lines, or lit 3D shapes drifting past the camera) and a wipe over every cut.
 export const BACKDROPS = ['mesh', 'aurora', 'flow', 'shapes'];
 export const WIPES = ['liquid'];
+// brand.reveal: headings split into characters or masked lines by GSAP SplitText (templates/kit.mjs), on the
+// profiles whose entrance is the plain rise; cinematic and editorial reveal headings word by word already.
+export const REVEALS = ['chars', 'lines'];
+
+// A damped spring sampled into a CustomEase path: about 10 % overshoot, settled by the end (Motion's spring idea,
+// computed here rather than added as a dependency).
+function springPath(zeta = 0.6, omega = 11, steps = 40) {
+  const wd = omega * Math.sqrt(1 - zeta * zeta), pts = [];
+  for (let k = 1; k < steps; k++) {
+    const t = k / steps, y = 1 - Math.exp(-zeta * omega * t) * (Math.cos(wd * t) + ((zeta * omega) / wd) * Math.sin(wd * t));
+    pts.push(`${t.toFixed(3)},${y.toFixed(3)}`);
+  }
+  return `M0,0 L${pts.join(' L')} L1,1`;
+}
+// brand.ease: the curve for the default ease every plain move uses, a preset name or a CustomEase path from 0,0 to 1,1.
+export const EASES = {
+  snappy: 'M0,0 C0.2,0.9 0.3,1 1,1',
+  soft: 'M0,0 C0.45,0 0.2,1 1,1',
+  spring: springPath(),
+};
+const EASE_PATH = /^M0,0(?:\s*[CLS]?\s*-?\d*\.?\d+,-?\d*\.?\d+)+$/;
+const MAX_EASE_CHARS = 600;
+/** The CustomEase path of a brand ease, or null for the profile's own. */
+export const brandEase = (v) => (Object.hasOwn(EASES, v ?? '') ? EASES[v] : typeof v === 'string' && v.length <= MAX_EASE_CHARS && EASE_PATH.test(v.trim()) && /1,1$/.test(v.trim()) ? v.trim() : null);
 // Cut sounds (engine/library.mjs `SFX`) a brand plays at scene cuts, at `gainDb` (default SFX_GAIN_DB).
 // brand.voice.say: words the voice says differently, applied to TTS only (engine/tts.mjs spokenLine); captions keep the
 // script's words. A key is one word as written (".NET", "AMAD", "Niteco's"); a value is what to say instead.
@@ -151,6 +175,7 @@ export function validateBrand(input) {
   if (b.music?.duck != null && typeof b.music.duck !== 'boolean') errors.push('music.duck must be true or false');
   if (b.voice?.tts != null && !['kokoro', 'sapi', 'windows', 'none'].includes(String(b.voice.tts).toLowerCase())) errors.push('voice.tts must be kokoro, sapi or none');
   const say = sayMap(b.voice?.say, errors);
+  if (b.voice?.cleanup != null && typeof b.voice.cleanup !== 'boolean') errors.push('voice.cleanup must be true or false');
   for (const k of ['logo', 'logoDark']) {
     if (b[k] != null && b[k] !== '' && !IMAGE_ASSET.test(b[k])) errors.push(`${k} must be an image asset name (.png, .jpg, .webp, .svg)`);
   }
@@ -159,6 +184,11 @@ export function validateBrand(input) {
   const sfx = cutSfx(b.sfx, errors);
   if (b.logoBug != null && typeof b.logoBug !== 'boolean') errors.push('logoBug must be true or false');
   if (b.shine != null && typeof b.shine !== 'boolean') errors.push('shine must be true or false');
+  if (b.confetti != null && typeof b.confetti !== 'boolean') errors.push('confetti must be true or false');
+  if (b.reveal != null && b.reveal !== 'words' && !REVEALS.includes(b.reveal)) errors.push(`reveal must be words or one of ${REVEALS.join(', ')}`);
+  if (b.ease != null && b.ease !== '' && b.ease !== 'profile' && !brandEase(b.ease)) {
+    errors.push(`ease must be ${Object.keys(EASES).join(', ')} or a curve from "M0,0" to "1,1" (C, L or S points, up to ${MAX_EASE_CHARS} characters)`);
+  }
   if (b.leaks != null && typeof b.leaks !== 'boolean') errors.push('leaks must be true or false');
   if (b.film != null && typeof b.film !== 'boolean') errors.push('film must be true or false');
   if (b.carry != null && typeof b.carry !== 'boolean') errors.push('carry must be true or false');
@@ -183,6 +213,9 @@ export function validateBrand(input) {
     ...(subtitles ? { subtitles } : {}),
     ...(b.logoBug ? { logoBug: true } : {}),
     ...(b.shine ? { shine: true } : {}),
+    ...(b.confetti ? { confetti: true } : {}),
+    ...(REVEALS.includes(b.reveal) ? { reveal: b.reveal } : {}),
+    ...(brandEase(b.ease) ? { ease: Object.hasOwn(EASES, b.ease) ? b.ease : b.ease.trim() } : {}),
     ...(b.leaks ? { leaks: true } : {}),
     ...(b.motion != null && b.motion !== 'standard' ? { motion: b.motion } : {}),
     ...(motionProfile(b).bg === 'grain' && b.film === false ? { film: false } : {}),
@@ -193,6 +226,7 @@ export function validateBrand(input) {
       tts: String(b.voice?.tts || 'kokoro').slice(0, 20), voice: String(b.voice?.voice || '').slice(0, 40),
       speed: Math.min(1.5, Math.max(0.6, Number(b.voice?.speed) || 1)), lang: String(b.voice?.lang || 'en').slice(0, 8),
       ...(say ? { say } : {}),
+      ...(b.voice?.cleanup ? { cleanup: true } : {}),
     },
     music: { file: b.music?.file || null, gainDb: gain, ...(b.music?.duck ? { duck: true } : {}) },
     ...(sfx ? { sfx } : {}),

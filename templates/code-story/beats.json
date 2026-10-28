@@ -6,7 +6,7 @@
     "kinds": {
       "title": "Opening card on a dark terminal-style frame.",
       "code": "A code listing in an editor window; chosen lines light up while the voice talks about them.",
-      "diff": "Before and after code: removed lines strike through, added lines open in place, like a pull request.",
+      "diff": "Before and after code: removed lines strike through, added lines open in place, and a line that only changed shows its changed words, like a pull request.",
       "tree": "The files a change touched, each with green and red bars for lines added and removed.",
       "terminal": "Commands typed into a terminal, then their output: test runs, builds, installs.",
       "checklist": "A checklist that types itself and ticks each item: release notes, steps done.",
