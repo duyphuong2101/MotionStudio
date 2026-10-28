@@ -16,6 +16,7 @@ Brief-to-video tool. A director (Claude Code on a company seat, started by a per
 - `node engine/cli.mjs help` — engine commands
 - `npm test` — unit tests (the only verification gate; there is no build)
 - `/studio run [project/job …]`, `/studio status` — the Director, in any agent: Claude Code (skill `studio`), Cursor (`.cursor/commands/studio.md`), GitHub Copilot (`.github/prompts/studio.prompt.md`), Google Antigravity (`.agents/workflows/studio.md`). All follow one skill; edit `.claude/skills/studio/SKILL.md` and run `node .ai/scripts/sync-director-prompt.js`. Never run `node engine/cli.mjs approve`, `render` or `sequence` for the person.
+- Any other coding agent: a plain request such as "run the Motion Studio director on `<project>/<job>`" means read `.agents/skills/studio/SKILL.md` and follow it, with actor `<tool>-agent` (e.g. `codex-agent`).
 
 ## Docs
 `.ai/docs/conventions.md` (rules, source of truth), `.ai/docs/architecture.md`, `.ai/docs/file-index.md`, `.ai/docs/common-patterns.md`.

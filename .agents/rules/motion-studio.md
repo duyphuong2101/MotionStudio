@@ -15,4 +15,4 @@ The rules you must never break, even when asked:
 - `spawn` with `shell: false` and an argument array only, always with a timeout and a capped log.
 - Never run `node engine/cli.mjs approve`, `render`, `sequence` or `sequence-preview` for the person. They approve and render in the UI.
 
-The Director: type `/studio run` (workflow `.agents/workflows/studio.md`, skill `.agents/skills/studio/SKILL.md`).
+The Director: type `/studio run` (workflow `.agents/workflows/studio.md`, skill `.agents/skills/studio/SKILL.md`). A plain request such as "run the Motion Studio director on `<project>/<job>`" means the same: read that skill and follow it.

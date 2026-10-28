@@ -9,7 +9,7 @@ import { countRun, usage, countUse, readPause } from '../caps.mjs';
 import { redact, flatLine } from '../http.mjs';
 import { runJob } from './loop.mjs';
 import { toolsFor } from './tools.mjs';
-import { systemPrompt, contextMessage } from './prompt.mjs';
+import { jobPrompt } from './prompt.mjs';
 import * as openaiChat from './adapters/openai-chat.mjs';
 import * as anthropic from './adapters/anthropic.mjs';
 
@@ -110,7 +110,6 @@ export function startApiRun(d, providers, { backend, plan, prompt, project, by, 
   };
 
   async function body() {
-    const system = systemPrompt({ provider, d, vision: backend.vision });
     const hosts = plan.brand.sources?.allowedHosts || [];
     const runEnd = Date.now() + minutes * 60000;
     for (const q of plan.jobs) {
@@ -118,8 +117,10 @@ export function startApiRun(d, providers, { backend, plan, prompt, project, by, 
       let r;
       try {
         const tools = toolsFor({ project, job: q.id, by: who, hosts, g, runPrepare: prepare, fetch, vision: backend.vision, signal: ac.signal });
+        // Per job: a quick brief's context gets the outline rules, any other the full-script rules.
+        const { system, context } = jobPrompt(project, q.id, { provider, d, vision: backend.vision });
         r = await runJob({
-          adapter, provider, model: q.model, key, tools, system, context: contextMessage(project, q.id), g, job: q.id,
+          adapter, provider, model: q.model, key, tools, system, context, g, job: q.id,
           deadline: Math.min(Date.now() + d.jobTimeoutMinutes * 60000, runEnd), log: say, signal: ac.signal, onCall, fetch,
         });
       } catch (err) {

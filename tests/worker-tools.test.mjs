@@ -57,7 +57,7 @@ test('checkArgs refuses unknown, missing, wrongly typed and off-enum arguments',
   const s = tool(ctx(), 'write_draft').schema;
   assert.equal(checkArgs(s, { kind: 'source', content: {} }), null);
   assert.equal(checkArgs(s, {}), 'needs kind and content');
-  assert.equal(checkArgs(s, { kind: 'render', content: {} }), 'needs kind as one of source, script');
+  assert.equal(checkArgs(s, { kind: 'render', content: {} }), 'needs kind as one of source, script, outline');
   assert.equal(checkArgs(s, { kind: 'source', content: [] }), 'needs content as an object');
   assert.equal(checkArgs(s, { kind: 'source', content: {}, project: 'x' }), 'got an unknown argument project');
   assert.equal(checkArgs(s, { kind: 'source', content: {}, constructor: 1 }), 'got an unknown argument constructor');
@@ -91,6 +91,30 @@ test('write_draft and commit of a valid source keep the job in scripting', async
   assert.deepEqual(await call(ctx(), 'commit', { kind: 'source' }), { status: 'scripting', kept: [] });
   assert.deepEqual(readJson(jobFile(P, ID, 'source.json')), { ...SOURCE, locks: {} });
   assert.ok(!fs.existsSync(jobFile(P, ID, 'source.draft.json')));
+});
+
+test('quick mode: write_draft, commit and read_job_file take the outline, within maxDraftBytes', async () => {
+  fresh();
+  await call(ctx(), 'claim');
+  const source = { name: 'Acme', bullets: [{ text: 'Ships in a day', ref: 'brief' }, { text: 'Free returns for 30 days', ref: 'brief' }] };
+  await call(ctx(), 'write_draft', { kind: 'source', content: source });
+  await call(ctx(), 'commit', { kind: 'source' });
+  const outline = {
+    headline: { text: 'Acme ships fast' },
+    points: [{ label: 'Fast', text: 'Ships in a day', tag: '1 day', source: 'bullets[0]' }, { label: 'Free returns', text: 'Free returns for 30 days', source: 'bullets[1]' }],
+    cta: { text: 'Order today', button: 'Shop now' },
+  };
+  assert.match((await call(ctx(), 'write_draft', { kind: 'outline', content: { ...outline, pad: 'x'.repeat(300 * 1024) } })).error, /The outline draft is \d+ bytes, over .*maxDraftBytes/);
+  assert.ok(!fs.existsSync(jobFile(P, ID, 'outline.draft.json')));
+  const w = await call(ctx(), 'write_draft', { kind: 'outline', content: outline });
+  assert.equal(w.bytes, fs.statSync(jobFile(P, ID, 'outline.draft.json')).size);
+  assert.deepEqual(await call(ctx(), 'read_job_file', { name: 'outline.draft.json' }), outline);
+  const r = await call(ctx(), 'commit', { kind: 'outline' });
+  assert.deepEqual([r.status, r.kept, r.repairs], ['scripted', [], undefined]);
+  assert.deepEqual(r.warnings, ['points[0].tag is not shown by explainer; ignored']);
+  assert.equal(r.notes[0], 'look calm (no mood given)');
+  assert.deepEqual(await call(ctx(), 'read_job_file', { name: 'outline.json' }), outline);
+  assert.equal((await call(ctx(), 'read_job_file', { name: 'script.json' })).generated, 'outline');
 });
 
 test('commit of an invalid draft answers the validation text and leaves the status alone', async () => {

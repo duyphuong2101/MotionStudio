@@ -203,6 +203,7 @@ whichever template leads. `dark` reaches the page only when a `subs` style is se
 
 - Two Director backends behind one button: the seat (Claude Code started by a person) and the API worker (`server/worker/`, plan `.ai/plans/api-director.md`), chosen once per click by `config/providers.json` → `default` and whether that provider's `keyEnv` is set. Keys live in env vars or the gitignored root `.env` only.
 - Caps: `director.maxJobsPerRun`, `director.jobTimeoutMinutes`. The director never renders or approves.
+- One set of rules for every Director, in three files under `server/worker/`: `director-prompt.md` (shared: source, language, storyboard, notes), `director-script.md` (the full script) and `director-quick.md` (quick mode: the outline). They name actions, never commands. `.ai/scripts/sync-director-prompt.js` copies each between its own markers in `.claude/skills/studio/SKILL.md`, whose actions table maps them to CLI commands, then copies the skill to `.cursor/` and `.agents/`. The skill's run loop writes an outline when the context has a `quick` block, else a script. The API worker builds its system prompt per job (`jobPrompt` in `server/worker/prompt.mjs`): its header, the shared rules and the quick rules when the job's context is a quick context, else the script rules; its `write_draft`, `commit` and `read_job_file` tools take the outline under the same caps. Any coding agent that reads `AGENTS.md` takes a plain "run the Motion Studio director on `<project>/<job>`" to the `.agents` skill, with actor `<tool>-agent`.
 
 ## Build, run, CI
 

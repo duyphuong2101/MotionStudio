@@ -61,7 +61,7 @@ Cursor mirrors them in `.cursor/agents/` (plus `senior-dev-deep`).
 
 ## Other coding agents
 
-The Director runs in any agent a person types `/studio run` into. Each one reads the same skill and its own entry file:
+The Director runs in any agent a person types `/studio run` (or the plain request) into. Each one reads the same skill and its own entry file:
 
 Approval is UI-only for every agent: `node engine/cli.mjs approve` refuses (`tests/cli-approve.test.mjs`), and render needs that approval. The last column is the extra check before `render` or `sequence`.
 
@@ -71,8 +71,11 @@ Approval is UI-only for every agent: `node engine/cli.mjs approve` refuses (`tes
 | Cursor | `AGENTS.md`, `.cursor/rules/` | `.cursor/commands/studio.md` | `.cursor/skills/studio/` | `.cursor/hooks/ask-before-render.js` |
 | GitHub Copilot | `.github/copilot-instructions.md` | `.github/prompts/studio.prompt.md` | `.agents/skills/studio/` | `.vscode/settings.json` → `chat.tools.terminal.autoApprove` |
 | Google Antigravity | `.agents/rules/motion-studio.md` (+ `AGENTS.md` on versions that read it) | `.agents/workflows/studio.md` | `.agents/skills/studio/` | none in the repo (optional: the terminal deny list in Antigravity's settings) |
+| Any other agent (Codex, Windsurf, Gemini CLI, Zed, …) | `AGENTS.md` | a plain request: "run the Motion Studio director on `<project>/<job>`" | `.agents/skills/studio/` | none in the repo: the skill's "Outside the seat" rules |
 
-Outside the seat the Director runs on that tool's own model and account; the caps are the ones the skill states (`director.maxJobsPerRun` through `list --queued`, two fix rounds, one run at a time). `tests/worker-prompt.test.mjs` fails when a skill copy drifts.
+A plain request needs no command file: `AGENTS.md` says it means "read `.agents/skills/studio/SKILL.md` and follow it", with actor `<tool>-agent` (e.g. `codex-agent`). The skill's three generated blocks (shared, full script, quick mode) come from `server/worker/director-*.md` through `node .ai/scripts/sync-director-prompt.js`.
+
+Outside the seat the Director runs on that tool's own model and account; the caps are the ones the skill states (`director.maxJobsPerRun` through `list --queued`, two fix rounds, one run at a time). `tests/worker-prompt.test.mjs` fails when a skill copy or a rules block drifts.
 
 ## Commands
 

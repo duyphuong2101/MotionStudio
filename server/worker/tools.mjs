@@ -1,4 +1,5 @@
-// The API worker's tools: bound to one project and job, writes only the two draft files, never render or approve.
+// The API worker's tools: bound to one project and job, writes only the draft files (source, script or outline),
+// never render or approve.
 import fs from 'node:fs';
 import path from 'node:path';
 import { StudioError, readJson, writeJson, assertFileName, within } from '../../engine/core.mjs';
@@ -6,9 +7,10 @@ import { jobDir, jobFile, getStatus, profileDir } from '../../engine/jobs.mjs';
 import { claim, commit, fail } from '../../engine/pipeline.mjs';
 import { fetchPage } from './fetch-page.mjs';
 
-const KINDS = ['source', 'script'];
+// `outline` is quick mode: the commit expands it into the script (engine/quick.mjs).
+const KINDS = ['source', 'script', 'outline'];
 const KINDS_IMAGE = ['still', 'asset'];
-const JOB_FILES = ['source.json', 'script.json', 'status.json', 'source.draft.json', 'script.draft.json', 'timing.json'];
+const JOB_FILES = ['source.json', 'script.json', 'outline.json', 'status.json', 'source.draft.json', 'script.draft.json', 'outline.draft.json', 'timing.json'];
 // A claimed job, or one the Director is fixing after prepare; never queued, preparing, approved, rendering or done.
 const WRITABLE = ['scripting', 'scripted', 'dirty', 'awaiting_review', 'error'];
 const IMAGE_RE = /\.(png|jpe?g|webp)$/i;
@@ -114,7 +116,7 @@ export function toolsFor(ctx) {
       }],
     ['read_job_file', "Read one of this job's files as JSON.", schema({ name: { type: 'string', enum: JOB_FILES } }, ['name']),
       ({ name }) => readJson(jobFile(project, job, name), null) ?? { error: `No ${name} yet` }],
-    ['write_draft', 'Write the whole source or script draft. Commit it next.', schema({ kind: { type: 'string', enum: KINDS }, content: { type: 'object', description: 'The full source.json or script.json document' } }, ['kind', 'content']),
+    ['write_draft', 'Write the whole source, script or outline draft. Commit it next.', schema({ kind: { type: 'string', enum: KINDS }, content: { type: 'object', description: 'The full source.json, script.json or outline document' } }, ['kind', 'content']),
       ({ kind, content }) => {
         assertWritable(project, job);
         const bytes = Buffer.byteLength(JSON.stringify(content, null, 2) + '\n');
@@ -122,11 +124,13 @@ export function toolsFor(ctx) {
         writeJson(jobFile(project, job, `${kind}.draft.json`), content);
         return { bytes };
       }],
-    ['commit', 'Validate the draft and commit it. Locked fields a person edited are kept; mechanical repairs (ids, icons, enum values, extra scenes) are listed.', schema({ kind: { type: 'string', enum: KINDS } }, ['kind']),
+    ['commit', 'Validate the draft and commit it; an outline is expanded into the script first. Locked fields a person edited are kept; mechanical repairs (ids, icons, enum values, extra scenes) are listed.', schema({ kind: { type: 'string', enum: KINDS } }, ['kind']),
       ({ kind }) => {
         assertWritable(project, job);
-        const { kept, repairs } = commit(project, job, kind, by);
-        return { status: getStatus(project, job).status, kept, ...(repairs.length ? { repairs } : {}) };
+        // An outline commit also answers `warnings` and `notes` (engine/quick.mjs).
+        const { kept, repairs, warnings = [], notes = [] } = commit(project, job, kind, by);
+        const listed = Object.entries({ repairs, warnings, notes }).filter(([, list]) => list.length);
+        return { status: getStatus(project, job).status, kept, ...Object.fromEntries(listed) };
       }],
     ['prepare', `Build the storyboard: timing, composition, stills and lint. At most ${g.maxPrepareRounds} times per job.`, schema(),
       async () => {

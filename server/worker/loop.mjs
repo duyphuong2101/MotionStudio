@@ -70,7 +70,7 @@ function toolLine(name, args, result, failed) {
   switch (name) {
     case 'fetch_page': return `> fetch_page ${cut(args.url, MAX_ARG)}${result.truncated ? ' (cut at maxPageChars)' : ''}`;
     case 'write_draft': return `> write_draft ${args.kind} (${num(result.bytes)} bytes)`;
-    case 'commit': return `> commit ${args.kind}: ${result.status}${result.kept?.length ? `, kept ${plural(result.kept.length, 'locked field')}` : ''}${result.repairs?.length ? `, ${plural(result.repairs.length, 'repair')}: ${cut(result.repairs.join('; '), MAX_ERROR)}` : ''}`;
+    case 'commit': return `> commit ${args.kind}: ${result.status}${result.kept?.length ? `, kept ${plural(result.kept.length, 'locked field')}` : ''}${result.repairs?.length ? `, ${plural(result.repairs.length, 'repair')}: ${cut(result.repairs.join('; '), MAX_ERROR)}` : ''}${result.warnings?.length ? `, ${plural(result.warnings.length, 'warning')}` : ''}`;
     case 'prepare': return `> prepare: ${result.status}${result.lint ? `, ${plural(result.lint.errors, 'error')}, ${plural(result.lint.warnings, 'warning')}` : ''}${result.message ? `: ${cut(result.message, MAX_ERROR)}` : ''}`;
     case 'read_job_file': return `> read_job_file ${args.name}`;
     case 'read_image': return `> read_image ${args.kind} ${args.name}`;
