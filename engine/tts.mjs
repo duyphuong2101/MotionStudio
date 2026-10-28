@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { ROOT, StudioError, round, readJson, writeJson, keyFreeEnv } from './core.mjs';
 import { ffmpeg, killTree, mediaTimeoutMs } from './media.mjs';
-import { wordsOf } from './script.mjs';
+import { wordsOf, stressAt } from './script.mjs';
 import { resolvePace, sceneGaps } from './timing.mjs';
 import { kokoroStatus, kokoroSpeak, kokoroVoices, writeWav, voicedSpan, voicedPauses, SAMPLE_RATE as KOKORO_RATE } from './tts/kokoro.mjs';
 
@@ -319,6 +319,27 @@ export function spokenLine(text, say) {
   return hit ? { text: spoken.join(' '), groups } : { text, groups: null };
 }
 
+// A scene's `stress` phrases are said this much louder, with short ramps so the step never clicks.
+export const STRESS_DB = 4;
+const STRESS_RAMP = 0.06;
+
+/** The stressed spans of one line, in its clip's own seconds: from the first word's start to where the next word starts. */
+export function stressSpans(vo, stress, said, end) {
+  if (!Array.isArray(stress)) return [];
+  return stress.map((p) => stressAt(vo, p)).filter(Boolean).map(([i, j]) => ({
+    a: round(Math.max(0, said[i].at - STRESS_RAMP)), b: round((said[j + 1]?.at ?? end) + STRESS_RAMP / 2),
+  }));
+}
+
+/** ffmpeg volume step for stressed spans (empty without any): gain 1 outside, STRESS_DB inside, linear ramps. */
+export function stressFilter(spans) {
+  if (!spans?.length) return '';
+  const g = (10 ** (STRESS_DB / 20) - 1).toFixed(3);
+  const r = STRESS_RAMP;
+  const terms = spans.map(({ a, b }) => `clip((t-${a})/${r},0,1)*clip((${b}-t)/${r},0,1)`).join('+');
+  return `volume=volume='1+${g}*(${terms})':eval=frame,`;
+}
+
 /**
  * Real timing from speech: each scene lasts at least its spoken line plus lead/tail, words start
  * where the voice says them, and voice.wav is every line placed at its scene's lead-in.
@@ -337,7 +358,16 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     const rate = Math.max(-10, Math.min(10, Math.round((speed - 1) * 20)));
     const cache = path.join(jobDirPath, 'tts');
     fs.mkdirSync(cache, { recursive: true });
-    speak = (sc, text, groups) => (provider === 'kokoro' ? speakKokoro(cache, text, voice, speed, innerBoundaries(groups)) : speakLine(cache, text, voice, rate));
+    const cast = brand.voice?.cast || {};
+    speak = (sc, text, groups) => {
+      let v = voice;
+      if (sc.speaker) {
+        if (!Object.hasOwn(cast, sc.speaker)) throw new StudioError(`${sc.id}: speaker "${sc.speaker}" is not in the brand's voice cast (${Object.keys(cast).join(', ') || 'none set'})`, 400);
+        v = cast[sc.speaker];
+        if (!VOICE_RE.test(v)) throw new StudioError(`brand.voice.cast.${sc.speaker} has unexpected characters`, 400);
+      }
+      return provider === 'kokoro' ? speakKokoro(cache, text, v, speed, innerBoundaries(groups)) : speakLine(cache, text, v, rate);
+    };
   }
 
   const scenes = [];
@@ -360,7 +390,6 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     const spoken = span ? at - t + span.end : lead + line.seconds;
     const raw = fixed?.[sc.id] ?? Math.max(minScene, spoken + tail);
     const dur = snap && fixed?.[sc.id] === undefined ? snap(t + raw) - t : raw;
-    if (line.wav) clips.push({ wav: line.wav, at });
     const tokens = wordsOf(text);
     let said = line.words.length ? line.words : tokens.map((w, i, a) => ({ w, at: (line.seconds * i) / a.length }));
     // A word said as several ("A M A D") starts where its first spoken word does.
@@ -370,6 +399,7 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     }
     // The engine reports bare words; show the script's own tokens (with punctuation) when they line up one to one.
     if (said.length === tokens.length) said = said.map((x, i) => ({ ...x, w: tokens[i] }));
+    if (line.wav) clips.push({ wav: line.wav, at, stress: said.length === tokens.length ? stressSpans(text, sc.stress, said, span ? span.end : line.seconds) : [] });
     said.forEach((x, i) => {
       const next = said[i + 1]?.at ?? (span ? span.end : line.seconds);
       words.push({ w: x.w, start: round(Math.max(t, at + x.at)), end: round(at + Math.max(x.at + 0.05, next - 0.03)), scene: sc.id });
@@ -383,8 +413,10 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     const args = ['-y'];
     for (const c of clips) args.push('-i', c.wav);
     const head = (c) => (c.at < 0 ? `atrim=start=${(-c.at).toFixed(3)},asetpts=PTS-STARTPTS,` : '');
-    const chains = clips.map((c, i) => `[${i}:a]aresample=48000,${head(c)}adelay=${Math.round(Math.max(0, c.at) * 1000)}:all=1[a${i}]`);
-    const mix = `${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:duration=longest:normalize=0,apad,atrim=0:${duration}[out]`;
+    const chains = clips.map((c, i) => `[${i}:a]${stressFilter(c.stress)}aresample=48000,${head(c)}adelay=${Math.round(Math.max(0, c.at) * 1000)}:all=1[a${i}]`);
+    // A louder phrase may peak above full scale: only then a limiter keeps it clean.
+    const limit = clips.some((c) => c.stress.length) ? 'alimiter=limit=0.97:level=false,' : '';
+    const mix = `${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:duration=longest:normalize=0,${limit}apad,atrim=0:${duration}[out]`;
     args.push('-filter_complex', `${chains.join(';')};${mix}`, '-map', '[out]', '-ac', '1', '-ar', '48000', out);
     await ffmpeg(args, { timeoutMs: mediaTimeoutMs(duration) });
   }

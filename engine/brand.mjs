@@ -64,9 +64,9 @@ const MAX_EASE_CHARS = 600;
 export const brandEase = (v) => (Object.hasOwn(EASES, v ?? '') ? EASES[v] : typeof v === 'string' && v.length <= MAX_EASE_CHARS && EASE_PATH.test(v.trim()) && /1,1$/.test(v.trim()) ? v.trim() : null);
 // Cut sounds (engine/library.mjs `SFX`) a brand plays at scene cuts, at `gainDb` (default SFX_GAIN_DB).
 // brand.voice.say: words the voice says differently, applied to TTS only (engine/tts.mjs spokenLine); captions keep the
-// script's words. A key is one word as written (".NET", "AMAD", "Niteco's"); a value is what to say instead.
+// script's words. A key is one word as written (".NET", "AMAD", "Niteco's", "A/B"); a value is what to say instead.
 export const MAX_SAY = 30;
-const SAY_KEY = /^[A-Za-z0-9.+#&'’_-]{1,30}$/;
+const SAY_KEY = /^[A-Za-z0-9.+#&'’_\/-]{1,30}$/;
 const SAY_VALUE = /^[A-Za-z0-9 .,'’-]{1,60}$/;
 function sayMap(raw, errors) {
   if (raw == null) return null;
@@ -74,10 +74,27 @@ function sayMap(raw, errors) {
   const entries = Object.entries(raw);
   if (entries.length > MAX_SAY) errors.push(`voice.say holds at most ${MAX_SAY} words`);
   for (const [k, v] of entries) {
-    if (!SAY_KEY.test(k)) errors.push(`voice.say: "${k}" must be one word (letters, digits, . + # & ' _ -)`);
+    if (!SAY_KEY.test(k)) errors.push(`voice.say: "${k}" must be one word (letters, digits, . + # & ' _ / -)`);
     if (typeof v !== 'string' || !SAY_VALUE.test(v.trim())) errors.push(`voice.say: what to say for "${k}" must be 1-60 letters, digits, spaces or . , ' -`);
   }
   return entries.length ? Object.fromEntries(entries.map(([k, v]) => [k, String(v).trim()])) : null;
+}
+
+// brand.voice.cast: more voices for one video, by name ({ "numbers": "am_michael" }); a scene's `speaker` picks one
+// (engine/tts.mjs speakScript), every other scene keeps voice.voice.
+export const MAX_CAST = 4;
+const CAST_NAME = /^[a-z][a-z0-9-]{0,19}$/;
+const CAST_VOICE = /^[A-Za-z0-9 _()-]{1,60}$/;
+function castMap(raw, errors) {
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) { errors.push('voice.cast must map a speaker name to a voice'); return null; }
+  const entries = Object.entries(raw);
+  if (entries.length > MAX_CAST) errors.push(`voice.cast holds at most ${MAX_CAST} speakers`);
+  for (const [k, v] of entries) {
+    if (!CAST_NAME.test(k)) errors.push(`voice.cast: speaker "${k}" must be lowercase letters, digits and dashes`);
+    if (typeof v !== 'string' || !CAST_VOICE.test(v)) errors.push(`voice.cast: the voice for "${k}" has unexpected characters`);
+  }
+  return entries.length ? Object.fromEntries(entries.map(([k, v]) => [k, String(v)])) : null;
 }
 
 export const CUT_SOUNDS = ['whoosh', 'hit', 'riser', 'click', 'none'];
@@ -175,6 +192,7 @@ export function validateBrand(input) {
   if (b.music?.duck != null && typeof b.music.duck !== 'boolean') errors.push('music.duck must be true or false');
   if (b.voice?.tts != null && !['kokoro', 'sapi', 'windows', 'none'].includes(String(b.voice.tts).toLowerCase())) errors.push('voice.tts must be kokoro, sapi or none');
   const say = sayMap(b.voice?.say, errors);
+  const cast = castMap(b.voice?.cast, errors);
   if (b.voice?.cleanup != null && typeof b.voice.cleanup !== 'boolean') errors.push('voice.cleanup must be true or false');
   for (const k of ['logo', 'logoDark']) {
     if (b[k] != null && b[k] !== '' && !IMAGE_ASSET.test(b[k])) errors.push(`${k} must be an image asset name (.png, .jpg, .webp, .svg)`);
@@ -226,6 +244,7 @@ export function validateBrand(input) {
       tts: String(b.voice?.tts || 'kokoro').slice(0, 20), voice: String(b.voice?.voice || '').slice(0, 40),
       speed: Math.min(1.5, Math.max(0.6, Number(b.voice?.speed) || 1)), lang: String(b.voice?.lang || 'en').slice(0, 8),
       ...(say ? { say } : {}),
+      ...(cast ? { cast } : {}),
       ...(b.voice?.cleanup ? { cleanup: true } : {}),
     },
     music: { file: b.music?.file || null, gainDb: gain, ...(b.music?.duck ? { duck: true } : {}) },

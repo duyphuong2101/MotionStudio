@@ -11,6 +11,8 @@ const CHAR_EM = 0.64, LV_GAP = 26;
 const valueText = (v, f, dec) => (f === 'money' ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
   : f === 'pct' ? v.toFixed(dec) + '%' : f === 'dec' ? v.toFixed(dec) : Math.round(v).toLocaleString('en-US'));
 const tone = (sc) => (sc.theme === 'dark' ? { dark: true } : {});
+// `pace: focus`: the whole chart, text included, is in place within 2 s, so it holds while the voice reads it.
+const focus = (sc) => (sc.pace === 'focus' ? { focus: true } : {});
 // A scene's `tone` colours its counted numbers: up green, down red.
 const toneClass = (sc) => (sc.tone === 'up' ? ' tup' : sc.tone === 'down' ? ' tdn' : '');
 
@@ -82,7 +84,7 @@ export function parts({ brand, script, size }) {
         <div class="big${toneClass(sc)}"><b id="${id}-v" data-count="${num(sc.value)}" data-format="${h(f)}" data-dec="${dec}">0</b>${sc.unit ? `<small>${h(sc.unit)}</small>` : ''}</div>
         ${ch !== null ? `<div class="chg ${ch >= 0 ? 'up' : 'dn'}" id="${id}-chg">${ch >= 0 ? '▲' : '▼'} ${Math.abs(ch).toFixed(1)}%</div>` : ''}
         <div class="dsub" data-lint>${h(sc.text)}</div></div></div>`);
-      scenes.push({ id, kind: 'stat', ...tone(sc) });
+      scenes.push({ id, kind: 'stat', ...tone(sc), ...focus(sc) });
     } else if (sc.kind === 'bars') {
       const items = (sc.items || []).slice(0, 6);
       const two = Array.isArray(sc.series) && sc.series.length === 2;
@@ -107,7 +109,7 @@ export function parts({ brand, script, size }) {
           <div class="bt"><i id="${id}-b${k}" style="background:${C.series[k % C.series.length]}" data-frac="${num(x.value) / max}"></i></div></div>`;
         }).join('')}</div>
         ${sc.text ? `<div class="dsub" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
-      scenes.push({ id, kind: 'bars', n: items.length, ...tone(sc) });
+      scenes.push({ id, kind: 'bars', n: items.length, ...tone(sc), ...focus(sc) });
     } else if (sc.kind === 'line') {
       const pts = (sc.points || []).map((v) => num(v)).slice(0, 24);
       const Wc = land ? 1400 : 900, Hc = chartH;
@@ -144,7 +146,7 @@ export function parts({ brand, script, size }) {
           <div class="lval${toneClass(sc)}" id="${id}-lv" style="left:calc(100% - ${px(col - LV_GAP)});top:${px(lvTop)}" data-count="${pts[pts.length - 1] || 0}" data-format="${h(f)}" data-dec="${dec}">0</div>
           ${Array.isArray(sc.labels) ? `<div class="axis" style="right:${px(col)}"><span>${h(sc.labels[0] || '')}</span><span>${h(sc.labels[1] || '')}</span></div>` : ''}</div>
         ${sc.text ? `<div class="dsub" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
-      scenes.push({ id, kind: 'line', ...tone(sc) });
+      scenes.push({ id, kind: 'line', ...tone(sc), ...focus(sc) });
     } else if (sc.kind === 'donut') {
       const ps = (sc.parts || []).slice(0, 5);
       const total = ps.reduce((a, p) => a + num(p.value), 0) || 1;
@@ -155,7 +157,7 @@ export function parts({ brand, script, size }) {
           ${arcs.map((a) => `<circle cx="100" cy="100" r="74" class="arc" id="${id}-arc${a.k}" stroke="${C.series[a.k % C.series.length]}" data-from="${a.from}" data-to="${a.to}" transform="rotate(-90 100 100)"/>`).join('')}</svg>
         <div class="legend">${ps.map((p, k) => `<div class="lg" id="${id}-lg${k}"><i style="background:${C.series[k % C.series.length]}"></i><span data-lint>${h(p.label)}</span><b data-count="${Math.round((num(p.value) / total) * 100)}" data-format="pct" data-dec="0">0</b></div>`).join('')}</div></div>
         ${sc.text ? `<div class="dsub" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
-      scenes.push({ id, kind: 'donut', n: ps.length });
+      scenes.push({ id, kind: 'donut', n: ps.length, ...focus(sc) });
     } else if (sc.kind === 'race') {
       const series = (sc.series || []).slice(0, 10);
       const periods = (sc.periods || []).slice(0, 12);
@@ -179,7 +181,7 @@ export function parts({ brand, script, size }) {
           <div class="mean" id="${id}-mean"></div></div>
         ${Array.isArray(sc.labels) ? `<div class="saxis"><span>${h(sc.labels[0])}</span><span>${h(sc.labels[1])}</span></div>` : ''}
         ${sc.text ? `<div class="dsub" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
-      scenes.push({ id, kind: 'stripes', n: vals.length, a: a.map((x) => Math.round(x * 1000) / 1000), bars: sc.finish === 'bars' });
+      scenes.push({ id, kind: 'stripes', n: vals.length, a: a.map((x) => Math.round(x * 1000) / 1000), bars: sc.finish === 'bars', ...focus(sc) });
     } else if (sc.kind === 'cta') {
       const logo = hasLogoBug(brand) ? '' : logoHtml(brand, { onDark: true });
       blocks.push(`<div class="sc fill dark" id="g-${id}"><div class="box cta">${logo ? `<div class="clogo">${logo}</div>` : ''}
@@ -194,6 +196,8 @@ export function parts({ brand, script, size }) {
   // Written only when a scene uses them, so every other page stays byte for byte the same.
   const hasTone = script.scenes.some((s) => toneClass(s)), hasSeries = script.scenes.some((s) => s.kind === 'bars' && Array.isArray(s.series) && s.series.length === 2);
   const hasCols = script.scenes.some((s) => s.kind === 'bars' && s.layout === 'columns');
+  const hasFocus = script.scenes.some((s) => s.pace === 'focus' && ['stat', 'bars', 'line', 'donut', 'stripes'].includes(s.kind));
+  const dsubAt = hasFocus ? 'later' : 'cue';
   const hasDark = script.scenes.some((s) => s.kind !== 'cta' && s.theme === 'dark'), hasAcc = script.scenes.some((s) => s.theme === 'accent');
   const css = `
 .box{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:${px(port ? 120 : 90)} ${padX(land ? 220 : 90)};gap:${px(28)}}
@@ -254,7 +258,8 @@ ${C.fade ? '.area{opacity:.3}' : '.area{fill:var(--primary2);opacity:.12}'}.dot{
 .lval{font-size:${px(LV)}}.axis{font-size:${px(36)}}` : ''}`;
   const js = `
 const intro = (sc, s) => { const g = $('g-' + sc.id); fadeUp(g.querySelector('.kick'), s + 0.05); fadeUp(g.querySelector('.dtt'), s + 0.12, { d: 0.6 }); return g; };
-const KINDS = {
+${hasFocus ? `const later = (sc, f) => (sc.focus ? Math.min(cue(sc, f), sc.start + 1.8) : cue(sc, f));
+` : ''}const KINDS = {
   title(sc, s) { const g = intro(sc, s); fadeUp(g.querySelector('.dsub'), s + 0.5); },
   stat(sc, s) {
     const g = $('g-' + sc.id);
@@ -263,7 +268,7 @@ const KINDS = {
     countUp($(sc.id + '-v'), s + 0.15, 1.3);
     pop($(sc.id + '-chg'), s + 1.2);${C.mark ? `
     tl.fromTo(g.querySelector('.big'), { backgroundSize: '0% 100%' }, { backgroundSize: '100% 100%', duration: 0.6, ease: X, immediateRender: false }, s + 1.3);\n` : ''}
-    fadeUp(g.querySelector('.dsub'), cue(sc, 0.4));
+    fadeUp(g.querySelector('.dsub'), ${dsubAt}(sc, 0.4));
   },
   bars(sc, s) {
     const g = intro(sc, s);
@@ -282,7 +287,7 @@ const KINDS = {
       if (b2) { ${hasCols ? 'grow(b2, at + 0.25)' : "tl.fromTo(b2, { width: '0%' }, { width: (b2.dataset.frac * 100) + '%', duration: 0.9, ease: X, immediateRender: false }, at + 0.25)"}; countUp($(sc.id + '-bv' + k + 'x'), at + 0.25, 0.9); }` : ''}
     }${hasSeries ? `
     fadeUp(g.querySelector('.sleg'), s + 0.3, { y: 14 });` : ''}
-    fadeUp(g.querySelector('.dsub'), cue(sc, 0.7));
+    fadeUp(g.querySelector('.dsub'), ${dsubAt}(sc, 0.7));
   },
   line(sc, s) {
     const g = intro(sc, s);${hasBand || hasRef ? `
@@ -296,7 +301,7 @@ const KINDS = {
     pop($(sc.id + '-dot'), s + 1.7, { from: 0 });
     tl.to($(sc.id + '-dot'), { scale: 1.5, duration: 0.4, yoyo: true, repeat: 3, transformOrigin: '50% 50%' }, s + 2.1);
     fadeUp($(sc.id + '-lv'), s + 1.6); countUp($(sc.id + '-lv'), s + 1.6, 0.8);
-    fadeUp(g.querySelector('.dsub'), cue(sc, 0.7));
+    fadeUp(g.querySelector('.dsub'), ${dsubAt}(sc, 0.7));
   },
   donut(sc, s) {
     const g = intro(sc, s);
@@ -306,7 +311,7 @@ const KINDS = {
       const lg = $(sc.id + '-lg' + k);
       fadeUp(lg, s + 0.45 + k * 0.45, { y: 14 }); countUp(lg.querySelector('b'), s + 0.45 + k * 0.45, 0.7);
     }
-    fadeUp(g.querySelector('.dsub'), cue(sc, 0.75));
+    fadeUp(g.querySelector('.dsub'), ${dsubAt}(sc, 0.75));
   },
   race(sc, s) {
     const g = intro(sc, s);
@@ -332,7 +337,7 @@ const KINDS = {
     }
     for (let k = 1; k < P; k++) tl.set(per, { textContent: sc.periods[k] }, t0 + (k - 1) * seg + seg * 0.5);
     tl.set(per, { textContent: sc.periods[0] }, Math.max(0, s - 0.01));
-    fadeUp(g.querySelector('.dsub'), cue(sc, 0.8));
+    fadeUp(g.querySelector('.dsub'), ${dsubAt}(sc, 0.8));
   },
   stripes(sc, s) {
     const g = intro(sc, s);
@@ -348,7 +353,7 @@ const KINDS = {
         tl.to(el, { top: (a >= 0 ? 50 - a * 46 : 50) + '%', height: Math.max(0.8, Math.abs(a) * 46) + '%', duration: 0.9, ease: XIO }, at + i * Math.min(0.008, 0.6 / sc.n));
       });
     }
-    fadeUp(g.querySelector('.dsub'), cue(sc, 0.8));
+    fadeUp(g.querySelector('.dsub'), ${dsubAt}(sc, 0.8));
   },
   cta(sc, s) {
     const g = $('g-' + sc.id);

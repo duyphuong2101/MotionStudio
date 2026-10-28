@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { DIRS, writeJson } from '../engine/core.mjs';
-import { validateBrief, saveBrief, updateBrief, getStatus, jobFile } from '../engine/jobs.mjs';
-import { voiceFor, voiceProblem, kokoroLang, sameLanguage, spokenLine } from '../engine/tts.mjs';
+import { validateBrief, saveBrief, updateBrief, getStatus, jobFile, loadBriefTemplate, diffLocks } from '../engine/jobs.mjs';
+import { validateScript, stressAt } from '../engine/script.mjs';
+import { voiceFor, voiceProblem, kokoroLang, sameLanguage, spokenLine, stressSpans, stressFilter, STRESS_DB } from '../engine/tts.mjs';
+import { ffmpeg } from '../engine/media.mjs';
 import { validateBrand } from '../engine/brand.mjs';
 import { estimateTiming } from '../engine/timing.mjs';
 
@@ -31,6 +34,53 @@ test('brand.voice.say is kept when every entry is one word and a short spoken fo
   assert.throws(() => validateBrand({ ...b, voice: { say: { 'two words': 'x' } } }), /must be one word/);
   assert.throws(() => validateBrand({ ...b, voice: { say: { AMAD: '<b>' } } }), /must be 1-60/);
   assert.throws(() => validateBrand({ ...b, voice: { say: Object.fromEntries(Array.from({ length: 31 }, (_, i) => ['w' + i, 'x'])) } }), /at most 30/);
+});
+
+test('brand.voice.say takes a slashed word, and voice.cast names extra voices a scene picks with speaker', () => {
+  const b = { name: 'B', colors: { primary: '#111111', primary2: '#222222', secondary: '#ffcc00', bg: '#ffffff', ink: '#111111', muted: '#666666', onPrimary: '#ffffff' }, fonts: { display: 'Inter', body: 'Inter' } };
+  assert.deepEqual(validateBrand({ ...b, voice: { say: { 'A/B': 'Eh and Bee' } } }).voice.say, { 'A/B': 'Eh and Bee' });
+  assert.deepEqual(spokenLine('Twenty A/B tests.', { 'A/B': 'Eh and Bee' }), { text: 'Twenty Eh and Bee tests.', groups: [1, 3, 1] });
+  assert.deepEqual(validateBrand({ ...b, voice: { cast: { numbers: 'am_michael' } } }).voice.cast, { numbers: 'am_michael' });
+  assert.equal('cast' in validateBrand(b).voice, false);
+  assert.throws(() => validateBrand({ ...b, voice: { cast: ['am_michael'] } }), /voice.cast must map/);
+  assert.throws(() => validateBrand({ ...b, voice: { cast: { Numbers: 'am_michael' } } }), /lowercase/);
+  assert.throws(() => validateBrand({ ...b, voice: { cast: { numbers: '../x' } } }), /unexpected characters/);
+  assert.throws(() => validateBrand({ ...b, voice: { cast: { a: 'x', b: 'x', c: 'x', d: 'x', e: 'x' } } }), /at most 4/);
+});
+
+test('a scene speaker is checked in every template and locks like any scene field', () => {
+  const { beats } = loadBriefTemplate(brief);
+  const vo = 'One line.';
+  const script = (speaker) => ({ scenes: [{ id: 'a', kind: 'title', title: 'T', vo, speaker }, { id: 'b', kind: 'step', title: 'S', text: 'x', icon: 'check', vo }, { id: 'c', kind: 'cta', title: 'C', vo }] });
+  assert.equal(validateScript(script('numbers'), beats).warnings.some((w) => /speaker/.test(w)), false, 'not "ignored by this template"');
+  assert.ok(validateScript(script('Not ok'), beats).errors.some((e) => /speaker must name a voice/.test(e)));
+  assert.ok(diffLocks('script', script(undefined), script('numbers')).includes('scene:a.speaker'));
+});
+
+test('scene stress: phrases of the voice line said louder, checked against the line, ramped in ffmpeg', async () => {
+  assert.deepEqual(stressAt('In September: eighteen and a half percent.', 'Eighteen and a half percent'), [2, 6]);
+  assert.equal(stressAt('In September: eighteen percent.', 'nineteen percent'), null);
+  const said = ['In', 'September:', 'eighteen', 'percent.'].map((w, i) => ({ w, at: i * 0.5 }));
+  assert.deepEqual(stressSpans('In September: eighteen percent.', ['eighteen'], said, 2), [{ a: 0.94, b: 1.53 }], 'from the word to where the next one starts');
+  assert.deepEqual(stressSpans('In September: eighteen percent.', ['eighteen percent'], said, 2), [{ a: 0.94, b: 2.03 }], 'the last word runs to the line end');
+  assert.deepEqual(stressSpans('x', undefined, said, 2), []);
+  assert.equal(stressFilter([]), '');
+  const { beats } = loadBriefTemplate(brief);
+  const one = (stress) => validateScript({ scenes: [{ id: 'a', kind: 'title', title: 'T', vo: 'Up nine point seven percent.', stress }, { id: 'b', kind: 'step', title: 'S', text: 'x', icon: 'check', vo: 'x' }, { id: 'c', kind: 'cta', title: 'C', vo: 'x' }] }, beats);
+  assert.deepEqual(one(['nine point seven percent']).errors.filter((e) => /stress/.test(e)), []);
+  assert.ok(one(['ten percent']).errors.some((e) => /not a run of words/.test(e)));
+  assert.ok(one([]).errors.some((e) => /1-3 phrases/.test(e)));
+  assert.ok(diffLocks('script', { scenes: [{ id: 'a', kind: 'title' }] }, { scenes: [{ id: 'a', kind: 'title', stress: ['x'] }] }).includes('scene:a.stress'));
+  // The filter must parse and lift only the span: a steady tone measured inside and outside it.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stress-'));
+  const out = path.join(dir, 'o.wav');
+  await ffmpeg(['-y', '-f', 'lavfi', '-i', 'sine=f=440:d=2:sample_rate=48000', '-af', `${stressFilter([{ a: 0.5, b: 1.2 }])}volume=0.3`, out]);
+  const pcm = fs.readFileSync(out).subarray(44);
+  const rms = (t0, t1) => { let sum = 0, n = 0; for (let i = Math.round(t0 * 48000); i < Math.round(t1 * 48000); i++) { const v = pcm.readInt16LE(i * 2) / 32768; sum += v * v; n++; } return Math.sqrt(sum / n); };
+  const db = 20 * Math.log10(rms(0.7, 1.0) / rms(1.5, 1.9));
+  assert.ok(Math.abs(db - STRESS_DB) < 0.3, `stressed span is ${db.toFixed(2)} dB louder`);
+  fs.unlinkSync(out);
+  fs.rmdirSync(dir);
 });
 
 test('a brief may set its own language and voice; bad values are refused', () => {

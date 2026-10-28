@@ -8,7 +8,7 @@ Brief-to-video tool. A director (Claude Code on a company seat, started by a per
 - `ui/`: static single-page UI, vanilla JS
 - `engine/`: pipeline, job state, validation, locks, TTS (Kokoro / Windows SAPI), media (playwright-core + installed Chrome, ffmpeg-static)
 - `templates/<id>/`: `beats.json` rules + `template.mjs` renderer; `motion-kit/icons.mjs`
-- Tests: `node --test` in `tests/`
+- Tests: `node:test` in `tests/`; `npm test` (all, via `tests/run.mjs`), `npm run test:changed` (only what the changes affect)
 
 ## Commands
 - `npm install` — once
@@ -53,7 +53,7 @@ Brief-to-video tool. A director (Claude Code on a company seat, started by a per
 - ALWAYS validate input at the boundary: `validateBrief`, `validateBrand`, `validateSource`, `validateScript`
 - ALWAYS keep director runs and asset generation capped by `config/studio.json` → `director` (max jobs per run, minutes per job, runs per day) and `director.api` (turns and tokens per job, calls per day, timeouts, bytes, prepare rounds, page fetches per job) and `generate` (requests per day and per month: `maxImagesPerDay`, `maxImagesPerMonth`, `maxVideosPerDay`, `maxVideosPerMonth`, `maxRefreshesPerDay`; timeout, bytes)
 - ALWAYS add or update a `tests/*.test.mjs` case when you change engine validation, locks, timing or a template contract
-- ALWAYS run `npm test` before calling a change done
+- ALWAYS run the tests a change can affect while you work (`npm run test:changed`: `tests/run.mjs` picks them from the changed functions and their callers, `--list` shows why), and the full `npm test` before calling a change done or committing
 - ALWAYS describe a new template with `beats.json` (sequence, fields, limits, enums, defaults) and test it through `tests/templates.test.mjs`
 - ALWAYS draw template sizes in units of a 1080 short side via `geometry(size).px()` (side padding via `padX()`) so every format (16:9, 1:1, 9:16, 4:5, 2:3, 21:9) shares one layout
 - ALWAYS mark text that must fit the safe area with `data-lint` so `lintInPage` checks it

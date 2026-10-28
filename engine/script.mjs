@@ -76,7 +76,7 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
       const v = s[f];
       if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) errors.push(`${s.id}: ${f} is required`);
     }
-    const allowed = new Set(['id', 'kind', 'draft', ...spec.required, ...spec.optional]);
+    const allowed = new Set(['id', 'kind', 'draft', 'speaker', 'stress', ...spec.required, ...spec.optional]);
     for (const k of Object.keys(s)) if (!allowed.has(k)) warnings.push(`${s.id}: field "${k}" is ignored by this template`);
     for (const [f, max] of Object.entries(L)) {
       if (f === 'voWords') continue;
@@ -120,6 +120,8 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
     }
     for (const f of ['in', 'out']) if (s[f] !== undefined && s[f] !== '' && !(Number(s[f]) >= 0)) errors.push(`${s.id}: ${f} must be a number of seconds`);
     if (s.sound !== undefined && typeof s.sound !== 'boolean') errors.push(`${s.id}: sound must be true or false`);
+    if (s.speaker !== undefined && (typeof s.speaker !== 'string' || !/^[a-z][a-z0-9-]{0,19}$/.test(s.speaker))) errors.push(`${s.id}: speaker must name a voice in the brand's voice cast`);
+    if (s.stress !== undefined) errors.push(...stressErrors(s));
     if (s.logo !== undefined && typeof s.logo !== 'boolean') errors.push(`${s.id}: logo must be true or false`);
     if (s.hold !== undefined && s.hold !== '' && !(Number(s.hold) >= 0 && Number(s.hold) <= MAX_HOLD)) errors.push(`${s.id}: hold must be 0 to ${MAX_HOLD} seconds`);
     if (s.video && s.sound === true && wordsOf(s.vo).length) warnings.push(`${s.id}: the clip plays its own sound under the voice line; if the voice runs longer than the clip, the scene holds the clip's last frame until the voice ends`);
@@ -127,6 +129,21 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES 
     if (rules.data?.[kind]) errors.push(...validateData(s, kind, rules.data[kind], icons));
   }
   return { errors, warnings };
+}
+
+export const MAX_STRESS = 3;
+const stressKey = (w) => String(w).toLowerCase().replace(/[^a-z0-9%]/g, '');
+/** Where a stressed phrase sits in a voice line: the index of its first and last word, or null. */
+export function stressAt(vo, phrase) {
+  const toks = wordsOf(vo).map(stressKey), ws = wordsOf(phrase).map(stressKey).filter(Boolean);
+  if (!ws.length) return null;
+  const i = toks.findIndex((_, k) => ws.every((w, j) => toks[k + j] === w));
+  return i < 0 ? null : [i, i + ws.length - 1];
+}
+/** `stress`: 1-3 phrases of the scene's own voice line that the voice says louder (engine/tts.mjs). */
+function stressErrors(s) {
+  if (!Array.isArray(s.stress) || !s.stress.length || s.stress.length > MAX_STRESS) return [`${s.id}: stress must list 1-${MAX_STRESS} phrases of the voice line`];
+  return s.stress.filter((p) => typeof p !== 'string' || !stressAt(s.vo, p)).map((p) => `${s.id}: stress "${String(p).slice(0, 60)}" is not a run of words in the voice line`);
 }
 
 // A mark the page would draw; text like "[[1, 2]]" in a code listing is not one.

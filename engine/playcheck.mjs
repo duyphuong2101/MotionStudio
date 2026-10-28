@@ -215,12 +215,20 @@ function install(o) {
     return '';
   };
   const played = [];
+  // A clip seek on a busy machine can miss the page's 1.5 s wait; one more try tells that from a clip that never lands.
+  const seekSure = async (t) => {
+    try { await window.seek(t); } catch (err) {
+      if (!/did not reach/.test(String(err && err.message))) throw err;
+      await new Promise((r) => setTimeout(r, 250));
+      await window.seek(t);
+    }
+  };
 
   window.__pc = {
     async play(frames) {
       const out = [];
       for (const f of frames) {
-        await window.seek(f.t);
+        await seekSure(f.t);
         out.push(...probe(f.i, f.t));
         if (f.j === undefined) continue;
         played[f.j] = { t: f.t, s: state() };
@@ -237,8 +245,8 @@ function install(o) {
         for (const [start, dir] of [[S.duration, 'from the end'], [0, 'from the start']]) {
           // Seeking 0 from 0 is not a jump (GSAP's zero-time sets flip with the direction there).
           if (start === t) continue;
-          await window.seek(start);
-          await window.seek(t);
+          await seekSure(start);
+          await seekSure(t);
           const now = state();
           for (const id of Object.keys(s)) {
             // Text only counts where it shows: a hidden scene may keep a stale value until it plays again.
