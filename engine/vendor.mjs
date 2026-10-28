@@ -17,6 +17,16 @@ const THREE_FILES = {
   'RoomEnvironment.js': 'examples/jsm/environments/RoomEnvironment.js',
 };
 
+// GSAP and every plugin a page may load; templates/kit.mjs writes the opt-in ones (SplitText, CustomEase, Physics2D)
+// into a page only when its brand asks, so copying them costs a page nothing.
+const GSAP_DIST = path.dirname(require.resolve('gsap/dist/gsap.min.js'));
+export const GSAP_FILES = ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js', 'SplitText.min.js', 'CustomEase.min.js', 'Physics2DPlugin.min.js'];
+
+export function copyGsap(dir) {
+  fs.mkdirSync(path.join(dir, 'vendor'), { recursive: true });
+  for (const f of GSAP_FILES) fs.copyFileSync(path.join(GSAP_DIST, f), path.join(dir, 'vendor', f));
+}
+
 export function copyThree(dir) {
   fs.mkdirSync(path.join(dir, 'vendor'), { recursive: true });
   for (const [name, rel] of Object.entries(THREE_FILES)) {

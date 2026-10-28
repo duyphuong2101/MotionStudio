@@ -13,6 +13,11 @@ const FILLS = ['cover', 'blur-fill'];
 const GAIN_DB = [-24, 12];
 // Playback speed of a clip: 2 plays the source twice as fast, so an 11 s span becomes a 5.5 s clip.
 const SPEED = [0.25, 4];
+// A slower clip needs frames between the source's: `blend` mixes neighbours (about as fast as repeating them: 3.1 s
+// against 2.8 s for a 6 s 1080p clip), `motion` follows the movement (78.7 s for the same clip, so it is capped at
+// MOTION_MAX_SECONDS out), `none` repeats frames, which stutters.
+const SMOOTH = { blend: 'minterpolate=fps=30:mi_mode=blend', motion: 'minterpolate=fps=30:mi_mode=mci', none: '' };
+const MOTION_MAX_SECONDS = 20;
 const MAX_REGIONS = 8;
 const MAX_BAND = 45;
 const MIN_CLIP_SECONDS = 0.2;
@@ -235,13 +240,19 @@ export function validateClipOptions(raw, info, maxSeconds) {
   if (gainDb < GAIN_DB[0] || gainDb > GAIN_DB[1]) throw new StudioError(`Gain must be from ${GAIN_DB[0]} to +${GAIN_DB[1]} dB`, 400);
   const speed = o.speed === undefined || o.speed === null || o.speed === '' ? 1 : round(num(o.speed, 'speed'), 2);
   if (speed < SPEED[0] || speed > SPEED[1]) throw new StudioError(`Speed must be from ${SPEED[0]} to ${SPEED[1]}`, 400);
+  // Only a slower clip has a smoothing choice; a clip at speed 1 or faster keeps its stored shape.
+  const smooth = speed < 1 ? (o.smooth === undefined || o.smooth === null || o.smooth === '' ? 'blend' : o.smooth) : null;
+  if (smooth !== null && !(smooth in SMOOTH)) throw new StudioError(`smooth must be ${Object.keys(SMOOTH).join(', ')}`, 400);
+  if (smooth === 'motion' && (end - start) / speed > MOTION_MAX_SECONDS) {
+    throw new StudioError(`Smooth motion is slow to make: it takes clips up to ${MOTION_MAX_SECONDS} s after the speed change. Use blend for a longer one.`, 400);
+  }
   return {
     in: start, out: end,
     crop: o.crop ? box(o.crop, W, H, 'crop') : null,
     band, fill,
     blurRegions: regions.map((r, i) => box(r, W, H, `blur region ${i + 1}`)),
     keep: o.keep ? ellipse(o.keep, W, H) : null,
-    gainDb, mute: Boolean(o.mute), speed,
+    gainDb, mute: Boolean(o.mute), speed, ...(smooth ? { smooth } : {}),
     width: evenSize(o.width, 1920, 'width'), height: evenSize(o.height, 1080, 'height'),
   };
 }
@@ -303,8 +314,9 @@ export function clipGraph(o, info) {
   } else if (crop) pre.push(crop);
   if (o.band) pre.push(`crop=iw:ih*${round(1 - (o.band.top + o.band.bottom) / 100, 4)}:0:ih*${round(o.band.top / 100, 4)}`);
   const cover = `scale=${ow}:${oh}:force_original_aspect_ratio=increase,crop=${ow}:${oh}`;
-  // A faster clip drops frames (setpts, then the 30 fps output rate); a slower one repeats them.
-  const tail = `${o.speed !== 1 ? `setpts=PTS/${o.speed},` : ''}setsar=1,format=yuv420p`;
+  // A faster clip drops frames (setpts, then the 30 fps output rate); a slower one fills the gaps as `smooth` says.
+  const fill = o.speed < 1 && SMOOTH[o.smooth] ? `${SMOOTH[o.smooth]},` : '';
+  const tail = `${o.speed !== 1 ? `setpts=PTS/${o.speed},${fill}` : ''}setsar=1,format=yuv420p`;
   if (o.fill === 'blur-fill') {
     g.push(`[${cur}]${[...pre, 'split'].join(',')}[a][b]`, `[a]${cover},${FILL_BG}[bg]`, `[b]scale=${ow}:${oh}:force_original_aspect_ratio=decrease[fg]`, `[bg][fg]overlay=(W-w)/2:(H-h)/2,${tail}[v]`);
   } else {
@@ -318,7 +330,7 @@ export function clipGraph(o, info) {
 export function clipArgs(o, info, { src, mask = null, out, frame = false }) {
   const len = String(round(o.out - o.in, 3)), outLen = String(round((o.out - o.in) / o.speed, 3));
   const args = ['-y', '-ss', String(o.in), ...(frame ? [] : ['-t', len]), '-i', src, ...(mask ? ['-loop', '1', '-i', mask] : [])];
-  args.push('-filter_complex', clipGraph(frame ? { ...o, mute: true } : o, info), '-map', '[v]');
+  args.push('-filter_complex', clipGraph(frame ? { ...o, mute: true, smooth: 'none' } : o, info), '-map', '[v]');
   if (frame) return [...args, '-frames:v', '1', '-q:v', '3', out];
   const sound = !o.mute && info.hasAudio;
   return [...args, ...(sound ? ['-map', '[a]'] : []), ...ENCODE, ...(sound ? AUDIO : ['-an']), '-t', outLen, ...BT709_TAGS, '-movflags', '+faststart', out];

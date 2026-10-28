@@ -4,7 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DIRS, writeJson, readJson, loadStudioConfig } from '../engine/core.mjs';
 import { validateBrief, saveBrief, updateBrief, getStatus, setStatus, jobFile, createProject, loadTemplate } from '../engine/jobs.mjs';
-import { alignTake, spokenTokens, numberWords, cutPlan, voicedFrames, takeGain, TAKE_DEFAULTS } from '../engine/voicetake.mjs';
+import { alignTake, spokenTokens, numberWords, cutPlan, voicedFrames, takeGain, takeFilter, TAKE_DEFAULTS } from '../engine/voicetake.mjs';
+import { validateBrand } from '../engine/brand.mjs';
+import { ffmpeg, ffmpegReport } from '../engine/media.mjs';
+import os from 'node:os';
 
 const LINES = [
   { id: 'hook', text: 'Month end used to take five days.' },
@@ -138,6 +141,31 @@ test('the take is brought toward the target level, clamped and kept under the pe
 
 const P = 'zz-test-voicetake';
 const brief = { id: 'take-16x9', project: P, template: 'explainer', format: '16:9', duration: 30, message: 'm' };
+
+test('brand.voice.cleanup: an optional yes/no; off leaves the take chain as it was', async (t) => {
+  assert.equal(takeFilter({ gainDb: 3, len: 2 }), 'volume=3dB,afade=t=in:d=0.01,afade=t=out:st=1.990:d=0.01', 'the chain every take used before');
+  assert.ok(!takeFilter({ len: 2 }).includes('volume'), 'no level change at 0 dB');
+  const clean = takeFilter({ gainDb: 3, len: 2, cleanup: true });
+  assert.match(clean, /^highpass=f=80,afftdn=nf=-25,deesser,acompressor=[^,]+,volume=3dB,afade=t=in/);
+  const base = { name: 'B', colors: { primary: '#111111', primary2: '#222222', secondary: '#333333', bg: '#ffffff', ink: '#000000', muted: '#666666', onPrimary: '#ffffff' }, fonts: { display: 'Inter', body: 'Inter' }, voice: { tts: 'none' }, sources: { allowedHosts: [] } };
+  assert.equal(validateBrand({ ...base, voice: { tts: 'none', cleanup: true } }).voice.cleanup, true);
+  assert.equal('cleanup' in validateBrand({ ...base, voice: { tts: 'none', cleanup: false } }).voice, false);
+  assert.throws(() => validateBrand({ ...base, voice: { tts: 'none', cleanup: 'yes' } }), /voice.cleanup must be true or false/);
+
+  // Real ffmpeg: 30 Hz rumble is cut hard, a 1 kHz voice-band tone keeps its level.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-cleanup-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const level = async (src, af) => {
+    const out = path.join(dir, 'o.wav');
+    await ffmpeg(['-y', '-f', 'lavfi', '-i', src, ...(af ? ['-af', af] : []), '-ac', '1', '-ar', '48000', out], { timeoutMs: 60000 });
+    return Number(/mean_volume: (-?[\d.]+) dB/.exec(await ffmpegReport(['-i', out, '-af', 'volumedetect', '-f', 'null', '-']))[1]);
+  };
+  const hum = 'sine=frequency=30:sample_rate=48000:duration=2', tone = 'sine=frequency=1000:sample_rate=48000:duration=2';
+  const humDrop = (await level(hum)) - (await level(hum, takeFilter({ len: 2, cleanup: true })));
+  const toneDrop = (await level(tone)) - (await level(tone, takeFilter({ len: 2, cleanup: true })));
+  assert.ok(humDrop > 12, `rumble down ${humDrop.toFixed(1)} dB`);
+  assert.ok(Math.abs(toneDrop) < 6, `voice-band tone changed ${toneDrop.toFixed(1)} dB`);
+});
 
 test('voiceTake is an optional audio asset name, and changing only it needs a new storyboard', (t) => {
   t.after(() => ['briefs', 'out'].forEach((k) => fs.rmSync(path.join(DIRS[k], P), { recursive: true, force: true })));
