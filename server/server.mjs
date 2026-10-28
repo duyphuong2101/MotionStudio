@@ -314,16 +314,25 @@ function musicFor(project, look) {
   return { url, gainDb: Number(m.gainDb ?? -18) };
 }
 
+// Quick mode: the outline a generated script was built from (engine/quick.mjs), shown read-only in the Script tab.
+// Nothing in the UI edits it, so a broken file only hides the panel instead of keeping the job from opening.
+function outlineOf(project, id, script) {
+  if (script?.generated !== 'outline') return null;
+  try { return readJson(jobFile(project, id, 'outline.json'), null); } catch { return null; }
+}
+
 function jobDetail(project, id) {
   const brief = loadBrief(project, id);
   const status = getStatus(project, id);
   const f = (n) => jobFile(project, id, n);
   const { beats } = loadBriefTemplate(brief);
   const script = readJson(f('script.json'), null);
+  const outline = outlineOf(project, id, script);
   return {
     brief, status, steps: STEPS,
     source: readJson(f('source.json'), null),
     script,
+    ...(outline ? { outline } : {}),
     timing: readJson(f('timing.json'), null),
     has: {
       index: exists(f('index.html')), final: exists(f('final.mp4')), captions: exists(f('captions.srt')),

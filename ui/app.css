@@ -162,6 +162,14 @@ form.stack,.stack{max-width:680px;display:flex;flex-direction:column;gap:14px}
 .card .row .btn.sm{white-space:nowrap}
 .f .hint{font-size:12px}
 .lookrow{max-width:520px}
+/* Script tab, quick mode: the outline a generated script came from, read-only */
+.outline summary .muted{font-weight:400;margin-left:6px}
+.olist{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px;margin:10px 0 4px;font-size:13px}
+.olist dt{color:var(--muted)}
+.olist dd{margin:0;display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
+.olist ol{margin:0;padding-left:18px;display:grid;gap:8px}
+.olist li>span{display:block;margin-top:2px}.olist li>span:first-child{margin-top:0}
+@media (max-width:640px){.olist{grid-template-columns:1fr;gap:2px}.olist dd{margin-bottom:8px}}
 .bthumb{height:56px;max-width:120px;object-fit:contain;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
 .listhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}.listhead h3{margin:0;flex:1;min-width:0}
 .dir{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:13px;background:var(--panel)}

@@ -804,6 +804,34 @@ function paneScript(pane) {
     const known = !v || refs.some(([r]) => r === v);
     return `<select ${attrs}><option value="">(none)</option>${refs.map(([r, t]) => `<option value="${esc(r)}"${r === v ? ' selected' : ''}>${esc(`${r} — ${cut(String(t ?? ''), 70)}`)}</option>`).join('')}${known ? '' : `<option value="${esc(v)}" selected>${esc(v)}</option>`}</select>`;
   };
+
+  // Quick mode: what the Director's outline said (outline.json, engine/quick.mjs), read-only; the scenes below are what
+  // the engine built from it. Every value is printed as text, whatever its type.
+  const outlineHtml = (o) => {
+    const part = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+    const txt = (v) => (typeof v === 'string' ? v.trim() : v === undefined || v === null ? '' : String(v));
+    const head = part(o.headline), cta = part(o.cta), points = (Array.isArray(o.points) ? o.points : []).map(part);
+    const srcLine = (r) => {
+      if (!txt(r)) return '';
+      const line = refs.find(([k]) => k === txt(r))?.[1];
+      return `<span class="small muted">Source <code>${esc(txt(r))}</code> ${line ? esc(`— ${cut(String(line), 90)}`) : '(not in source.json)'}</span>`;
+    };
+    const voice = (x) => (txt(x.say) && txt(x.say) !== txt(x.text) ? `<span class="small">Voice: ${esc(txt(x.say))}</span>` : '');
+    const num = (n) => (n && typeof n === 'object' ? `${txt(n.value)}${txt(n.unit) ? ` ${txt(n.unit)}` : ''}` : '');
+    const extras = (p) => {
+      const list = [txt(p.tag) && `tag ${txt(p.tag)}`, num(p.number) && `number ${num(p.number)}`, txt(p.icon) && `icon ${txt(p.icon)}`].filter(Boolean);
+      return list.length ? `<span class="small muted">${esc(list.join(' · '))}</span>` : '';
+    };
+    const mood = esc(txt(o.mood) || 'not set (default)');
+    return `<details class="howto outline"><summary>Outline from the Director <span class="muted small">${points.length} point(s), mood ${mood}</span></summary>
+      <dl class="olist">
+        <dt>Headline</dt><dd><b>${esc(txt(head.text))}</b>${voice(head)}${srcLine(head.source)}</dd>
+        <dt>Points</dt><dd><ol>${points.map((p) => `<li><span><b>${esc(txt(p.label))}</b> ${esc(txt(p.text))}</span>${extras(p)}${voice(p)}${srcLine(p.source)}</li>`).join('')}</ol></dd>
+        ${txt(cta.text) || txt(cta.button) ? `<dt>Call to action</dt><dd><span>${esc(txt(cta.text))}${txt(cta.button) ? ` <span class="pill">${esc(txt(cta.button))}</span>` : ''}</span>${voice(cta)}${srcLine(cta.source)}</dd>` : ''}
+        <dt>Mood</dt><dd>${mood}${txt(o.lang) ? ` · language ${esc(txt(o.lang))}` : ''}</dd>
+      </dl></details>`;
+  };
+
   // A bullet's screenshot fills the scene's image field (shots[0].asset or asset); footage templates take clips, not images.
   const imageField = (s) => {
     const spec = tpl.fields[s.kind];
@@ -994,6 +1022,8 @@ function paneScript(pane) {
     </ul></details>
     <p class="muted">Edit, add, duplicate, delete or reorder scenes. Saving locks what you changed (and the scene order) and moves the job to "re-run from step 5". The template checks the order and required fields on save.</p>
     ${locks.scenes ? `<p class="lock">Scene order locked by ${esc(locks.scenes.by)}: the Director keeps this order.</p>` : ''}
+    ${sc.generated === 'outline' ? `<div class="banner" role="note"><p><b>Built from an outline (quick mode).</b>${REVIEW ? '' : ' Your edits lock as usual; the Director\'s next run writes a new outline and keeps locked fields.'}</p></div>` : ''}
+    ${d.outline ? outlineHtml(d.outline) : ''}
     <div class="f lookrow"><label for="sc-look">Look ${locks.look ? `<span class="lock">locked by ${esc(locks.look.by)}</span>` : ''}</label>
       <select id="sc-look" aria-describedby="sc-look-h">${[LOOK_BRAND, ...(d.looks || [])].map((n) => `<option value="${esc(n)}"${n === (look ?? LOOK_BRAND) ? ' selected' : ''}>${esc(n === LOOK_BRAND ? 'Brand (as set in the Brand tab)' : n[0].toUpperCase() + n.slice(1))}</option>`).join('')}</select>
       <span class="hint muted" id="sc-look-h">Motion, backdrop, cut sound and music for this video. What the Brand tab sets wins; the look fills the rest. Applies on the next prepare.</span></div>

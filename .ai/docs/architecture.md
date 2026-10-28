@@ -41,6 +41,7 @@ storyboard before anything is rendered.
 Statuses: `queued → scripting → scripted → preparing → awaiting_review → approved → rendering → done`,
 plus `dirty` (a person edited source/script; `dirty_from` says which step must re-run) and `error`.
 A brief change of `template`, `mix` or `quick` after a script exists moves `script.json` to `script.prev.json`, carries the locks that still hold to `script.locks.json` and sends the job back from step 3 (`updateBrief`).
+A script built from an outline (`generated: "outline"`) shows in the Script tab under a banner and a read-only outline panel (headline, points with their source lines, cta, mood); the job route returns `outline` from `outline.json` only for such a script (a broken file hides the panel, the job still opens), on the review link too, where the banner drops its edit sentence. Edits lock as usual and the next outline commit keeps them.
 
 ## Play-through check
 
