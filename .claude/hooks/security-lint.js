@@ -42,6 +42,14 @@ process.stdin.on('end', () => {
 
   // ─── PATTERN REGISTRY ───────────────────────────────────────────────────────
   // Each entry: { id, severity, desc, fix, pattern (RegExp | fn(src) => bool) }
+
+  // The text of every spawn(…) / spawnSync(…) call, parentheses matched.
+  const spawnCalls = (src) => [...src.matchAll(/\bspawn(?:Sync)?\s*\(/g)].map((m) => {
+    let depth = 0, i = m.index + m[0].length - 1;
+    for (; i < src.length; i++) { if (src[i] === '(') depth++; else if (src[i] === ')' && --depth === 0) break; }
+    return src.slice(m.index, i + 1);
+  });
+  const inDir = (...dirs) => dirs.some((d) => filePath.includes(d));
   const PATTERNS = [
 
     // ── Injection ──
@@ -50,7 +58,8 @@ process.stdin.on('end', () => {
       severity: 'CRITICAL',
       desc: 'spawn() called with shell:true — if any arg derives from user input this is RCE',
       fix: 'Use shell:false and build argv from an allowlist',
-      pattern: /spawn\s*\([^)]*shell\s*:\s*true/,
+      // Each spawn( call read to its matching ")", so arguments like path.join(...) do not end the scan early.
+      pattern: (src) => spawnCalls(src).some((c) => /shell\s*:\s*true/.test(c)),
     },
     {
       id: 'GRAPHQL_STRING_INTERP',
@@ -229,6 +238,50 @@ process.stdin.on('end', () => {
       desc: 'Full process.env spread into child process env — leaks all secrets to subprocess',
       fix: 'Clone only the specific vars needed: Object.assign({}, { PATH: ..., NODE_ENV: ... })',
       pattern: /Object\.assign\s*\(\s*\{\s*\}\s*,\s*process\.env\s*\)/,
+    },
+    // ── Motion Studio NEVER rules (.ai/docs/conventions.md) ──
+    {
+      id: 'CHILD_PROCESS_COMMAND_STRING',
+      severity: 'CRITICAL',
+      desc: 'exec()/execSync() run a command string through a shell',
+      fix: 'spawn(cmd, [args], { shell: false, windowsHide: true }) with a timeout and a capped log',
+      pattern: (src) => /require\(['"](?:node:)?child_process['"]\)|from\s+['"](?:node:)?child_process['"]/.test(src) && /\bexec(?:Sync)?\s*\(\s*[`'"]/.test(src),
+    },
+    {
+      id: 'PATH_JOIN_OUTSIDE_ID',
+      severity: 'HIGH',
+      desc: 'path.join with a request value: an outside id or file name must go through assertId / assertFileName + within()',
+      fix: 'within(base, assertId(id)) / within(base, assertFileName(name))',
+      pattern: /path\.join\([^)]*\b(?:req\.|body\.|params\b|searchParams\b|query\.)/,
+    },
+    {
+      id: 'GSAP_TEXT_TWEEN',
+      severity: 'HIGH',
+      desc: 'GSAP text: tween (TextPlugin) sets innerHTML: script or brief text in it is parsed as markup',
+      fix: 'A count tween writing textContent (typeText in templates/kit.mjs, swapText in ui-story)',
+      pattern: (src) => inDir('templates/') && /\{\s*text\s*:\s*(?!['"])[^,}]/.test(src),
+    },
+    {
+      id: 'MODEL_CALL_OUTSIDE_ALLOWED',
+      severity: 'CRITICAL',
+      desc: 'A model API or Claude Code called outside the two person-clicked paths (server/director.mjs + server/worker/, server/generate.mjs)',
+      fix: 'Route it through Run Director or the Brand tab Generate; never from engine/, a cron or a loop',
+      pattern: (src) => !inDir('server/director.mjs', 'server/worker/', 'server/generate.mjs', 'tests/')
+        && /api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.openai\.com|['"]claude(?:\.exe)?['"]\s*,\s*\[/.test(src),
+    },
+    {
+      id: 'SERVER_NOT_LOCALHOST',
+      severity: 'CRITICAL',
+      desc: 'A server listens on an address other than 127.0.0.1',
+      fix: 'listen(port, "127.0.0.1"); the read-only review link (server/review.mjs) is the one exception',
+      pattern: (src) => inDir('server/') && !inDir('server/review.mjs') && /\.listen\([^)]*['"](?:0\.0\.0\.0|::|localhost)['"]/.test(src),
+    },
+    {
+      id: 'PERMISSION_BYPASS_FLAG',
+      severity: 'CRITICAL',
+      desc: 'A Claude Code flag that disables auth or permission checks, as an argument',
+      fix: 'Never pass --bare or --dangerously-skip-permissions; the seat runs with --permission-mode dontAsk on its allowlist',
+      pattern: (src) => !inDir('tests/') && /['"`]--(?:bare|dangerously-skip-permissions|allow-dangerously-skip-permissions)['"`]/.test(src),
     },
   ];
 
