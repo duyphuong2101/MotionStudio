@@ -7,6 +7,21 @@ const CHUNK_JSON = 0x4e4f534a, CHUNK_BIN = 0x004e4942;
 /** True when `buf` starts like a glTF 2.0 binary. */
 export const isGlb = (buf) => buf.length >= 20 && buf.readUInt32LE(0) === GLB_MAGIC && buf.readUInt32LE(4) === 2;
 
+/**
+ * The glTF JSON of a .glb, or null when its first chunk is not readable JSON. A model must be all in its one file:
+ * a buffer or image `uri` other than data: would make the renderer fetch from wherever it points.
+ */
+export function glbJson(buf) {
+  if (!isGlb(buf)) return null;
+  const len = buf.readUInt32LE(12);
+  if (buf.readUInt32LE(16) !== CHUNK_JSON || 20 + len > buf.length) return null;
+  try { return JSON.parse(buf.toString('utf8', 20, 20 + len)); } catch { return null; }
+}
+
+/** The first `uri` of a buffer or image that points outside the file, or null. */
+export const glbOutsideUri = (json) => [...(json?.buffers || []), ...(json?.images || [])]
+  .map((x) => x?.uri).find((u) => typeof u === 'string' && !/^data:/i.test(u)) ?? null;
+
 function torus(R = 0.7, r = 0.3, U = 64, V = 32) {
   const pos = [], nrm = [], idx = [];
   for (let i = 0; i <= U; i++) {

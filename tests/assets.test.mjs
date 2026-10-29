@@ -43,6 +43,24 @@ test('a plain SVG uploads, refuses a silent overwrite, and deletes', () => {
   assert.ok(!fs.existsSync(path.join(dir, 'qa-logo.svg')));
 });
 
+test('a .glb must hold its buffers and images itself: an outside uri is refused', async () => {
+  const { sampleGlb } = await import('../engine/glb.mjs');
+  const ok = sampleGlb();
+  assert.equal(saveAsset(PROJECT, 'torus.glb', ok, { replace: true }).name, 'torus.glb');
+  // The same model with one image that points at a web address: the JSON chunk rewritten, padded to 4 bytes.
+  const len = ok.readUInt32LE(12);
+  const json = JSON.parse(ok.toString('utf8', 20, 20 + len));
+  json.images = [{ uri: 'https://example.com/texture.png' }];
+  let text = JSON.stringify(json);
+  while (Buffer.byteLength(text) % 4) text += ' ';
+  const chunk = Buffer.from(text), rest = ok.subarray(20 + len);
+  const head = Buffer.alloc(20);
+  head.writeUInt32LE(0x46546c67, 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(20 + chunk.length + rest.length, 8);
+  head.writeUInt32LE(chunk.length, 12); head.writeUInt32LE(0x4e4f534a, 16);
+  assert.throws(() => saveAsset(PROJECT, 'linked.glb', Buffer.concat([head, chunk, rest])), /links https:\/\/example\.com\/texture\.png outside the file/);
+  assert.ok(!fs.existsSync(path.join(dir, 'linked.glb')));
+});
+
 test('brand accepts logo files, custom colors and built-in music', () => {
   const base = {
     name: 'A', colors: { primary: '#000000', primary2: '#111111', secondary: '#222222', bg: '#ffffff', ink: '#000000', muted: '#555555', onPrimary: '#ffffff' },

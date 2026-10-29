@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { StudioError, FILE_RE, within, exists } from './core.mjs';
 import { profileDir } from './jobs.mjs';
-import { isGlb } from './glb.mjs';
+import { glbJson, glbOutsideUri } from './glb.mjs';
 import { isLottie, assertSafeLottie } from './lottie.mjs';
 
 const extOf = (name) => path.extname(name).slice(1).toLowerCase();
@@ -64,12 +64,16 @@ function checkContent(name, buf) {
     woff: () => ascii(0, 4) === 'wOFF',
     ttf: () => (head[0] === 0 && head[1] === 1 && head[2] === 0 && head[3] === 0) || ascii(0, 4) === 'true',
     otf: () => ascii(0, 4) === 'OTTO',
-    glb: () => isGlb(buf),
+    glb: () => glbJson(buf) !== null,
     json: () => isLottie(buf),
   }[ext];
   if (!ok || !ok()) throw new StudioError(ext === 'json' ? `${name} is not a Lottie animation (a .json export from After Effects or LottieFiles with v, fr and layers)` : `${name} does not look like a real .${ext} file`, 400);
   if (ext === 'svg') assertSafeSvg(name, buf.toString('utf8'));
   if (ext === 'json') assertSafeLottie(name, buf);
+  if (ext === 'glb') {
+    const outside = glbOutsideUri(glbJson(buf));
+    if (outside) throw new StudioError(`${name} links ${outside.slice(0, 60)} outside the file. Export a self-contained .glb (textures and buffers embedded).`, 400);
+  }
 }
 
 /** Refuses SVG text that is not an SVG or carries script, handlers or external links. */

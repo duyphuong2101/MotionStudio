@@ -139,11 +139,19 @@ export async function detectPackCrop(file) {
   return { w, h, x, y };
 }
 
-/** Trims one picture to `crop` and writes it as PNG (at most 2048 px on the long side). */
+/**
+ * Trims one picture to `crop` and writes it as PNG (at most 2048 px on the long side). A detailed photo can come out
+ * past MAX_TEXTURE_BYTES as a 2048 px PNG, so it steps down until it fits; PNG keeps a cut-out pack's transparency.
+ */
 async function trimPicture(src, dst, { w, h, x, y }) {
-  const vf = `crop=${w}:${h}:${x}:${y},scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease,format=rgba`;
-  await ffmpeg(['-y', '-i', src, '-vf', vf, '-frames:v', '1', dst]);
-  return fs.readFileSync(dst);
+  let png;
+  for (const side of [2048, 1536, 1024]) {
+    const vf = `crop=${w}:${h}:${x}:${y},scale='min(${side},iw)':'min(${side},ih)':force_original_aspect_ratio=decrease,format=rgba`;
+    await ffmpeg(['-y', '-i', src, '-vf', vf, '-frames:v', '1', dst]);
+    png = fs.readFileSync(dst);
+    if (png.length <= MAX_TEXTURE_BYTES) break;
+  }
+  return png;
 }
 
 /**

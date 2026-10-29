@@ -75,7 +75,14 @@ export async function ensureMusic() {
     const out = musicPath(m.id);
     if (fs.existsSync(out)) continue;
     const fade = `afade=t=in:d=2,afade=t=out:st=${SECONDS - 3}:d=3`;
-    await ffmpeg(['-y', '-f', 'lavfi', '-i', `aevalsrc=exprs='${m.expr}':s=48000:d=${SECONDS}`, '-af', `${m.filters},${fade},loudnorm=I=-20:TP=-2`, '-ac', '2', '-ar', '48000', out]);
+    // Written aside, then renamed: a run killed half way must not leave a short track that "exists" for good.
+    const tmp = `${out}.tmp.wav`;
+    try {
+      await ffmpeg(['-y', '-f', 'lavfi', '-i', `aevalsrc=exprs='${m.expr}':s=48000:d=${SECONDS}`, '-af', `${m.filters},${fade},loudnorm=I=-20:TP=-2`, '-ac', '2', '-ar', '48000', tmp]);
+      fs.renameSync(tmp, out);
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
   }
 }
 

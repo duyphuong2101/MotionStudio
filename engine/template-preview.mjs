@@ -49,11 +49,15 @@ async function makeSampleMedia() {
   fs.mkdirSync(dir, { recursive: true });
   const photo = path.join(dir, SAMPLE.photo), clip = path.join(dir, SAMPLE.clip);
   const grad = 'gradients=c0=0x2b5fb3:c1=0xc96d12:c2=0xf3f2ef:n=3:seed=7';
-  if (!exists(photo)) await ffmpeg(['-y', '-f', 'lavfi', '-i', `${grad}:s=1600x900`, '-frames:v', '1', '-q:v', '3', photo], { timeoutMs: 30000 });
-  if (!exists(clip)) {
-    await ffmpeg(['-y', '-f', 'lavfi', '-i', `${grad}:s=960x540:speed=0.03:r=30`, '-t', '8', '-vf', BT709_VF, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...BT709_TAGS,
-      '-preset', 'veryfast', '-crf', '28', '-movflags', '+faststart', clip], { timeoutMs: 60000 });
-  }
+  // Each file is written aside and renamed, so a killed run never leaves a broken sample that "exists".
+  const make = async (file, args, timeoutMs) => {
+    if (exists(file)) return;
+    const tmp = file.replace(/(\.\w+)$/, '.tmp$1');
+    try { await ffmpeg([...args, tmp], { timeoutMs }); fs.renameSync(tmp, file); } finally { fs.rmSync(tmp, { force: true }); }
+  };
+  await make(photo, ['-y', '-f', 'lavfi', '-i', `${grad}:s=1600x900`, '-frames:v', '1', '-q:v', '3'], 30000);
+  await make(clip, ['-y', '-f', 'lavfi', '-i', `${grad}:s=960x540:speed=0.03:r=30`, '-t', '8', '-vf', BT709_VF, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...BT709_TAGS,
+    '-preset', 'veryfast', '-crf', '28', '-movflags', '+faststart'], 60000);
   return { photo, clip };
 }
 

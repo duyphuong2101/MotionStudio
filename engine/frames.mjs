@@ -110,6 +110,13 @@ export async function openWorkers(file, { count = 1, ...opts }) {
   const close = () => Promise.all(ok.map((o) => o.browser.close().catch(() => {})));
   const failed = opened.find((o) => o.status === 'rejected');
   if (failed) { await close(); throw failed.reason; }
+  // Each Chrome fetches the web fonts on its own; one that missed them (a network blip) would render its part of the
+  // video in the fallback font, so the type would change mid-video. Every worker must have loaded the same fonts.
+  const fontSets = await Promise.all(ok.map((o) => o.page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family} ${f.weight} ${f.style}`).sort().join('|'))));
+  if (new Set(fontSets).size > 1) {
+    await close();
+    throw new StudioError('The render Chromes did not all load the same fonts (a network problem fetching Google Fonts?). Check the connection and render again.');
+  }
   return { pages: ok.map((o) => o.page), info: ok[0].info, close };
 }
 

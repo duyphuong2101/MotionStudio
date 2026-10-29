@@ -9,6 +9,8 @@ import { ICONS } from '../motion-kit/icons.mjs';
 export const MAX_ICON_BYTES = 200 * 1024;
 export const MAX_BRAND_ICONS = 40;
 export const MAX_PATH_CHARS = 16000;
+const MAX_SUBPATHS = 300;
+const MAX_SEGMENTS = 4000;
 export const ICON_NAME_RE = /^[a-z][a-z0-9-]{0,23}$/;
 // What a stored path may hold: safe to drop into an HTML attribute or a script as is.
 export const ICON_PATH_RE = /^M[MLCZ0-9 .-]*$/;
@@ -93,8 +95,11 @@ export function svgToIconPath(text, label = 'icon.svg') {
   assertSafeSvg(label, text);
   const src = String(text).replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<[?!][^>]*>/g, '');
   const stack = [];
-  let rootSeen = false, hidden = 0, stroked = 0;
+  let rootSeen = false, hidden = 0, stroked = 0, subCount = 0, segCount = 0;
   const parts = [];
+  // The output path is capped at MAX_PATH_CHARS (~1,600 segments), so a file far past these limits can never fit.
+  // Checked as shapes are read, before the even-odd pass, which grows with the square of the subpaths.
+  const tooDetailed = () => new StudioError(`${label} is too detailed (${subCount} shapes, ${segCount} segments; limit ${MAX_SUBPATHS} and ${MAX_SEGMENTS}). Simplify it.`, 400);
   for (const m of src.matchAll(/<(\/?)([A-Za-z][\w:.-]*)((?:\s+[^\s=/>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'))?)*)\s*(\/?)>/g)) {
     const [, close, rawTag, rawAttrs, self] = m;
     const tag = rawTag.toLowerCase().replace(/^svg:/, '');
@@ -119,6 +124,9 @@ export function svgToIconPath(text, label = 'icon.svg') {
       if (node.off || hide || /^none$/i.test(node.fill.trim()) || /^transparent$/i.test(node.fill.trim())) { if (a.stroke && a.stroke !== 'none') stroked++; }
       else {
         const subs = shapeToSubpaths(tag, a, label).map((sp) => mapSubpath(sp, node.m)).filter((sp) => sp.segs.length);
+        subCount += subs.length;
+        for (const sp of subs) segCount += sp.segs.length;
+        if (subCount > MAX_SUBPATHS || segCount > MAX_SEGMENTS) throw tooDetailed();
         if (subs.length) parts.push(orient(subs, node.rule === 'evenodd'));
       }
     }
@@ -405,17 +413,20 @@ function cubicRange(p0, p1, p2, p3) {
   return vals;
 }
 
+// A running min and max: spreading every coordinate into Math.min throws a RangeError on a large path.
 function bboxOf(subs) {
-  const xs = [], ys = [];
+  const b = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
+  const x = (v) => { if (v < b.x1) b.x1 = v; if (v > b.x2) b.x2 = v; };
+  const y = (v) => { if (v < b.y1) b.y1 = v; if (v > b.y2) b.y2 = v; };
   for (const sp of subs) {
     let [x0, y0] = sp.start;
-    xs.push(x0); ys.push(y0);
+    x(x0); y(y0);
     for (const { t, p } of sp.segs) {
-      if (t === 'L') { xs.push(p[0]); ys.push(p[1]); [x0, y0] = p; }
-      else { xs.push(...cubicRange(x0, p[0], p[2], p[4])); ys.push(...cubicRange(y0, p[1], p[3], p[5])); [x0, y0] = [p[4], p[5]]; }
+      if (t === 'L') { x(p[0]); y(p[1]); [x0, y0] = p; }
+      else { cubicRange(x0, p[0], p[2], p[4]).forEach(x); cubicRange(y0, p[1], p[3], p[5]).forEach(y); [x0, y0] = [p[4], p[5]]; }
     }
   }
-  return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+  return b;
 }
 
 const fmt = (n) => { const v = Math.round(n * 100) / 100; return String(Object.is(v, -0) ? 0 : v); };

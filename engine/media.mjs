@@ -56,6 +56,9 @@ export function ffmpeg(args, { onStdin, timeoutMs } = {}) {
       if (timedOut) return reject(new StudioError(`ffmpeg timed out after ${Math.round(limit / 1000)} s`));
       return code === 0 ? resolve() : reject(new StudioError(`ffmpeg exited ${code}: ${stderr.trim().slice(0, 2000)}`));
     });
+    // ffmpeg ending early (an error, a timeout) breaks the pipe: an EPIPE with no listener would end the whole process
+    // before the caller sets the job to error. The exit code reports the failure instead.
+    proc.stdin.on('error', () => {});
     if (onStdin) onStdin(proc.stdin).catch((err) => { killTree(proc); reject(err); });
   });
 }

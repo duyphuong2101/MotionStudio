@@ -185,3 +185,10 @@ test('a set icon validates, cannot be taken by a brand upload, and is drawn by e
   assert.equal(Object.keys(pages).length, 4);
   for (const [id, html] of Object.entries(pages)) assert.ok(html.includes(ICONS.truck), `${id} does not draw the truck icon`);
 });
+
+test('a far too detailed SVG is refused before the slow even-odd pass, in well under a second', () => {
+  const shapes = Array.from({ length: 2000 }, (_, i) => `M${(i % 50) * 20} ${Math.floor(i / 50) * 20}h5v5h-5z`).join('');
+  const t0 = Date.now();
+  assert.throws(() => svgToIconPath(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><path fill-rule="evenodd" d="${shapes}"/></svg>`, 'many.svg'), /too detailed \(\d+ shapes/);
+  assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0} ms`);
+});

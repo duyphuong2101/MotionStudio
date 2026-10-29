@@ -10,6 +10,8 @@ import { kokoroStatus, kokoroSpeak, kokoroVoices, writeWav, voicedSpan, voicedPa
 
 const VOICE_RE = /^[A-Za-z0-9 _()-]{1,60}$/;
 const TTS_TIMEOUT_MS = 60000;
+// By full path: Windows looks for a bare name in the working folder (the repo) before PATH.
+const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
 // Kokoro's own grading of its English voices (from the kokoro-js voice table); others are listed as "ungraded".
 const KOKORO_INFO = {
@@ -27,7 +29,7 @@ async function sapiVoices() {
   if (process.platform !== 'win32') return [];
   if (sapiVoicesCache) return sapiVoicesCache;
   const out = await new Promise((resolve) => {
-    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    const p = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command',
       'Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices() | Where-Object { $_.Enabled } | ForEach-Object { $_.VoiceInfo.Name + "|" + $_.VoiceInfo.Culture + "|" + $_.VoiceInfo.Gender }'],
     { shell: false, windowsHide: true, env: keyFreeEnv() });
     let txt = '';
@@ -130,7 +132,7 @@ export function ttsProvider(brand) {
 
 function runPs(script, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, ...args], { shell: false, windowsHide: true, env: keyFreeEnv() });
+    const p = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, ...args], { shell: false, windowsHide: true, env: keyFreeEnv() });
     let err = '';
     p.stderr.on('data', (d) => { if (err.length < 4000) err += d; });
     const timer = setTimeout(() => { killTree(p); reject(new StudioError('TTS timed out')); }, TTS_TIMEOUT_MS);
