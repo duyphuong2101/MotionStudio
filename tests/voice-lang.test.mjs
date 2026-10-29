@@ -79,6 +79,10 @@ test('scene stress: phrases of the voice line said louder, checked against the l
   const rms = (t0, t1) => { let sum = 0, n = 0; for (let i = Math.round(t0 * 48000); i < Math.round(t1 * 48000); i++) { const v = pcm.readInt16LE(i * 2) / 32768; sum += v * v; n++; } return Math.sqrt(sum / n); };
   const db = 20 * Math.log10(rms(0.7, 1.0) / rms(1.5, 1.9));
   assert.ok(Math.abs(db - STRESS_DB) < 0.3, `stressed span is ${db.toFixed(2)} dB louder`);
+  // Halfway up the 60 ms ramp (0.53 s) the gain is halfway too, not still 1 or already full.
+  const half = 20 * Math.log10(1 + (10 ** (STRESS_DB / 20) - 1) / 2);
+  const mid = 20 * Math.log10(rms(0.525, 0.535) / rms(1.5, 1.9));
+  assert.ok(Math.abs(mid - half) < 0.6, `mid-ramp is ${mid.toFixed(2)} dB, want about ${half.toFixed(2)} dB`);
   fs.unlinkSync(out);
   fs.rmdirSync(dir);
 });

@@ -337,7 +337,9 @@ export function stressFilter(spans) {
   const g = (10 ** (STRESS_DB / 20) - 1).toFixed(3);
   const r = STRESS_RAMP;
   const terms = spans.map(({ a, b }) => `clip((t-${a})/${r},0,1)*clip((${b}-t)/${r},0,1)`).join('+');
-  return `volume=volume='1+${g}*(${terms})':eval=frame,`;
+  // eval=frame works out the gain once per audio frame, which a decoder hands over in ~2048-sample blocks (85 ms at
+  // 24 kHz): longer than the ramp, so the gain would jump in one step. 120-sample frames make the ramp a ramp.
+  return `asetnsamples=n=120:p=0,volume=volume='1+${g}*(${terms})':eval=frame,`;
 }
 
 /**
