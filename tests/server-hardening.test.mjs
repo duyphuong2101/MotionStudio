@@ -169,6 +169,11 @@ test('bodies and URLs that are not what a route expects answer 400 or 413, never
   const fresh = JSON.parse((await request(PORT, `/api/jobs/${P}/x`)).text).stamps.source;
   assert.equal((await put(fresh)).status, 200);
 
+  // A GET that does work (a TTS preview, a music track's first build) cannot be set off by another site's <img>.
+  const cross = await request(PORT, '/api/options', { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+  assert.equal(cross.status, 403);
+  assert.equal((await request(PORT, '/api/options', { headers: { 'Sec-Fetch-Site': 'same-origin' } })).status, 200);
+
   // The UI page refuses to be framed by another site.
   const ui = await request(PORT, '/');
   assert.equal(ui.headers['x-frame-options'], 'DENY');

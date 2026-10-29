@@ -608,7 +608,22 @@ export function planRun(d, project, job = null, backend = SEAT) {
  * One click: the backend is picked here, once, and the run stays on it. `providers`, `env`, `fetch` and `files`
  * default to config/providers.json, the process, Node's fetch and logs/director/; `runPrepare` serves the API worker.
  */
-export function startDirector(d, { project, job, by, engineBusy, runPrepare, providers = readJson(PROVIDERS_FILE), env = process.env, fetch = globalThis.fetch, files = FILES }) {
+/**
+ * The pid of another live Motion Studio server running a Director run now (seat or API, from its in-flight record),
+ * or null. "One run at a time" is per process otherwise: a second UI or a test server shares the daily counters but
+ * not `current`. A process list that cannot be read answers null rather than block every run.
+ */
+export function directorElsewhere({ dir = INFLIGHT_DIR, self = SELF, probe = probeProcesses } = {}) {
+  const docs = (exists(dir) ? fs.readdirSync(dir) : []).filter((f) => INFLIGHT_RE.test(f)).map((f) => readJson(within(dir, f), null))
+    .filter((d) => d?.server && d.server.pid !== self.pid && Object.values(d.children || {}).some((c) => c?.kind === 'director'));
+  if (!docs.length) return null;
+  const alive = probe(docs.map((d) => Number(d.server.pid)));
+  return alive ? docs.find((d) => ownsProcess(d.server, alive.get(d.server.pid)))?.server.pid ?? null : null;
+}
+
+export function startDirector(d, { project, job, by, engineBusy, runPrepare, providers = readJson(PROVIDERS_FILE), env = process.env, fetch = globalThis.fetch, files = FILES, elsewhere = directorElsewhere }) {
+  const other = elsewhere();
+  if (other) throw new StudioError(`The Director is already running from another Motion Studio server (process ${other}). Wait for it to finish.`, 409);
   const backend = pickBackend(providers, env);
   assertCanStart(current, backendPause(backend, files), { used: runsToday(files.runs), max: d.maxRunsPerDay ?? 20 }, backend);
   const plan = planRun(d, project, job, backend);

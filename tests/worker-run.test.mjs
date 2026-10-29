@@ -8,7 +8,7 @@ import { createProject, validateBrief, saveBrief, setStatus, getStatus, jobDir }
 import { usage, runsToday, runDay } from '../server/caps.mjs';
 import { startApiRun } from '../server/worker/run.mjs';
 import {
-  DIRECTOR_DIR, pickBackend, planRun, studioCommand, assertCanStart, backendPause, startDirector, directorState, directorProviders, recoverStale, engineEnv,
+  DIRECTOR_DIR, pickBackend, planRun, studioCommand, assertCanStart, backendPause, startDirector, directorState, directorProviders, recoverStale, engineEnv, directorElsewhere,
 } from '../server/director.mjs';
 
 globalThis.fetch = () => { throw new Error('No network in tests'); };
@@ -185,13 +185,22 @@ test('cancel aborts the in-flight fetch and leaves the job in error with the rea
   assert.deepEqual(['b', 'c'].map((id) => getStatus(P, id).status), ['queued', 'queued']);
 });
 
+/** Waits for `cond`, failing after `ms` instead of hanging the file until the runner's 40-minute limit. */
+async function until(cond, what, ms = 20000) {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 test('cancel during prepare kills the prepare child through its handle', async () => {
   const files = fresh();
   let run, killed = null, release;
   const slowPrepare = () => ({ done: new Promise((r) => { release = r; }), kill: (why) => { killed = why; release(); } });
   const fetch = fakeFetch([['claim'], ['prepare']]);
   run = start({ files, fetch, runPrepare: slowPrepare });
-  while (!release) await new Promise((r) => setTimeout(r, 5));
+  await until(() => release, 'the prepare to start');
   run.stop('cancelled', 'Cancelled in the UI');
   await run.done;
   assert.equal(killed, 'Director run cancelled: Cancelled in the UI');
@@ -203,9 +212,9 @@ test('the sentinel key never reaches directorState, the panel list, the log or a
   const refused = () => Response.json({ error: { message: `Incorrect API key provided: ${KEY}` } }, { status: 401 });
   const fetch = fakeFetch([(init) => answer(['claim'], 1, `my key is ${KEY}`), refused]);
   const providers = PROVIDERS();
-  const r = startDirector({ ...D, maxJobsPerRun: 1 }, { project: P, by: 'tester', engineBusy: () => false, runPrepare, providers, env: ENV, fetch, files });
+  const r = startDirector({ ...D, maxJobsPerRun: 1 }, { project: P, by: 'tester', engineBusy: () => false, runPrepare, providers, env: ENV, fetch, files, elsewhere: () => null });
   assert.deepEqual([r.backend, r.provider, r.status], ['api', 'openai', 'running']);
-  while (directorState(P).running) await new Promise((res) => setTimeout(res, 10));
+  await until(() => !directorState(P).running, 'the run to end');
   const state = directorState(P);
   assert.deepEqual([state.last.status, state.last.usage.calls], ['done', 2]);
   assert.match(getStatus(P, 'a').error, /OpenAI refused the key \(OPENAI_API_KEY\): Incorrect API key provided: \[key\]/);
@@ -241,6 +250,18 @@ test('recoverStale leaves a job another live server is running an API Director r
   assert.equal(getStatus(P, 'a').status, 'scripting');
   assert.deepEqual(recoverStale(P, { dir, self, probe: () => null }), [], 'without a process list nothing is reset');
   assert.deepEqual(recoverStale(P, { dir, self, probe: () => new Map() }), [`${P}/a`], 'once that server is gone, its job is reset');
+});
+
+test('a Director run another live server holds blocks a new one here; a gone server or none does not', () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'inflight-'));
+  const self = { pid: 1, startedAt: 0 };
+  assert.equal(directorElsewhere({ dir, self, probe: () => new Map() }), null, 'no records');
+  const other = { pid: 434343, startedAt: 2000, exe: 'node' };
+  writeJson(path.join(dir, `${other.pid}.json`), { server: other, children: { director: { kind: 'director', action: 'director', project: P, jobs: ['a'], ...other } } });
+  const live = () => new Map([[other.pid, { name: 'node.exe', startedAt: 2000 }]]);
+  assert.equal(directorElsewhere({ dir, self, probe: live }), other.pid);
+  assert.equal(directorElsewhere({ dir, self, probe: () => new Map() }), null, 'that server is gone');
+  assert.throws(() => startDirector(D, { project: P, by: 't', engineBusy: () => false, elsewhere: () => other.pid }), (e) => e.code === 409 && /another Motion Studio server/.test(e.message));
 });
 
 test('engine children get no key named in config/providers.json', () => {

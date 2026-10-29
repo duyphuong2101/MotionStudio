@@ -9,9 +9,12 @@ import { urlCheck } from '../../engine/brand.mjs';
 import { readCapped } from '../http.mjs';
 
 // Loopback, private, link-local, unique-local and unspecified: never reached, whatever an allowed name resolves to.
+// Also carrier-grade NAT (a Tailscale or ISP network), benchmark, IETF, multicast and reserved IPv4, and the IPv6
+// ranges that carry an IPv4 address inside them (6to4, NAT64), which could hide a private one.
 const PRIVATE = new BlockList();
-for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16]]) PRIVATE.addSubnet(net, bits, 'ipv4');
-for (const [net, bits] of [['::', 128], ['::1', 128], ['fe80::', 10], ['fc00::', 7]]) PRIVATE.addSubnet(net, bits, 'ipv6');
+for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24],
+  ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 4], ['240.0.0.0', 4]]) PRIVATE.addSubnet(net, bits, 'ipv4');
+for (const [net, bits] of [['::', 128], ['::1', 128], ['fe80::', 10], ['fc00::', 7], ['2002::', 16], ['64:ff9b::', 96], ['ff00::', 8]]) PRIVATE.addSubnet(net, bits, 'ipv6');
 const REDIRECTS = [301, 302, 303, 307, 308];
 const MAX_HOPS = 3;
 const MAX_IMAGES = 40;

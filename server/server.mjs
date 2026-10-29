@@ -115,8 +115,10 @@ function hold(key, entry, child, rec) {
 const release = (key) => { running.delete(key); untrackChild(key); };
 
 function runEngine(action, project, id) {
-  assertEngineSlot('Another render or prepare is running. Wait for it to finish.');
   const key = `${project}/${id}`;
+  // With engine.maxConcurrentRuns above 1, two quick clicks would otherwise both start and write the same files.
+  if (running.has(key)) throw new StudioError(`This ${action.startsWith('sequence') ? 'sequence' : 'job'} is already running ${running.get(key).action}. Wait for it to finish.`, 409);
+  assertEngineSlot('Another render or prepare is running. Wait for it to finish.');
   const logFile = jobFile(project, id, 'engine.log');
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   const log = fs.createWriteStream(logFile, { flags: 'w' });
@@ -265,19 +267,24 @@ async function readBody(req) {
 // Requests whose body was refused half read: the error answer goes out first, then the connection is dropped.
 const REFUSED = new WeakSet();
 
+let videoUploads = 0;
+
 function readRaw(req, limit, tooBig = `File is larger than ${limit / 1024 / 1024} MB`) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     const refuse = () => { req.removeListener('data', onData); req.pause(); REFUSED.add(req); reject(new StudioError(tooBig, 413)); };
+    // With a Content-Length the body goes straight into one buffer of that size: no second copy at the end.
+    const declared = Number(req.headers['content-length']);
+    const into = Number.isSafeInteger(declared) && declared > 0 && declared <= limit ? Buffer.allocUnsafe(declared) : null;
     function onData(c) {
       size += c.length;
-      if (size > limit) return refuse();
-      chunks.push(c);
+      if (size > limit || (into && size > into.length)) return refuse();
+      if (into) c.copy(into, size - c.length); else chunks.push(c);
     }
-    if (Number(req.headers['content-length']) > limit) return refuse();
+    if (declared > limit) return refuse();
     req.on('data', onData);
-    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('end', () => resolve(into ? into.subarray(0, size) : Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -670,7 +677,14 @@ async function api(req, res, url, review = false) {
       if (m === 'DELETE' && parts[3] === 'pause' && parts.length === 4) { clearPauseFile(GENERATE_FILES.pause); return send(res, 200, { ok: true }); }
     }
     if (m === 'POST' && parts[2] === 'assets' && parts.length === 3) {
-      const buf = await readRaw(req, maxBytesFor(url.searchParams.get('name')));
+      // A video upload is held in memory (up to the video cap) while its type is checked: one at a time, so several
+      // at once cannot run the server out of memory.
+      const limit = maxBytesFor(url.searchParams.get('name'));
+      const big = limit > MAX_ASSET_BYTES;
+      if (big && videoUploads > 0) throw new StudioError('Another video is uploading. Wait for it to finish, then add this one.', 429);
+      let buf;
+      if (big) videoUploads += 1;
+      try { buf = await readRaw(req, limit); } finally { if (big) videoUploads -= 1; }
       const saved = saveAsset(project, url.searchParams.get('name'), buf, { replace: url.searchParams.get('replace') === '1' });
       // An upload over a generated file or a cut clip is neither any more.
       fs.rmSync(sidecarFile(project, saved.name), { force: true });
@@ -781,6 +795,9 @@ const server = http.createServer(async (req, res) => {
         throw new StudioError('Cross-site request refused', 403);
       }
     }
+    // Some GETs do work (a TTS or template preview, the first build of a music track): another site's <img src> must
+    // not set them off. Browsers mark such requests; the UI's own are same-origin, a typed URL is "none".
+    if (url.pathname.startsWith('/api/') && req.headers['sec-fetch-site'] === 'cross-site') throw new StudioError('Cross-site request refused', 403);
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (url.pathname.startsWith('/files/')) return serveJobFile(req, res, url);
     if (url.pathname.startsWith('/tpreview/')) return servePreviewFile(req, res, url);

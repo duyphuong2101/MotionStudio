@@ -280,7 +280,8 @@ test('a body that fails mid-read is a tool error: 502 on a dropped connection, 5
 });
 
 test('fetch_page refuses a non-default port and any hop whose host resolves to a private or local address', async () => {
-  const refused = ['127.0.0.1', '127.8.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.0.9', '169.254.169.254', '0.0.0.0', '::', '::1', 'fe80::1', 'fc00::1', 'fd12:3456::1', '::ffff:127.0.0.1'];
+  const refused = ['127.0.0.1', '127.8.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.0.9', '169.254.169.254', '0.0.0.0', '::', '::1', 'fe80::1', 'fc00::1', 'fd12:3456::1', '::ffff:127.0.0.1',
+    '100.64.0.1', '100.127.255.254', '198.18.0.1', '192.0.0.9', '224.0.0.1', '255.255.255.255', '2002:7f00:1::1', '64:ff9b::7f00:1', 'ff02::1'];
   for (const address of refused) {
     const f = stubFetch(html('<p>Hi</p>'));
     const lookup = async () => [{ address, family: address.includes(':') ? 6 : 4 }];
