@@ -251,8 +251,9 @@ function fillProjects() {
 }
 
 async function switchProject(id) {
+  stopPreview();
   S.project = id; store.set('ms.project', id); S.sel = null; S.detail = null; S.briefForm = null; S.seqSel = null; S.seqForm = null;
-  S.paneDirty = false; S.brandDirty = false; S.listHtml = null;
+  S.paneDirty = false; S.brandDirty = false; S.listHtml = null; S.seqListHtml = null;
   $('#proj').value = id;
   $('#detail').innerHTML = '<p class="muted">Select a job on the left.</p>';
   renderBrand();
@@ -390,7 +391,9 @@ async function refreshJobs(selectFirst) {
   const active = S.jobs.filter((j) => BUSY.includes(j.status.status)).length;
   const review = S.jobs.filter((j) => j.status.status === 'awaiting_review').length;
   const queued = S.jobs.filter((j) => j.status.status === 'queued' || (j.status.status === 'dirty' && (j.status.dirty_from ?? 99) < 5)).length;
-  $('#topstatus').textContent = `${active} running · ${review} awaiting review · ${queued} waiting for Director`;
+  // A live region: rewriting it every poll makes a screen reader repeat it.
+  const top = `${active} running · ${review} awaiting review · ${queued} waiting for Director`;
+  if ($('#topstatus').textContent !== top) $('#topstatus').textContent = top;
   drawJobList();
   await refreshDirector();
   await refreshSequences();
@@ -449,12 +452,23 @@ async function loadDetail(full) {
 }
 
 /* ---------------- detail ---------------- */
+const SUBS = [['preview', 'Preview'], ['script', 'Script'], ['source', 'Source'], ['history', 'History']];
+
 function renderDetail() {
   $('#detail').innerHTML = `<div id="d-top"></div>
-    <div class="subtabs" role="tablist">
-      ${[['preview', 'Preview'], ['script', 'Script'], ['source', 'Source'], ['history', 'History']].map(([k, l]) => `<button role="tab" aria-selected="${S.sub === k}" class="${S.sub === k ? 'on' : ''}" data-sub="${k}">${l}</button>`).join('')}
-    </div><div id="d-pane"></div>`;
+    <div class="subtabs" role="tablist" aria-label="Job">
+      ${SUBS.map(([k, l]) => `<button role="tab" id="st-${k}" aria-controls="d-pane" aria-selected="${S.sub === k}" tabindex="${S.sub === k ? 0 : -1}" class="${S.sub === k ? 'on' : ''}" data-sub="${k}">${l}</button>`).join('')}
+    </div><div id="d-pane" role="tabpanel" aria-labelledby="st-${S.sub}"></div>`;
   $$('#detail .subtabs button').forEach((b) => b.addEventListener('click', () => { if (b.dataset.sub !== S.sub) goSub(b.dataset.sub); }));
+  // Arrow keys move between the tabs, as the tab pattern expects (Tab itself goes on into the pane).
+  $('#detail .subtabs').addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!step) return;
+    const keys = SUBS.map(([k]) => k), next = keys[(keys.indexOf(S.sub) + step + keys.length) % keys.length];
+    e.preventDefault();
+    goSub(next);
+    $(`#st-${next}`)?.focus();
+  });
   renderTop();
   renderPane();
 }
@@ -463,7 +477,8 @@ function renderDetail() {
 function goSub(sub, jump = null) {
   if (!confirmDiscard()) return;
   S.sub = sub; S.paneDirty = false; S.jump = jump;
-  $$('#detail .subtabs button').forEach((x) => { const on = x.dataset.sub === sub; x.classList.toggle('on', on); x.setAttribute('aria-selected', on); });
+  $$('#detail .subtabs button').forEach((x) => { const on = x.dataset.sub === sub; x.classList.toggle('on', on); x.setAttribute('aria-selected', on); x.tabIndex = on ? 0 : -1; });
+  $('#d-pane')?.setAttribute('aria-labelledby', `st-${sub}`);
   // Landing on a scene scrolls to that scene; otherwise bring the tab bar into view.
   if (!jump?.scene) $('#detail .subtabs')?.scrollIntoView({ block: 'start' });
   renderPane();
@@ -493,6 +508,7 @@ function renderTop() {
     if (!confirmDiscard() || !window.confirm(`Delete job ${b.id}? Its brief, script, stills and video move to trash/.`)) return;
     guarded(jobKey(b.id), e.currentTarget, async () => {
       const r = await api(`/jobs/${jobPath(S.project, b.id)}`, { method: 'DELETE' });
+      stopPreview();
       S.sel = null; S.detail = null; S.paneDirty = false;
       $('#detail').innerHTML = NO_SELECTION;
       toast(`Deleted ${b.id}. Its files are in trash/${r.trash}.`);
@@ -637,10 +653,21 @@ function renderDirector() {
   if (html === S.dirHtml) return;
   // A poll must not wipe a model id being typed; the next poll after the field loses focus redraws.
   if (document.activeElement?.matches?.('#director input[data-dir-pf]')) return;
+  // While a run writes, usually only its log grew: update the log text alone, so the focus stays on "Cancel run"
+  // and someone reading higher up is not thrown to the bottom.
+  const head = html.replace(/<pre>[\s\S]*<\/pre>/, '');
+  const pre = $('#director pre');
+  if (pre && S.dirHtml && head === S.dirHtml.replace(/<pre>[\s\S]*<\/pre>/, '')) {
+    const atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 24;
+    S.dirHtml = html;
+    pre.textContent = tail;
+    if (atEnd) pre.scrollTop = pre.scrollHeight;
+    return;
+  }
   S.dirHtml = html;
   $('#director').innerHTML = html;
-  const pre = $('#director pre');
-  if (pre) pre.scrollTop = pre.scrollHeight;
+  const fresh = $('#director pre');
+  if (fresh) fresh.scrollTop = fresh.scrollHeight;
 }
 
 async function directorClick(e) {
@@ -1247,14 +1274,18 @@ async function fillNotes(box, project, id, clock) {
     try { await api(`/jobs/${jobPath(project, id)}/notes/${encodeURIComponent(b.dataset.ndel)}`, { method: 'DELETE' }); } catch (err) { toast(err.message); return; }
     fillNotes(box, project, id, clock);
   }));
+  // One post at a time: a double Enter, or Enter then a click, would pin the same note twice.
+  let sending = false;
   const add = async () => {
     const text = $('#note-text', box).value.trim();
-    if (!text) return;
-    try { await api(`/jobs/${jobPath(project, id)}/notes`, { method: 'POST', body: { t: clock.t(), text } }); } catch (err) { toast(err.message); return; }
+    if (!text || sending) return;
+    sending = true;
+    try { await api(`/jobs/${jobPath(project, id)}/notes`, { method: 'POST', body: { t: clock.t(), text } }); } catch (err) { toast(err.message); return; } finally { sending = false; }
     fillNotes(box, project, id, clock);
   };
   $('#note-add', box).addEventListener('click', add);
-  $('#note-text', box).addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+  // Enter while an input method is still composing a word (Vietnamese, Japanese …) picks the word, not the note.
+  $('#note-text', box).addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) add(); });
 }
 
 function panePreView(pane) {
@@ -1354,7 +1385,7 @@ function panePreView(pane) {
     const w = frame.contentWindow;
     if (w && w.__ready) { w.seek(t); rng.value = t; tc.textContent = `${Number(t).toFixed(2)}s`; markScene(t); }
   };
-  frame.addEventListener('load', () => { const wait = () => (frame.contentWindow?.__ready ? seek(jumpT ?? 0) : setTimeout(wait, 100)); wait(); });
+  frame.addEventListener('load', () => waitReady(frame, () => seek(jumpT ?? 0)));
   if (notebox) fillNotes(notebox, S.project, S.sel, { t: () => +rng.value, go: (t) => { stopPlay(); pl.textContent = '▶ Play'; seek(t); } });
   rng.addEventListener('input', () => { stopPlay(); pl.textContent = '▶ Play'; seek(+rng.value); });
   pl.addEventListener('click', () => {
@@ -1408,6 +1439,7 @@ const formatLabel = (f, short) => {
 // The brief form opens in the job detail pane; a saved new brief is a new job, an edit rewrites that job's brief.
 function openBriefForm(prefill) {
   if (!confirmDiscard()) return;
+  stopPreview();
   if (S.sel) S.prevSel = S.sel;
   S.briefForm = prefill; S.sel = null; S.detail = null; S.paneDirty = false; S.seqSel = null; S.seqForm = null;
   $$('#joblist .job, #seqlist .job').forEach((x) => x.classList.remove('on'));
@@ -1886,7 +1918,7 @@ async function refreshSequences() {
   S.seqMeta = await api(`/sequences?project=${encodeURIComponent(S.project)}`);
   S.seqs = S.seqMeta.sequences;
   $('#n-seqs').textContent = S.seqs.length;
-  $('#seqlist').innerHTML = S.seqs.length ? S.seqs.map((it) => {
+  const listHtml = S.seqs.length ? S.seqs.map((it) => {
     const { sequence: q, status: s, running } = it, stale = seqStale(it);
     const st = running ? 'rendering' : s.status;
     return `<button class="job ${S.seqSel === q.id ? 'on' : ''}" data-seq="${esc(q.id)}"${stale ? ` title="${esc(stale.reason)}"` : ''}>
@@ -1895,7 +1927,12 @@ async function refreshSequences() {
       <span class="m">${esc(SEQ_STATUS[st] || st)} · ${q.parts.length} parts · ${esc(q.format)}</span>
       ${stale ? '<br><span class="pill warn-t">Out of date — render again</span>' : ''}</span></button>`;
   }).join('') : '<p class="muted">No sequences yet.</p>';
-  $$('#seqlist .job').forEach((b) => b.addEventListener('click', () => selectSequence(b.dataset.seq)));
+  // Rewritten only when it changed: a poll every 2.5 s would otherwise take the keyboard focus off the list.
+  if (listHtml !== S.seqListHtml) {
+    S.seqListHtml = listHtml;
+    $('#seqlist').innerHTML = listHtml;
+    $$('#seqlist .job').forEach((b) => b.addEventListener('click', () => selectSequence(b.dataset.seq)));
+  }
   if (S.seqSel && !S.seqForm) {
     const it = seqItem(S.seqSel);
     if (!it || seqStamp(it) !== S.seqStamp) renderSeqDetail();
@@ -1903,11 +1940,24 @@ async function refreshSequences() {
 }
 
 // Leaves whatever the detail pane shows; false when the person keeps unsaved edits.
-function leaveDetail() {
-  if (!confirmDiscard()) return false;
+/** Calls `then` once a composition frame says it is ready; gives up when the frame leaves the page or after ~30 s. */
+function waitReady(frame, then, tries = 300) {
+  if (!frame.isConnected || tries <= 0) return;
+  if (frame.contentWindow?.__ready) then();
+  else setTimeout(() => waitReady(frame, then, tries - 1), 100);
+}
+
+// Whatever replaces the job detail (another job, a project, the brief form, a delete) stops the preview with it:
+// otherwise its voice and music play on with no Play button left to stop them.
+function stopPreview() {
   stopPlay();
   stageRo?.disconnect();
   stageRo = null;
+}
+
+function leaveDetail() {
+  if (!confirmDiscard()) return false;
+  stopPreview();
   S.sel = null; S.detail = null; S.briefForm = null; S.paneDirty = false; S.seqSel = null; S.seqForm = null; S.seqStamp = null;
   $$('#joblist .job, #seqlist .job').forEach((b) => b.classList.remove('on'));
   return true;
@@ -2232,7 +2282,7 @@ async function loadTemplatePreview(box) {
   box.ro.observe(box);
   let t = p.poster, playing = false, prev = 0;
   const seek = (x) => { const w = frame.contentWindow; if (w?.__ready) w.seek(x); };
-  frame.addEventListener('load', () => { const wait = () => (frame.contentWindow?.__ready ? seek(t) : setTimeout(wait, 100)); wait(); });
+  frame.addEventListener('load', () => waitReady(frame, () => seek(t)));
   const loop = (now) => {
     if (!playing) return;
     t = (t + Math.min(0.1, (now - prev) / 1000)) % p.duration;
@@ -2385,8 +2435,9 @@ async function openShots(project, asset, onMade) {
         ${d.stale ? '<button class="btn sm" type="button" id="sh-run">Find shots again</button>' : ''}`;
     }
     $('#sh-head').innerHTML = `${head}${st.error ? `<span class="bad-t small">${esc(st.error)}</span>` : ''}`;
-    $('#sh-strip').innerHTML = d ? d.shots.map((s) => `<button class="shot" type="button" role="listitem" data-sin="${s.start}" data-sout="${s.end}" aria-label="Shot ${s.n} at ${clock(s.start)}, set In">
-      <img src="${imgUrl(s.thumb, d.stamp)}" alt="" loading="lazy"><span class="mono small">${clock(s.start)}</span></button>`).join('') : '';
+    // A list item holds the button: role="listitem" on the button itself would take away its button role.
+    $('#sh-strip').innerHTML = d ? d.shots.map((s) => `<div role="listitem"><button class="shot" type="button" data-sin="${s.start}" data-sout="${s.end}" aria-label="Shot ${s.n} at ${clock(s.start)}, set In">
+      <img src="${imgUrl(s.thumb, d.stamp)}" alt="" loading="lazy"><span class="mono small">${clock(s.start)}</span></button></div>`).join('') : '';
     const t = st.transcript;
     $('#sh-q').disabled = !t;
     $('#sh-find').disabled = !t;

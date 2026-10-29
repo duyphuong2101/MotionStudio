@@ -255,7 +255,7 @@ p.small{margin:0 0 8px}
 /* Shots dialog (Brand tab): thumbnail strip, transcript hits, clip options */
 .dlg:has(.shots){width:min(980px,calc(100vw - 32px))}
 .shotstrip{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;min-height:0}
-.shotstrip:empty{display:none}
+.shotstrip:empty{display:none}.shotstrip>[role=listitem]{flex:0 0 auto;display:flex}
 .shot{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:inherit;font:inherit;cursor:pointer}
 .shot img{display:block;height:72px;width:auto;border-radius:4px;background:#000}
 .shot[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:1px}
