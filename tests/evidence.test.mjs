@@ -160,6 +160,14 @@ test('CSV parsing: comment lines, quoted commas and quotes, CRLF, several tables
   assert.deepEqual(csvRecords('a;b\n"x\ny";2\n'), [['a', 'b'], ['x\ny', '2']], 'semicolon file, newline inside quotes');
 });
 
+test('a "#" row inside a table is data, so a page path never splits the table; a header comment with a comma is still a comment', () => {
+  const csv = ['# Account: Acme, Inc.', '', 'Page,Date,Sessions', '/home,20250101,10', '#/checkout,20250102,20', '/cart,20250103,30'].join('\n');
+  const tables = csvTables(csv);
+  assert.equal(tables.length, 1);
+  assert.deepEqual(tables[0].columns, ['Page', 'Date', 'Sessions']);
+  assert.deepEqual(tables[0].rows.map((r) => r[2]), ['10', '20', '30'], 'every row sums, not only the ones above the # row');
+});
+
 test('CSV column guesses for the pickers', () => {
   const c = csvColumns(GA4);
   assert.equal(c.rows, 5);

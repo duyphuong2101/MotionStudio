@@ -229,9 +229,16 @@ export function csvRecords(text, delim = sniffDelimiter(text)) {
       continue;
     }
     if (c === '#' && !rec.length && !field) {
-      while (i < text.length && text[i] !== '\n') i++;
-      recs.push(null);
-      continue;
+      // Inside a table, a "#" row that has the delimiter is data (a page path like #/checkout), not a comment:
+      // GA4's comment blocks always follow a blank line, so they never sit straight under a data row.
+      const eol = text.indexOf('\n', i);
+      const line = text.slice(i, eol < 0 ? text.length : eol);
+      const inTable = recs.length > 0 && recs[recs.length - 1] !== null;
+      if (!(inTable && line.includes(delim))) {
+        i = eol < 0 ? text.length : eol;
+        recs.push(null);
+        continue;
+      }
     }
     if (c === '"' && !field) quoted = true;
     else if (c === delim) { rec.push(field); field = ''; }
