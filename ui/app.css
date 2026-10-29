@@ -271,7 +271,7 @@ p.small{margin:0 0 8px}
 
 /* Review link (npm run ui:review): same layout, no edit controls. The server refuses writes anyway. */
 .ro-badge{background:var(--accent);color:var(--accent-fg);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
-html[data-review] :is(#new-proj, #new-brief, #new-seq, #director, #d-edit, #d-dup, #d-del, [data-act], [data-copy], [data-dir],
+html[data-review] :is(#new-proj, #new-brief, #new-script, #new-seq, #director, #d-edit, #d-dup, #d-del, [data-act], [data-copy], [data-dir],
   #src-add, [data-del], [data-useshot], .addrow, .lookrow, #bf-quickrow, [data-move], [data-todraft], [data-dup], .savebar, #br-addfont, [data-frm], .uplist, [data-pickup], [data-mclear],
   #sq-render, .sq-preview, #sq-edit, #sq-del, [data-usetpl], #br-addcolor, #br-vprev, [data-prm], [data-trun], [data-adel], [data-idel], [data-shots],
   .drop, label:has(#br-replace), label:has(#br-ireplace), #br-gen, h3:has(+ #br-gen), #br-banner, h3:has(+ #br-banner), .danger){display:none !important}
@@ -337,3 +337,21 @@ html[data-review] :is(#new-proj, #new-brief, #new-seq, #director, #d-edit, #d-du
 #tl-note,#tl-st{margin:6px 0 0}#tl-st:empty{display:none}
 html[data-review] :is(.tl-grip, .tl-sounds){display:none !important}
 html[data-review] .tl-block{cursor:pointer}
+.more>summary{cursor:pointer;font-weight:500}.more[open]>summary{margin-bottom:8px}
+.listhead{flex-wrap:wrap}
+.ss-rows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ss-rows>li{border:1px solid var(--line);border-left:3px solid var(--ok);border-radius:6px;padding:8px 10px;background:var(--panel);display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere}
+.ss-rows>li.bad{border-left-color:var(--bad)}
+#ss-text{font-family:'IBM Plex Mono',monospace;font-size:12px;min-height:220px}
+#ss-err{white-space:pre-line}
+.refpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.refpick-item{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:6px;padding:6px;font-size:11px;color:var(--muted);word-break:break-all;cursor:pointer}
+.refpick-item:has(input:checked){border-color:var(--accent,var(--ok))}
+.refpick-item:has(input:disabled){opacity:.55;cursor:not-allowed}
+.refpick-item img{width:100%;aspect-ratio:1;object-fit:cover;background:var(--panel2);border-radius:4px}
+.ss-gen>summary{display:inline-block;cursor:pointer;margin-top:4px}
+.ss-gen[open]>summary{margin-bottom:6px}
+.ss-gen textarea{font-family:'IBM Plex Mono',monospace;font-size:12px;min-height:120px;width:100%}
+.ss-drop{border:2px dashed var(--line);border-radius:10px;padding:10px 12px}
+.ss-drop.over{border-color:var(--accent)}
+.ss-uploaded{margin:6px 0 0;padding-left:18px;font-size:12px}.ss-uploaded:empty{display:none}

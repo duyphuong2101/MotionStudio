@@ -2,26 +2,34 @@
 // local server makes one capped request to the Gemini API with the person's own key from the environment.
 import fs from 'node:fs';
 import path from 'node:path';
-import { ROOT, StudioError, assertId, assertFileName, within, readJson, writeJson, exists, nowIso } from '../engine/core.mjs';
+import { ROOT, StudioError, assertId, assertFileName, within, readJson, writeJson, exists, nowIso, round } from '../engine/core.mjs';
 import { profileDir, listAssets } from '../engine/jobs.mjs';
-import { cleanAssetName, saveAsset } from '../engine/assets.mjs';
+import { cleanAssetName, saveAsset, moveAssetFile } from '../engine/assets.mjs';
+import { probeMedia } from '../engine/media.mjs';
 import { usage, countUse, readPause } from './caps.mjs';
-import { fetchJson, redact, flatLine, GONE_RE } from './http.mjs';
+import { fetchJson, fetchToFile, redact, flatLine, GONE_RE } from './http.mjs';
 
 // Moved to http.mjs; still exported here for tests/generate.test.mjs.
 export { redact };
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
+const API_ORIGIN = new URL(API).origin;
 export const MAX_PROMPT_CHARS = 2000;
 export const MAX_MODEL_PAGES = 5;
+const MAX_REFS = 3;
+export const MAX_REF_BYTES = 8 * 1024 * 1024;
 // First run only: the person's picks in config/providers.json → gemini.models replace these.
-export const FALLBACK_MODELS = { image: 'gemini-nano-banana-2.1', video: 'veo-3.1-lite-generate-preview' };
+export const FALLBACK_MODELS = { image: 'gemini-nano-banana-2.1', video: 'gemini-omni-1.1-flash' };
+// Omni takes no clip length: the model picks it, and generate.maxVideoSeconds refuses a longer clip after the download.
 export const GENERATE_OPTIONS = {
   image: { aspectRatios: ['16:9', '9:16', '1:1', '4:5'] },
-  video: { aspectRatios: ['16:9', '9:16'], durations: [4, 6, 8] },
+  video: { aspectRatios: ['16:9', '9:16'], maxRefs: MAX_REFS },
 };
 const IMAGE_SIZES = ['512', '1K'];
+const CLIP_RESOLUTION = '720p';
+const CLIP_MIME = 'video/mp4';
 const IMAGE_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' };
+const REF_MIME = { ...IMAGE_MIME, webp: 'image/webp' };
 const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 const KIND_EXT = { image: Object.keys(IMAGE_MIME), video: ['mp4'] };
 const MODEL_RE = /^[a-z0-9][a-z0-9.-]{0,79}$/;
@@ -55,9 +63,10 @@ export function assertGenerateConfig(g) {
 /** The choices the UI offers, from the fixed table and the config caps. */
 export const optionsFor = (g) => ({
   image: { ...GENERATE_OPTIONS.image, size: g.imageSize },
-  video: { ...GENERATE_OPTIONS.video, durations: GENERATE_OPTIONS.video.durations.filter((d) => d <= g.maxVideoSeconds) },
+  video: { ...GENERATE_OPTIONS.video },
 });
 
+/** One click's request, checked against the options: `refs` (clips only) names 0-MAX_REFS brand pictures; `unique` takes a free name. */
 export function validateRequest(body, options) {
   const b = body && typeof body === 'object' ? body : {};
   const kind = b.kind;
@@ -65,18 +74,34 @@ export function validateRequest(body, options) {
   const o = options[kind];
   const prompt = typeof b.prompt === 'string' ? b.prompt.trim() : '';
   if (!prompt) throw new StudioError('Write a prompt first', 400);
-  if (prompt.length > MAX_PROMPT_CHARS) throw new StudioError(`The prompt is longer than ${MAX_PROMPT_CHARS} characters`, 400);
+  if (prompt.length > MAX_PROMPT_CHARS) throw new StudioError(`The prompt is ${prompt.length} characters, limit ${MAX_PROMPT_CHARS}: cut ${prompt.length - MAX_PROMPT_CHARS}`, 400);
   const aspectRatio = b.aspectRatio ?? o.aspectRatios[0];
   if (!o.aspectRatios.includes(aspectRatio)) throw new StudioError(`Aspect ratio must be one of ${o.aspectRatios.join(', ')}`, 400);
-  let durationSeconds = null;
-  if (o.durations) {
-    durationSeconds = Number(b.durationSeconds ?? o.durations[0]);
-    if (!o.durations.includes(durationSeconds)) throw new StudioError(`Duration must be one of ${o.durations.join(', ')} seconds`, 400);
-  }
+  const refs = b.refs ?? [];
+  if (!Array.isArray(refs) || refs.some((r) => typeof r !== 'string')) throw new StudioError('refs must be a list of picture names', 400);
+  if (refs.length && !o.maxRefs) throw new StudioError('Reference pictures are for clips only', 400);
+  if (refs.length > (o.maxRefs || 0)) throw new StudioError(`Pick at most ${o.maxRefs} reference pictures`, 400);
+  if (new Set(refs).size !== refs.length) throw new StudioError('A reference picture is picked twice', 400);
   const model = b.model ? String(b.model) : null;
   if (model && !MODEL_RE.test(model)) throw new StudioError('Invalid model id', 400);
   const name = typeof b.name === 'string' ? b.name.trim() : '';
-  return { kind, prompt, aspectRatio, durationSeconds, model, name, replace: b.replace === true, acknowledged: b.acknowledged === true };
+  return { kind, prompt, aspectRatio, refs, model, name, replace: b.replace === true, unique: b.unique === true, acknowledged: b.acknowledged === true };
+}
+
+/** The picked pictures for a clip, base64: image assets listed in this brand only, each at most MAX_REF_BYTES. */
+export function readRefs(project, names) {
+  const listed = listAssets(project);
+  return names.map((name) => {
+    try { assertFileName(name, 'picture'); } catch { throw new StudioError(`"${String(name).slice(0, 80)}" is not a file in this brand's assets`, 400); }
+    const mime = REF_MIME[path.extname(name).slice(1).toLowerCase()];
+    if (!mime) throw new StudioError(`${name} is not a picture: a reference is a .png, .jpg or .webp asset`, 400);
+    if (!listed.includes(name)) throw new StudioError(`${name} is not in this brand's assets. Upload it first.`, 404);
+    const file = within(profileDir(project), 'assets', name);
+    const st = fs.statSync(file);
+    if (!st.isFile()) throw new StudioError(`${name} is not a file`, 400);
+    if (st.size > MAX_REF_BYTES) throw new StudioError(`${name} is larger than ${MAX_REF_BYTES / 1024 / 1024} MB: pick a smaller picture`, 413);
+    return { name, mime, data: fs.readFileSync(file).toString('base64') };
+  });
 }
 
 const keyHeaders = (key) => ({ 'content-type': 'application/json', 'x-goog-api-key': key });
@@ -108,16 +133,100 @@ export function imageFromInteraction(json, maxBytes) {
 
 const extForMime = (mime) => MIME_EXT[mime];
 
+/**
+ * POST /interactions for one clip: the reference pictures in order, then the prompt; `reference_to_video` with
+ * pictures, `text_to_video` without. The answer comes inline. The key goes in the header only.
+ */
+export function videoRequest({ model, prompt, aspectRatio, refs = [] }, key) {
+  const input = [...refs.map((r) => ({ type: 'image', data: r.data, mime_type: r.mime })), { type: 'text', text: prompt }];
+  return {
+    url: `${API}/interactions`,
+    init: {
+      method: 'POST',
+      headers: keyHeaders(key),
+      body: JSON.stringify({
+        model, input,
+        generation_config: { video_config: { task: refs.length ? 'reference_to_video' : 'text_to_video' } },
+        response_format: { type: 'video', aspect_ratio: aspectRatio, resolution: CLIP_RESOLUTION },
+        store: false, background: false, stream: false,
+      }),
+    },
+  };
+}
+
+/** Where a `uri` answer is downloaded: a `files/<id>` name or a URL, on the API host only, since the key goes with it. */
+export function videoDownloadUrl(uri) {
+  const s = String(uri ?? '').trim();
+  const file = /^files\/([A-Za-z0-9_-]{1,128})(?::download)?$/.exec(s);
+  if (file) return `${API}/files/${file[1]}:download?alt=media`;
+  let u = null;
+  try { u = new URL(s); } catch { /* refused below */ }
+  if (!u || u.origin !== API_ORIGIN || u.username || u.password) {
+    throw new StudioError(`Google answered with a clip link that is not on ${API_ORIGIN}. It was not fetched.`, 502);
+  }
+  if (!u.searchParams.has('alt')) u.searchParams.set('alt', 'media');
+  return u.href;
+}
+
+/**
+ * The first video item in the interaction's steps: inline `{ delivery, buf }` under the byte cap, or `{ delivery, url }`
+ * when Google sent a `uri` instead. An inline answer past generate.maxResponseBytes already stopped in fetchJson
+ * (413): one click is one call, so it is never asked again with `delivery: "uri"`.
+ */
+export function videoFromInteraction(json, maxBytes) {
+  const items = (Array.isArray(json?.steps) ? json.steps : []).flatMap((s) => (Array.isArray(s?.content) ? s.content : []));
+  const v = items.find((c) => c?.type === 'video' && ((typeof c.data === 'string' && c.data) || (typeof c.uri === 'string' && c.uri)));
+  if (!v) throw new StudioError('Google answered without a clip. Try another prompt or model.', 502);
+  const mime = v.mime_type || CLIP_MIME;
+  if (mime !== CLIP_MIME) throw new StudioError(`Google answered with ${String(mime).slice(0, 40)}, not an MP4 clip`, 502);
+  if (typeof v.data === 'string' && v.data) {
+    if (Math.floor(v.data.length * 3 / 4) > maxBytes) throw new StudioError(`The clip is larger than ${maxBytes} bytes (generate.maxResponseBytes)`, 413);
+    return { delivery: 'inline', buf: Buffer.from(v.data, 'base64') };
+  }
+  return { delivery: 'uri', url: videoDownloadUrl(v.uri) };
+}
+
+const SHAPE_ITEMS = 20;
+const typeName = (v) => (typeof v === 'string' ? v.slice(0, 40) : typeof v);
+const listOf = (v) => (Array.isArray(v) ? v.slice(0, SHAPE_ITEMS) : []);
+
+/** The answer's shape for the generate log: keys, step and content types, mime types, data lengths. Never data, a uri or text. */
+export function shapeOf(json) {
+  return {
+    keys: json && typeof json === 'object' ? Object.keys(json).slice(0, SHAPE_ITEMS).map(typeName) : [],
+    steps: listOf(json?.steps).map((s) => ({
+      type: typeName(s?.type),
+      content: listOf(s?.content).map((c) => ({
+        type: typeName(c?.type),
+        ...(c?.mime_type !== undefined ? { mime_type: typeName(c.mime_type) } : {}),
+        ...(typeof c?.data === 'string' ? { dataChars: c.data.length } : {}),
+        ...(c?.uri !== undefined ? { uri: true } : {}),
+      })),
+    })),
+  };
+}
+
+/** The probed clip against generate.maxVideoSeconds: 502 when it is no playable video, 422 past the ceiling. */
+export function assertClipLength(info, maxSeconds) {
+  if (!info?.hasVideo || !(info.duration > 0)) throw new StudioError('Google sent a file that is not a playable clip. Nothing was saved.', 502);
+  if (info.duration > maxSeconds) {
+    throw new StudioError(`The clip runs ${round(info.duration, 1)} s, longer than ${maxSeconds} s (generate.maxVideoSeconds). It was not saved; Google still bills it.`, 422);
+  }
+  return info.duration;
+}
+
 /** GET /models, one page. Metadata only: it generates nothing. */
 export function modelsRequest(pageToken, key) {
   const q = new URLSearchParams({ pageSize: '200', ...(pageToken ? { pageToken } : {}) });
   return { url: `${API}/models?${q}`, init: { method: 'GET', headers: keyHeaders(key) } };
 }
 
-// The Model resource has no output-modality field; these hints are pinned by the 2026-10-15 probe.
+// The Model resource has no output-modality field: images pinned by the 2026-10-15 probe, Omni clips by the
+// 2026-10-29 docs (the Veo previews were shut down on 2026-10-22).
 const kindOf = (id, displayName, methods) => {
-  if (methods.includes('generateContent') && (/image|banana/i.test(id) || /image|banana/i.test(displayName))) return 'image';
-  if (methods.includes('predictLongRunning') && id.startsWith('veo')) return 'video';
+  if (!methods.includes('generateContent')) return null;
+  if (/omni/i.test(id)) return 'video';
+  if (/image|banana/i.test(id) || /image|banana/i.test(displayName)) return 'image';
   return null;
 };
 
@@ -242,11 +351,30 @@ function logLine(ctx, name, text) {
  */
 async function callGoogle(ctx, { url, init }) {
   const { g, key } = ctx;
-  const { res, json, text } = await fetchJson(ctx.fetch, {
+  const answer = await fetchJson(ctx.fetch, {
     url, init, who: 'Google', keys: key, signal: ctx.signal,
-    timeoutMs: g.requestTimeoutSeconds * 1000, timeoutLabel: 'generate.requestTimeoutSeconds',
+    timeoutMs: ctx.timeoutMs ?? g.requestTimeoutSeconds * 1000, timeoutLabel: ctx.timeoutLabel ?? 'generate.requestTimeoutSeconds',
     maxBytes: g.maxResponseBytes, label: 'generate.maxResponseBytes',
   });
+  checkAnswer(ctx, answer);
+  if (!answer.json) throw new StudioError('Google answered something that is not JSON', 502);
+  return answer.json;
+}
+
+/** A `uri` clip streamed to `file` from the API host only, under generate.maxVideoBytes, with the clip call's timeout. */
+async function downloadClip(ctx, url, file) {
+  const answer = await fetchToFile(ctx.fetch, {
+    url, init: { method: 'GET', headers: { 'x-goog-api-key': ctx.key } }, who: 'Google', keys: ctx.key, file,
+    timeoutMs: ctx.timeoutMs, timeoutLabel: ctx.timeoutLabel, maxBytes: ctx.g.maxVideoBytes, label: 'generate.maxVideoBytes',
+  });
+  // A refused download is not a refused model.
+  checkAnswer({ ...ctx, model: null }, answer);
+  return answer.bytes;
+}
+
+/** Quota → pause file; a refused model → "Refresh models"; any other non-2xx → 502. */
+function checkAnswer(ctx, { res, json, text }) {
+  const { g, key } = ctx;
   const msg = redact(String(json?.error?.message || text || res.statusText).slice(0, 300), key);
   if (res.status === 429 || json?.error?.status === 'RESOURCE_EXHAUSTED') {
     const until = new Date(ctx.now().getTime() + g.pauseMinutes * 60000).toISOString();
@@ -259,8 +387,6 @@ async function callGoogle(ctx, { url, init }) {
     }
     throw new StudioError(`Google answered ${res.status}: ${msg}`, 502);
   }
-  if (!json) throw new StudioError('Google answered something that is not JSON', 502);
-  return json;
 }
 
 const MAX_NAME_TRIES = 99;
@@ -293,13 +419,51 @@ async function runImage(ctx, req, run) {
   return saved;
 }
 
+/**
+ * One clip: the call, the clip written to a part file beside the assets (inline) or streamed there (uri), probed
+ * against generate.maxVideoSeconds, then moved into the assets with its sidecar. One shape line goes to the log
+ * whatever happens, so the first real clip settles what the docs leave open.
+ */
+async function runVideo(ctx, req, run, refs) {
+  const started = Date.now();
+  const task = refs.length ? 'reference_to_video' : 'text_to_video';
+  const shape = { task, refs: refs.length, answer: false };
+  const dir = within(profileDir(ctx.project), 'generated');
+  const part = within(dir, `${run.name}.part`);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.rmSync(part, { force: true });
+  try {
+    const json = await callGoogle(ctx, videoRequest({ model: run.model, prompt: req.prompt, aspectRatio: req.aspectRatio, refs }, ctx.key));
+    Object.assign(shape, { answer: true }, shapeOf(json));
+    const clip = videoFromInteraction(json, ctx.g.maxResponseBytes);
+    shape.delivery = clip.delivery;
+    if (clip.delivery === 'inline') fs.writeFileSync(part, clip.buf, { flag: 'wx' });
+    else await downloadClip(ctx, clip.url, part);
+    shape.bytes = fs.statSync(part).size;
+    let info;
+    try { info = await ctx.probe(part); } catch { throw new StudioError('Google sent a file whose length could not be read. Nothing was saved.', 502); }
+    Object.assign(shape, { duration: round(info.duration, 2), width: info.width, height: info.height, audio: info.hasAudio });
+    const seconds = assertClipLength(info, ctx.g.maxVideoSeconds);
+    const saved = moveAssetFile(ctx.project, req.replace ? run.name : freeAssetName(ctx.project, run.name), part, { replace: req.replace, maxBytes: ctx.g.maxVideoBytes });
+    writeJson(sidecarFile(ctx.project, saved.name), {
+      provider: 'gemini', kind: 'video', model: run.model, prompt: req.prompt, aspectRatio: req.aspectRatio, resolution: CLIP_RESOLUTION, task,
+      references: refs.map((r) => r.name), delivery: clip.delivery, seconds: round(seconds, 2), bytes: saved.bytes,
+      madeAt: nowIso(), by: run.by, key: `personal (${ctx.keyEnv})`, responseId: typeof json.id === 'string' ? json.id : null,
+    });
+    return saved;
+  } finally {
+    fs.rmSync(part, { force: true });
+    shape.seconds = round((Date.now() - started) / 1000, 1);
+    try { logLine(ctx, `${ctx.project}.log`, `${run.by} clip shape: ${JSON.stringify(shape)}`); } catch { /* the result still reaches the UI */ }
+  }
+}
+
 /** Starts one generation in the background after every cap check; the UI polls `generateState`. */
-export function startGenerate(g, providers, { project, body, by, fetch = globalThis.fetch, env = process.env, now = () => new Date(), files = FILES }) {
+export function startGenerate(g, providers, { project, body, by, fetch = globalThis.fetch, env = process.env, now = () => new Date(), files = FILES, probe = probeMedia }) {
   assertGenerateConfig(g);
   const { keyEnv, key } = keyFor(providers, env);
   const req = validateRequest(body, optionsFor(g));
   if (!exists(profileDir(project))) throw new StudioError('Unknown project', 404);
-  if (req.kind !== 'image') throw new StudioError('Clip generation is not available yet', 400);
   assertFree(files);
   const k = KINDS[req.kind];
   const used = usage(files[k.counter], now());
@@ -309,19 +473,26 @@ export function startGenerate(g, providers, { project, body, by, fetch = globalT
   if (!notice && !req.acknowledged) throw new StudioError('Tick the notice first', 400);
   const defaults = modelDefaults(providers);
   const model = assertKnownModel(req.kind, req.model || defaults[req.kind], fetchedModels(files), defaults);
-  const name = assetNameFor(req.kind, req.name, now());
-  if (exists(within(profileDir(project), 'assets', name)) && !req.replace) throw new StudioError(`${name} already exists. Tick "Replace existing" to overwrite it.`, 409);
+  let name = assetNameFor(req.kind, req.name, now());
+  if (exists(within(profileDir(project), 'assets', name)) && !req.replace) {
+    if (!req.unique) throw new StudioError(`${name} already exists. Tick "Replace existing" to overwrite it.`, 409);
+    name = freeAssetName(project, name);
+  }
+  const refs = readRefs(project, req.refs);
 
-  const ctx = { g, key, keyEnv, fetch, now, files, project, model };
+  const video = req.kind === 'video';
+  // A clip is made in one synchronous call that takes 1-3 minutes, past requestTimeoutSeconds: maxPollMinutes bounds it.
+  const ctx = { g, key, keyEnv, fetch, now, files, project, model, probe, ...(video ? { timeoutMs: g.maxPollMinutes * 60000, timeoutLabel: 'generate.maxPollMinutes' } : {}) };
   if (!notice) writeJson(files.notice, { acknowledgedAt: nowIso(), by });
   countUse(files[k.counter], now());
-  logLine(ctx, `${project}.log`, `${by} ${req.kind} ${model} ${name} ${req.aspectRatio}: ${req.prompt.slice(0, 200)}`);
+  logLine(ctx, `${project}.log`, `${by} ${req.kind} ${model} ${name} ${req.aspectRatio}${refs.length ? ` refs ${req.refs.join(',')}` : ''}: ${req.prompt.slice(0, 200)}`);
   const run = { project, kind: req.kind, model, name, by, startedAt: nowIso(), status: 'running' };
   current = run;
-  runImage(ctx, req, run)
+  (video ? runVideo(ctx, req, run, refs) : runImage(ctx, req, run))
     .then((saved) => {
       run.status = 'done';
-      run.message = saved.name === run.name ? `Generated ${saved.name}` : `Generated ${saved.name} (Google sent another format than ${run.name} asked for)`;
+      run.message = saved.name === run.name ? `Generated ${saved.name}`
+        : video ? `Generated ${saved.name} (${run.name} was taken meanwhile)` : `Generated ${saved.name} (Google sent another format than ${run.name} asked for)`;
       run.name = saved.name;
     })
     .catch((err) => { run.status = 'error'; run.message = redact(err instanceof StudioError ? err.message : `Generation failed: ${err?.message}`, key); })

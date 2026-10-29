@@ -8,7 +8,7 @@ Nothing leaves your machine except the Director's own Claude Code session. The w
 
 ## What you need
 
-- Node.js 20+ and Google Chrome. ffmpeg ships with the npm packages. The tool is built and used on Windows.
+- Node.js 22.23.4+, 24.22.1+ or 26.12.1+ (the releases with the October 2026 security fixes; older ones get a warning) and Google Chrome. ffmpeg ships with the npm packages. The tool is built and used on Windows.
 - Claude Code, signed in with your own seat. On Windows you need the native `claude.exe` (`claude install`), not the `claude.cmd` shim.
 - A voice is optional: see [Voice](#voice). Without one, timing is estimated from word count and the video has music only.
 
@@ -25,12 +25,16 @@ After you update the code, restart `npm run ui`. The page reloads its own files,
 
 ## Make a video
 
-1. Pick a project. One project per brand. Use **+ New project**, then set the logo, colors, fonts, voice and music on the **Brand** tab.
+1. Pick a project. One project per brand. Use **+ New project**, then set the logo, colors, fonts, voice and music on the **Brand** tab. The effects (grain, wipes, blends and the rest) sit under **Advanced motion**; leave them off and each video's Look picks a matching set.
 2. Write a brief. Click **+ New brief** (or **Use this template** on the Templates tab). Pick a template, platform, format and length. Write the key message, and either a reference page or a few facts. The Director puts a claim on screen only if it comes from that page or those facts.
-   - **Also make** renders the same script at up to 3 more sizes, e.g. a 9:16 cut of a 16:9 video.
-   - **Language** and **Voice** override the brand's voice for this one video.
-   - **Cut scenes on the music beat** stretches each scene a little so it ends on a beat of the brand's music.
-   - **Motion blur on fast moves** renders about 4 times slower; the storyboard does not change.
+   - **Language** and **Voice** override the brand's voice for this one video. If the brand's voice engine is missing on this machine, the Voice hint says so.
+   - **Quick video** is on by default where the template has it (see [Quick video](#quick-video)).
+   - **More options** holds the rest:
+     - **Mix in scenes from** borrows body scenes from up to 3 other templates.
+     - **Also make** renders the same script at up to 3 more sizes, e.g. a 9:16 cut of a 16:9 video.
+     - **Recorded voice** uses one take of every voice line instead of the generated voice.
+     - **Cut scenes on the music beat** stretches each scene a little so it ends on a beat of the brand's music.
+     - **Motion blur on fast moves** renders about 4 times slower; the storyboard does not change.
 3. Run the Director. Click **Save and run Director**, or **Run Director** on the job. You can also type `/studio run` in the agent chat of Claude Code, Cursor, GitHub Copilot or Google Antigravity in this folder. The Director writes `source.json` (the facts) and `script.json` (the scenes), then builds the storyboard.
 4. Review. On the job's **Preview** tab, press Play. The composition plays with the voice-over, so you hear what you will get. Click a still to jump to that scene, or **Edit in Script** to change it.
 5. Edit if needed.
@@ -41,7 +45,7 @@ After you update the code, restart `npm run ui`. The page reloads its own files,
 
 ## Quick video
 
-Tick **Quick video (outline)** in the brief to get a simple video that looks finished on the first run, even with a smaller model. It works with Explainer, Product demo and Social teaser, and not with a mix.
+**Quick video (outline)** is ticked for a new brief on Explainer, Product demo and Social teaser. It gives a simple video that looks finished on the first run, even with a smaller model. Untick it for a full script, and for a mix (quick mode does not take one).
 
 The Director writes a short outline instead of a script: a headline, a few points (each with its source line), a call to action and a mood. The tool builds the scenes from it. It picks the icons, varies the backgrounds from scene to scene and turns a point with a number into a stat. It never rewrites the Director's words. A line that is too long goes back to the Director with how much to cut.
 
@@ -98,6 +102,17 @@ Background music: pick a built-in track, or upload an `.mp3`/`.wav` under Brand 
 On the Brand tab, a video or sound asset has a **Transcribe** button. It runs Whisper on this computer (no upload, no API) and keeps the transcript with the asset; **Transcript** shows it with times. The Director reads transcripts to set clip in/out points and copy what is said word for word. A footage clip (Talking head, Audiogram) whose text is left empty is captioned from speech recognition at prepare, with real word timing, and the storyboard asks you to read those captions before you approve.
 
 It needs `models/whisper/`: `encoder.int8.onnx`, `decoder.int8.onnx` and `tokens.txt` from `sherpa-onnx-whisper-base.tar.bz2` in the [sherpa-onnx `asr-models` release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models) (Whisper weights MIT, export by k2-fsa). The folder is not shared through the repo. `test_wavs/` from the same archive (LibriSpeech, CC BY 4.0) lets `npm test` check the model; without the folder those tests skip. Whisper base can mishear names and numbers, and transcripts are capped at 40 minutes per file.
+
+## Generate pictures and clips
+
+The Brand tab's **Generate with Gemini** makes one picture or one clip per click on your own Google key, and saves it under the brand's assets with a **Generated** tag. Put `GEMINI_API_KEY=…` in `.env` in the Motion Studio folder (or set it in your environment), then restart `npm run ui`. The key is sent to `generativelanguage.googleapis.com` in a request header only; it is never written, logged or shown.
+
+- **Image** uses a Nano Banana model.
+- **Clip (Gemini Omni, with sound)** uses `gemini-omni-1.1-flash` at 720p, 9:16 or 16:9. Pick up to 3 of the brand's pictures as **Reference pictures** and the clip keeps their subject, so one character stays the same person from clip to clip. Without pictures the clip is made from the prompt alone. Google picks the clip's length, and a clip usually takes 1-3 minutes.
+- Price: clips cost about $0.10 per second at 720p, billed by Google on your key. There is no free tier. A clip longer than `generate.maxVideoSeconds` (600 s) is not saved, and Google still bills it.
+- One click is one request. Nothing generates on its own: no batch, no retry, no "generate all". One request runs at a time, and the day and month caps sit in `config/studio.json` → `generate`. A quota or spend error pauses Generate for 15 minutes; **Clear pause** lifts it.
+
+**Clip defaults** under Generate hold a **Clip brief** (the character and style block every clip shares, up to 1,500 characters) and up to 3 **Default reference pictures**. **New from script** uses them: after **Check script**, each scene has a **Generate clip** button with the prompt in an editable box (the clip brief, `SCENE:` the scene title, `ACTION:` the scene's description lines, then the aspect). A prompt over 2,000 characters says how much to cut. When the clip is saved, its file name goes into that scene's `CLIP:` line; check the script again, then make the next one.
 
 ## Rules for the Director
 

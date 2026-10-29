@@ -37,7 +37,7 @@
       "note": "Text director through Google's OpenAI-compatible endpoint (beta). The same key makes brand images and clips (Brand tab → Generate).",
       "models": {
         "image": "gemini-nano-banana-2.1",
-        "video": "veo-3.1-lite-generate-preview"
+        "video": "gemini-omni-1.1-flash"
       }
     },
     "claude": {

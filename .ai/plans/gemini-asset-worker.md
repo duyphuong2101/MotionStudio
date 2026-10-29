@@ -48,7 +48,7 @@ Skills loaded for this plan: `server-route`, `testing-patterns`, `project-conven
 - [ ] `server/generate.mjs`: request builders, response parsers, caps, one-at-a-time state, capped fetch, model list (refresh, filter, sort, pick), notice state, save through `saveAsset`, sidecar, capped log.
 - [ ] Routes: `POST /api/projects/:p/generate` (202, background), `DELETE /api/projects/:p/generate/pause`, `POST /api/generate/models/refresh` (200, metadata), `PUT /api/generate/models` (save the picks); `GET /api/projects/:p` gains `generate` (state, options, counts, models, notice, sidecars; never the key). `DELETE …/assets/:name` also removes the sidecar. Project delete refuses while a generation runs.
 - [ ] Brand tab: "Generate with Gemini" panel under Assets with model pickers and Refresh models; a "Generated" badge on asset cards; polling while a generation runs; the data notice line; a tick remembered once per machine.
-- [ ] Phase 2: Veo clips through the same route and panel (kind `video`, duration 4/6/8 s, 16:9 or 9:16, 720p).
+- [x] Phase 2: superseded on 2026-10-29 by `.ai/plans/scene-script.md` Part B. The Veo preview models were shut down on 2026-10-22, so clips are made by `gemini-omni-1.1-flash` through `/v1beta/interactions` with 0-3 reference pictures, one click per clip.
 - [ ] Tests with an injected `fetch`; `npm test` makes no network call.
 - [ ] Keys from `.env` (decision 5, T7b): `server/keys.mjs` loads `keyEnv` names only from `<ROOT>/.env` at server start. `.env.example` sits at the root. The NEVER rule "no key in a file" gains exactly this one exception, propagated like T1. `.env` stays gitignored and out of every copy, zip and trash path.
 - [ ] README section: key setup, reading the tier in AI Studio, costs, the budget alert, what goes to Google, where the local state lives.
@@ -167,7 +167,7 @@ Config, `config/studio.json` → `generate`. Final values from the user (2026-10
 "generate": {
   "maxImagesPerDay": 20,
   "maxImagesPerMonth": 300,
-  "maxVideosPerDay": 4,
+  "maxVideosPerDay": 100,
   "maxVideosPerMonth": 40,
   "maxRefreshesPerDay": 10,
   "requestTimeoutSeconds": 120,
@@ -182,6 +182,8 @@ Config, `config/studio.json` → `generate`. Final values from the user (2026-10
 }
 ```
 Worst-case estimate at the prices verified on 2026-10-15 (1K images at $0.0336; 8 s clips; Lite $0.05 per second, Standard $0.40): a day is $0.67 in images plus $1.60 in Lite clips ($12.80 with Standard); a month is $10.08 in images plus $16.00 in Lite clips ($128 with Standard). Prices change and failed clips are not billed, so this is an estimate: the person sets a Cloud Billing budget alert at or below the monthly figure they accept.
+
+Update 2026-10-29 (user): `maxVideosPerDay` 4 → 100, `maxVideosPerMonth` 40 → 300, `maxResponseBytes` 40 MB → 100 MB, `maxVideoBytes` 100 MB → 500 MB, `maxVideoSeconds` 8 → 600 (a ceiling; the model sets the real length). The Veo preview models were shut down on 2026-10-22, so clips move to `gemini-omni-1.1-flash` (about $0.10 per second at 720p, no free tier) in `.ai/plans/scene-script.md` Part B. At 300 clips of about 8 s a month the ceiling is about $240 a month. `pollSeconds`, `maxPollMinutes` and `requestTimeoutSeconds` are reset by that plan's spike (B0).
 
 Config, `config/providers.json` → `gemini`: add `"models": { "image": "gemini-nano-banana-2.1", "video": "veo-3.1-lite-generate-preview" }` and change the note to "Asset generation only (Brand tab → Generate). Personal key, see README. Worker mode is not implemented." The `models` object is what the person saves from the panel; the same two ids live in code as `FALLBACK_MODELS` for a first run where the file has no `models` yet. `PUT /api/generate/models` rewrites the file with only `providers.gemini.models` changed.
 

@@ -9,7 +9,8 @@ import { usage, countUse, runDay, runMonth } from '../server/caps.mjs';
 import {
   assertGenerateConfig, optionsFor, validateRequest, imageRequest, imageFromInteraction, modelsRequest, filterModels, sortModels,
   assertKnownModel, assetNameFor, redact, FALLBACK_MODELS, filesIn, startGenerate, generateState, generateHas, sidecarFile,
-  refreshModels, saveModelDefaults, modelDefaults, MAX_MODEL_PAGES,
+  refreshModels, saveModelDefaults, modelDefaults, MAX_MODEL_PAGES, MAX_REF_BYTES,
+  videoRequest, videoFromInteraction, videoDownloadUrl, shapeOf, assertClipLength, readRefs,
 } from '../server/generate.mjs';
 
 // npm test never reaches the network: every call must go through an injected fake.
@@ -30,16 +31,21 @@ test('a missing or non-positive cap refuses with 503', () => {
 
 test('a request is checked against the options table', () => {
   const o = optionsFor(G);
-  assert.deepEqual(o.video.durations, [4, 6, 8]);
-  assert.deepEqual(optionsFor({ ...G, maxVideoSeconds: 6 }).video.durations, [4, 6]);
+  // Omni takes no clip length: no durations are offered.
+  assert.deepEqual(o.video, { aspectRatios: ['16:9', '9:16'], maxRefs: 3 });
   const r = validateRequest({ kind: 'image', prompt: '  a cup  ', acknowledged: true }, o);
-  assert.deepEqual(r, { kind: 'image', prompt: 'a cup', aspectRatio: '16:9', durationSeconds: null, model: null, name: '', replace: false, acknowledged: true });
+  assert.deepEqual(r, { kind: 'image', prompt: 'a cup', aspectRatio: '16:9', refs: [], model: null, name: '', replace: false, unique: false, acknowledged: true });
   assert.throws(() => validateRequest({ kind: 'audio', prompt: 'x' }, o), (e) => e.code === 400);
   assert.throws(() => validateRequest({ kind: 'image', prompt: ' ' }, o), /prompt/);
-  assert.throws(() => validateRequest({ kind: 'image', prompt: 'x'.repeat(2001) }, o), /2000/);
+  assert.throws(() => validateRequest({ kind: 'image', prompt: 'x'.repeat(2001) }, o), /2001 characters, limit 2000: cut 1/);
   assert.throws(() => validateRequest({ kind: 'image', prompt: 'x', aspectRatio: '3:1' }, o), /Aspect ratio/);
-  assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', durationSeconds: 9 }, o), /Duration/);
   assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', aspectRatio: '1:1' }, o), /Aspect ratio/);
+  assert.deepEqual(validateRequest({ kind: 'video', prompt: 'x', refs: ['a.png', 'b.jpg'], unique: true }, o).refs, ['a.png', 'b.jpg']);
+  assert.throws(() => validateRequest({ kind: 'image', prompt: 'x', refs: ['a.png'] }, o), /clips only/);
+  assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', refs: ['a.png', 'b.png', 'c.png', 'd.png'] }, o), /at most 3/);
+  assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', refs: ['a.png', 'a.png'] }, o), /twice/);
+  assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', refs: 'a.png' }, o), /list of picture names/);
+  assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', refs: [{ name: 'a.png' }] }, o), /list of picture names/);
   assert.throws(() => validateRequest({ kind: 'image', prompt: 'x', model: '../models' }, o), /model/);
 });
 
@@ -94,8 +100,10 @@ const PROBE = [
 test('the filter keeps image and clip models and drops the rest', () => {
   const kinds = Object.fromEntries(filterModels(PROBE).map((m) => [m.id, m.kind]));
   for (const id of ['gemini-nano-banana-2.1', 'nano-banana-pro-preview', 'gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview']) assert.equal(kinds[id], 'image', id);
-  for (const id of ['veo-3.1-lite-generate-preview', 'veo-3.1-generate-preview']) assert.equal(kinds[id], 'video', id);
-  for (const id of ['gemini-2.5-pro', 'text-embedding-004', 'gemini-omni-1.1-flash', 'imagen-4.0-generate-001']) assert.ok(!(id in kinds), id);
+  // Clips come from Gemini Omni through generateContent; the Veo previews (predictLongRunning) were shut down on 2026-10-22.
+  assert.equal(kinds['gemini-omni-1.1-flash'], 'video');
+  for (const id of ['veo-3.1-lite-generate-preview', 'veo-3.1-generate-preview', 'veo-3.0-generate-001', 'gemini-2.5-pro', 'text-embedding-004', 'imagen-4.0-generate-001']) assert.ok(!(id in kinds), id);
+  assert.deepEqual(filterModels([res('gemini-omni-1.1-flash', ['predictLongRunning'])]), [], 'an Omni id without generateContent is dropped');
   const one = filterModels(PROBE).find((m) => m.id === 'nano-banana-pro-preview');
   assert.deepEqual(Object.keys(one), ['id', 'displayName', 'description', 'methods', 'kind']);
 });
@@ -105,7 +113,7 @@ test('the sort puts the newest first, GA before preview, no version last', () =>
   const at = (id) => ids.indexOf(id);
   assert.ok(at('gemini-3.1-flash-image') < at('gemini-3.1-flash-image-preview'));
   assert.ok(at('gemini-3.1-flash-image-preview') < at('gemini-3-pro-image'));
-  assert.ok(at('veo-3.1-generate-preview') < at('veo-3.0-generate-001'));
+  assert.ok(at('gemini-3-pro-image') < at('gemini-omni-1.1-flash'));
   assert.equal(ids.at(-1), 'nano-banana-pro-preview');
 });
 
@@ -408,7 +416,7 @@ test('refresh follows the page token and stores one filtered, sorted list', asyn
   assert.deepEqual(stored.models, sortModels(filterModels(PROBE)));
   const file = JSON.parse(fs.readFileSync(files.models, 'utf8'));
   assert.ok(Date.parse(file.fetchedAt));
-  assert.equal(file.models.length, 8);
+  assert.equal(file.models.length, 6);
   assert.ok(!fs.readFileSync(files.models, 'utf8').includes(KEY));
   assert.deepEqual(usage(files.images), { day: 0, month: 0 });
   assert.equal(state(files).models.fetchedAt, file.fetchedAt);
@@ -442,10 +450,10 @@ test('saving the picks changes only gemini.models in providers.json', (t) => {
   fs.copyFileSync(new URL('../config/providers.json', import.meta.url), file);
   const before = JSON.parse(fs.readFileSync(file, 'utf8'));
   const list = filterModels(PROBE);
-  assert.deepEqual(saveModelDefaults(file, { image: 'gemini-3-pro-image', video: 'veo-3.1-generate-preview' }, list),
-    { models: { image: 'gemini-3-pro-image', video: 'veo-3.1-generate-preview' } });
+  assert.deepEqual(saveModelDefaults(file, { image: 'gemini-3-pro-image', video: 'gemini-omni-1.1-flash' }, list),
+    { models: { image: 'gemini-3-pro-image', video: 'gemini-omni-1.1-flash' } });
   const after = JSON.parse(fs.readFileSync(file, 'utf8'));
-  assert.deepEqual(after.providers.gemini.models, { image: 'gemini-3-pro-image', video: 'veo-3.1-generate-preview' });
+  assert.deepEqual(after.providers.gemini.models, { image: 'gemini-3-pro-image', video: 'gemini-omni-1.1-flash' });
   delete before.providers.gemini.models;
   delete after.providers.gemini.models;
   assert.deepEqual(after, before);
@@ -466,4 +474,201 @@ test('without a fetched list the defaults come from the file or the fallback', (
   const saved = { providers: { gemini: { keyEnv: 'GEMINI_API_KEY', models: { image: 'gemini-3-pro-image' } } } };
   assert.deepEqual(modelDefaults(saved), { image: 'gemini-3-pro-image', video: FALLBACK_MODELS.video });
   assert.deepEqual(modelDefaults({}), FALLBACK_MODELS);
+});
+
+/* ---------- clips (Gemini Omni, plan scene-script B1) ---------- */
+const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42'), Buffer.alloc(36, 1)]);
+const CLIP_JSON = { id: 'resp-clip', steps: [{ type: 'model_output', content: [{ type: 'text', text: 'here' }, { type: 'video', mime_type: 'video/mp4', data: MP4.toString('base64') }] }] };
+const URI_JSON = { id: 'resp-uri', steps: [{ type: 'model_output', content: [{ type: 'video', mime_type: 'video/mp4', uri: 'files/abc123' }] }] };
+const DOWNLOAD = 'https://generativelanguage.googleapis.com/v1beta/files/abc123:download?alt=media';
+const PROBED = { duration: 8.04, hasAudio: true, hasVideo: true, width: 720, height: 1280, fps: 24 };
+const probeOk = async () => PROBED;
+const REF = { name: 'huy.png', mime: 'image/png', data: PNG.toString('base64') };
+const clipStart = (files, fetch, { body = {}, ...opts } = {}) => start(files, fetch, {
+  body: { kind: 'video', prompt: 'Huy drills into wood', aspectRatio: '9:16', ...body }, probe: probeOk, ...opts,
+});
+const parts = () => { const dir = path.join(profileDir(P), 'generated'); return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.part')) : []; };
+
+function withPictures(t, ...more) {
+  const files = setup(t, P, ...more);
+  fs.mkdirSync(path.join(profileDir(P), 'assets'), { recursive: true });
+  fs.writeFileSync(assetFile('huy.png'), PNG);
+  return files;
+}
+
+test('the clip request sends the pictures, then the prompt, to the fixed host with the key in the header only', () => {
+  const { url, init } = videoRequest({ model: 'gemini-omni-1.1-flash', prompt: 'Huy drills', aspectRatio: '9:16', refs: [REF, { ...REF, name: 'b.jpg', mime: 'image/jpeg' }] }, KEY);
+  assert.equal(url, 'https://generativelanguage.googleapis.com/v1beta/interactions');
+  assert.equal(init.method, 'POST');
+  assert.equal(init.headers['x-goog-api-key'], KEY);
+  assert.ok(!url.includes(KEY) && !init.body.includes(KEY));
+  const body = JSON.parse(init.body);
+  assert.equal(body.model, 'gemini-omni-1.1-flash');
+  assert.deepEqual(body.input.map((p) => p.type), ['image', 'image', 'text']);
+  assert.deepEqual(body.input[0], { type: 'image', data: REF.data, mime_type: 'image/png' });
+  assert.equal(body.input[1].mime_type, 'image/jpeg');
+  assert.deepEqual(body.input[2], { type: 'text', text: 'Huy drills' });
+  assert.deepEqual(body.generation_config, { video_config: { task: 'reference_to_video' } });
+  assert.deepEqual(body.response_format, { type: 'video', aspect_ratio: '9:16', resolution: '720p' });
+  assert.deepEqual([body.store, body.background, body.stream], [false, false, false]);
+  const plain = JSON.parse(videoRequest({ model: 'm', prompt: 'p', aspectRatio: '16:9' }, KEY).init.body);
+  assert.equal(plain.generation_config.video_config.task, 'text_to_video');
+  assert.deepEqual(plain.input, [{ type: 'text', text: 'p' }]);
+});
+
+test('the clip is read inline or as a link; no clip is 502, over the cap 413', () => {
+  const inline = videoFromInteraction(CLIP_JSON, 1000);
+  assert.equal(inline.delivery, 'inline');
+  assert.deepEqual(inline.buf, MP4);
+  assert.deepEqual(videoFromInteraction(URI_JSON, 1000), { delivery: 'uri', url: DOWNLOAD });
+  assert.throws(() => videoFromInteraction({ steps: [{ content: [{ type: 'text', text: 'no' }] }] }, 1000), (e) => e.code === 502 && /without a clip/.test(e.message));
+  assert.throws(() => videoFromInteraction({}, 1000), (e) => e.code === 502);
+  assert.throws(() => videoFromInteraction(CLIP_JSON, 8), (e) => e.code === 413 && /maxResponseBytes/.test(e.message));
+  assert.throws(() => videoFromInteraction({ steps: [{ content: [{ type: 'video', mime_type: 'video/webm', data: 'AAAA' }] }] }, 1000), (e) => e.code === 502 && /not an MP4/.test(e.message));
+});
+
+test('a clip link is fetched only from the API host', () => {
+  assert.equal(videoDownloadUrl('files/abc123:download'), DOWNLOAD);
+  assert.equal(videoDownloadUrl(DOWNLOAD), DOWNLOAD);
+  assert.equal(videoDownloadUrl('https://generativelanguage.googleapis.com/v1beta/files/abc123:download'), DOWNLOAD);
+  for (const bad of ['https://storage.googleapis.com/x.mp4', 'http://generativelanguage.googleapis.com/v1beta/files/abc:download',
+    'https://generativelanguage.googleapis.com.evil.example/x', 'https://user:pw@generativelanguage.googleapis.com/x', 'files/../x', '']) {
+    assert.throws(() => videoDownloadUrl(bad), (e) => e.code === 502, bad);
+  }
+});
+
+test('the shape line holds keys and types, never the clip data or its link', () => {
+  assert.deepEqual(shapeOf(CLIP_JSON), { keys: ['id', 'steps'], steps: [{ type: 'model_output', content: [{ type: 'text' }, { type: 'video', mime_type: 'video/mp4', dataChars: MP4.toString('base64').length }] }] });
+  const uri = JSON.stringify(shapeOf(URI_JSON));
+  assert.ok(!uri.includes('abc123') && uri.includes('"uri":true'));
+  assert.deepEqual(shapeOf(null), { keys: [], steps: [] });
+});
+
+test('a probed clip longer than generate.maxVideoSeconds is 422, no playable video 502', () => {
+  assert.equal(assertClipLength(PROBED, 600), 8.04);
+  assert.throws(() => assertClipLength({ ...PROBED, duration: 601 }, 600), (e) => e.code === 422 && /maxVideoSeconds/.test(e.message));
+  assert.throws(() => assertClipLength({ ...PROBED, hasVideo: false }, 600), (e) => e.code === 502);
+  assert.throws(() => assertClipLength({ ...PROBED, duration: 0 }, 600), (e) => e.code === 502);
+});
+
+test('a reference must be a listed picture of this brand, at most 8 MB', (t) => {
+  const other = `${P}-other`;
+  withPictures(t, other);
+  fs.writeFileSync(assetFile('clip.mp4'), MP4);
+  fs.writeFileSync(assetFile('logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  fs.writeFileSync(assetFile('big.png'), Buffer.concat([PNG, Buffer.alloc(MAX_REF_BYTES)]));
+  fs.mkdirSync(path.join(profileDir(other), 'assets'), { recursive: true });
+  fs.writeFileSync(assetFile('theirs.png', other), PNG);
+  assert.deepEqual(readRefs(P, ['huy.png']), [REF]);
+  assert.throws(() => readRefs(P, ['clip.mp4']), (e) => e.code === 400 && /not a picture/.test(e.message));
+  assert.throws(() => readRefs(P, ['logo.svg']), (e) => e.code === 400);
+  assert.throws(() => readRefs(P, ['gone.png']), (e) => e.code === 404);
+  assert.throws(() => readRefs(P, ['theirs.png']), (e) => e.code === 404, 'another brand\'s picture');
+  assert.throws(() => readRefs(P, [`../${other}/assets/theirs.png`]), (e) => e.code === 400);
+  assert.throws(() => readRefs(P, ['big.png']), (e) => e.code === 413);
+});
+
+test('a clip from a reference picture is saved with its sidecar, counted once and logged by shape only', async (t) => {
+  const files = withPictures(t);
+  const fetch = fakeFetch(reply(CLIP_JSON));
+  assert.deepEqual(clipStart(files, fetch, { body: { name: 'huy-1', refs: ['huy.png'] } }), { started: 'video', name: 'huy-1.mp4', model: FALLBACK_MODELS.video });
+  await settle();
+  assert.equal(state(files).last.status, 'done', state(files).last.message);
+  assert.equal(fetch.calls.length, 1);
+  const body = JSON.parse(fetch.calls[0].init.body);
+  assert.equal(body.model, 'gemini-omni-1.1-flash');
+  assert.equal(body.generation_config.video_config.task, 'reference_to_video');
+  assert.deepEqual(body.input, [{ type: 'image', data: REF.data, mime_type: 'image/png' }, { type: 'text', text: 'Huy drills into wood' }]);
+  assert.deepEqual(fs.readFileSync(assetFile('huy-1.mp4')), MP4);
+  const side = JSON.parse(fs.readFileSync(sidecarFile(P, 'huy-1.mp4'), 'utf8'));
+  assert.deepEqual([side.kind, side.model, side.prompt, side.references, side.delivery, side.seconds, side.bytes, side.task, side.aspectRatio],
+    ['video', 'gemini-omni-1.1-flash', 'Huy drills into wood', ['huy.png'], 'inline', 8.04, MP4.length, 'reference_to_video', '9:16']);
+  assert.deepEqual(usage(files.videos), { day: 1, month: 1 });
+  assert.deepEqual(usage(files.images), { day: 0, month: 0 });
+  const log = fs.readFileSync(path.join(files.dir, `${P}.log`), 'utf8');
+  const shape = log.split('\n').filter((l) => l.includes('clip shape:'));
+  assert.equal(shape.length, 1, log);
+  assert.match(shape[0], /"delivery":"inline","bytes":48,"duration":8\.04,"width":720,"height":1280,"audio":true/);
+  assert.ok(!log.includes(MP4.toString('base64')) && !log.includes(PNG.toString('base64')) && !log.includes(KEY));
+  assert.deepEqual(parts(), []);
+});
+
+test('a clip sent as a link is streamed from the API host with the key header and saved', async (t) => {
+  const files = setup(t);
+  const fetch = fakeFetch(reply(URI_JSON), () => new Response(MP4, { status: 200, headers: { 'content-type': 'video/mp4' } }));
+  clipStart(files, fetch, { body: { name: 'linked' } });
+  await settle();
+  assert.equal(state(files).last.status, 'done', state(files).last.message);
+  assert.equal(fetch.calls.length, 2);
+  assert.equal(JSON.parse(fetch.calls[0].init.body).generation_config.video_config.task, 'text_to_video');
+  assert.equal(fetch.calls[1].url, DOWNLOAD);
+  assert.equal(fetch.calls[1].init.headers['x-goog-api-key'], KEY);
+  assert.equal(fetch.calls[1].init.redirect, 'error');
+  assert.deepEqual(fs.readFileSync(assetFile('linked.mp4')), MP4);
+  assert.equal(JSON.parse(fs.readFileSync(sidecarFile(P, 'linked.mp4'), 'utf8')).delivery, 'uri');
+  assert.deepEqual(parts(), []);
+});
+
+test('a linked clip past generate.maxVideoBytes stops the download and leaves nothing', async (t) => {
+  const files = setup(t);
+  const fetch = fakeFetch(reply(URI_JSON), () => new Response(MP4));
+  startGenerate({ ...G, maxVideoBytes: 16 }, PROVIDERS, { project: P, body: { kind: 'video', prompt: 'x', acknowledged: true, name: 'big' }, by: 'tester', env: ENV, fetch, files, probe: probeOk });
+  await settle();
+  const { last } = state(files);
+  assert.equal(last.status, 'error');
+  assert.match(last.message, /larger than 16 bytes \(generate\.maxVideoBytes\)/);
+  assert.ok(!fs.existsSync(assetFile('big.mp4')) && !fs.existsSync(sidecarFile(P, 'big.mp4')));
+  assert.deepEqual(parts(), []);
+});
+
+test('a clip link on another host is never fetched', async (t) => {
+  const files = setup(t);
+  const fetch = fakeFetch(reply({ steps: [{ content: [{ type: 'video', mime_type: 'video/mp4', uri: 'https://evil.example/clip.mp4' }] }] }), () => new Response(MP4));
+  clipStart(files, fetch);
+  await settle();
+  assert.equal(fetch.calls.length, 1);
+  assert.match(state(files).last.message, /not on https:\/\/generativelanguage\.googleapis\.com/);
+});
+
+test('a clip longer than generate.maxVideoSeconds is not saved, and the paid call still counts', async (t) => {
+  const files = setup(t);
+  clipStart(files, fakeFetch(reply(CLIP_JSON)), { body: { name: 'long' }, probe: async () => ({ ...PROBED, duration: G.maxVideoSeconds + 5 }) });
+  await settle();
+  const { last } = state(files);
+  assert.equal(last.status, 'error');
+  assert.equal(last.message.includes(`longer than ${G.maxVideoSeconds} s (generate.maxVideoSeconds)`), true, last.message);
+  assert.ok(!fs.existsSync(assetFile('long.mp4')) && !fs.existsSync(sidecarFile(P, 'long.mp4')));
+  assert.deepEqual(parts(), []);
+  assert.deepEqual(usage(files.videos), { day: 1, month: 1 });
+});
+
+test('the clip call waits generate.maxPollMinutes, not requestTimeoutSeconds', async (t) => {
+  const files = setup(t);
+  const hang = (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+  startGenerate({ ...G, requestTimeoutSeconds: 0.001, maxPollMinutes: 0.0005 }, PROVIDERS, {
+    project: P, body: { kind: 'video', prompt: 'x', acknowledged: true }, by: 'tester', env: ENV, fetch: fakeFetch(hang), files, probe: probeOk,
+  });
+  await settle();
+  assert.match(state(files).last.message, /timed out after 0\.03 s \(generate\.maxPollMinutes\)/);
+});
+
+test('a refused reference or a spent clip cap stops the click before any request or count', (t) => {
+  const files = withPictures(t);
+  const fetch = fakeFetch(reply(CLIP_JSON));
+  assert.throws(() => clipStart(files, fetch, { body: { refs: ['missing.png'] } }), (e) => e.code === 404);
+  assert.throws(() => clipStart(files, fetch, { body: { refs: ['../x/huy.png'] } }), (e) => e.code === 400);
+  assert.throws(() => clipStart(files, fetch, { body: { refs: ['a.png', 'b.png', 'c.png', 'huy.png'] } }), (e) => e.code === 400);
+  fs.writeFileSync(files.videos, JSON.stringify({ day: runDay(), count: G.maxVideosPerDay, month: runMonth(), monthCount: G.maxVideosPerDay }));
+  assert.throws(() => clipStart(files, fetch, { body: { refs: ['huy.png'] } }), (e) => e.code === 429 && /Daily clip limit/.test(e.message));
+  assert.equal(fetch.calls.length, 0);
+  assert.deepEqual(usage(files.images), { day: 0, month: 0 });
+});
+
+test('a scene clip takes the first free name instead of refusing a taken one', async (t) => {
+  const files = withPictures(t);
+  fs.writeFileSync(assetFile('job-scene-1.mp4'), MP4);
+  assert.equal(clipStart(files, fakeFetch(reply(CLIP_JSON)), { body: { name: 'job-scene-1.mp4', unique: true } }).name, 'job-scene-1-2.mp4');
+  await settle();
+  assert.equal(state(files).last.name, 'job-scene-1-2.mp4');
+  assert.throws(() => clipStart(files, fakeFetch(reply(CLIP_JSON)), { body: { name: 'job-scene-1.mp4' } }), (e) => e.code === 409);
 });

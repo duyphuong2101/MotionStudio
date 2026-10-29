@@ -47,6 +47,7 @@ import { templatePreview, previewFile } from '../engine/template-preview.mjs';
 import { writeBanner, bannerFile, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES, BANNER_LIMITS } from '../engine/banner.mjs';
 import { transitionPreview, transitionPreviewFile } from '../engine/transition-preview.mjs';
 import { nodeProblem } from '../engine/runtime.mjs';
+import { importSceneScript } from '../engine/scenescript.mjs';
 import { FILES as VOICE_CLOUD_FILES, startCloudVoice, voiceCloudState, voiceCloudHas } from './voice-cloud.mjs';
 import { COOKIE, lanInterface, newCode, codeMatches, cookieCode, reviewRoute, reviewPage } from './review.mjs';
 import {
@@ -222,6 +223,8 @@ function transcriptsFor(project) {
 }
 
 let previewBusy = false;
+// New from script reads each clip's length with ffmpeg: one script at a time.
+let sceneScriptBusy = false;
 
 /* ---------- evidence: read-only git and CSV totals a person gathers for a brief (the Director has no path to it) ---------- */
 const EVIDENCE_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -774,6 +777,18 @@ async function api(req, res, url, review = false) {
         headline: body.headline, subline: body.subline, button: body.button, parallax: body.parallax,
       });
       return send(res, 201, { path: path.relative(ROOT, file).split(path.sep).join('/'), url: `/banner/${encodeURIComponent(project)}/${encodeURIComponent(path.basename(file))}` });
+    }
+    // New from script: a person's scene script and the brand's clips become a scripted job (engine/scenescript.mjs).
+    // `check` answers what it would make, scene by scene, and writes nothing. No model, no child but ffmpeg's probe.
+    if (m === 'POST' && parts[2] === 'scene-script' && parts.length === 3) {
+      const body = await readBody(req);
+      if (sceneScriptBusy) throw new StudioError('Another script is being read. Try again in a moment.', 429);
+      sceneScriptBusy = true;
+      try {
+        const check = body.check === true;
+        const r = await importSceneScript(project, body.text, { job: String(body.job ?? '').trim() || undefined, by: USER, file: body.file, check });
+        return send(res, check ? 200 : 201, r);
+      } finally { sceneScriptBusy = false; }
     }
     if (m === 'PUT' && parts[2] === 'brand') {
       const body = await readBody(req);

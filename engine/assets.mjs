@@ -97,6 +97,32 @@ export function saveAsset(project, rawName, buf, { replace = false } = {}) {
   return { name, bytes: buf.length };
 }
 
+// The bytes checkContent reads for a video type.
+const VIDEO_HEAD_BYTES = 16;
+
+/**
+ * Moves a finished video file (a generated clip, already on the assets' disk) into the assets with saveAsset's name,
+ * type and size checks, without reading it into memory. `maxBytes` defaults to the upload cap.
+ */
+export function moveAssetFile(project, rawName, src, { replace = false, maxBytes } = {}) {
+  const name = cleanAssetName(rawName);
+  if (!VIDEO_EXT.includes(extOf(name))) throw new StudioError(`${name}: only a video file is moved into the assets`, 400);
+  const max = maxBytes ?? maxBytesFor(name);
+  const { size } = fs.statSync(src);
+  if (!size) throw new StudioError('Empty file', 400);
+  if (size > max) throw new StudioError(`File is larger than ${max / 1024 / 1024} MB`, 413);
+  const head = Buffer.alloc(VIDEO_HEAD_BYTES);
+  const fd = fs.openSync(src, 'r');
+  try { fs.readSync(fd, head, 0, VIDEO_HEAD_BYTES, 0); } finally { fs.closeSync(fd); }
+  checkContent(name, head);
+  const dir = path.join(profileDir(project), 'assets');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = within(dir, name);
+  if (exists(file) && !replace) throw new StudioError(`${name} already exists. Tick "Replace existing" to overwrite it.`, 409);
+  fs.renameSync(src, file);
+  return { name, bytes: size };
+}
+
 export function deleteAsset(project, name, brand) {
   if (!FILE_RE.test(name || '')) throw new StudioError('Invalid asset name', 400);
   const fonts = (brand?.fonts?.files || []).map((x) => ['font', x?.file]);

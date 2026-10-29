@@ -10,6 +10,28 @@ const PALETTE_NAME = /^[a-z][a-z0-9-]{0,23}$/;
 const IMAGE_ASSET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(png|jpe?g|webp|svg)$/i;
 const MUSIC_FILE = /^([A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(wav|mp3|m4a)|library:[a-z0-9-]{1,40})$/;
 export const FONT_ASSET =/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(woff2?|ttf|otf)$/i;
+// clipBrief and clipRefs: the character and style block and the reference pictures a Generate clip starts from
+// (New from script); the pictures are the ones Gemini takes (server/generate.mjs MAX_REFS).
+const MAX_CLIP_BRIEF = 1500;
+const MAX_CLIP_REFS = 3;
+const CLIP_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(png|jpe?g|webp)$/i;
+
+/** brand.clipBrief (text) and brand.clipRefs (1-MAX_CLIP_REFS picture asset names); empty values drop out. */
+function clipDefaults(b, errors) {
+  const out = {};
+  if (b.clipBrief != null) {
+    if (typeof b.clipBrief !== 'string' || b.clipBrief.trim().length > MAX_CLIP_BRIEF) errors.push(`clipBrief must be text of at most ${MAX_CLIP_BRIEF} characters`);
+    else if (b.clipBrief.trim()) out.clipBrief = b.clipBrief.trim();
+  }
+  if (b.clipRefs != null) {
+    const refs = b.clipRefs;
+    if (!Array.isArray(refs) || refs.length > MAX_CLIP_REFS || refs.some((r) => typeof r !== 'string' || !CLIP_REF.test(r) || r.includes('..'))) {
+      errors.push(`clipRefs must list at most ${MAX_CLIP_REFS} picture assets (.png, .jpg, .webp)`);
+    } else if (new Set(refs).size !== refs.length) errors.push('clipRefs lists a picture twice');
+    else if (refs.length) out.clipRefs = [...refs];
+  }
+  return out;
+}
 // brand.motion: one row per value. templates/kit.mjs, the templates and engine/pipeline.mjs read these fields, never
 // the name. entrance: the fadeUp/pop/countUp set; cut: the scene loop (cutD seconds for a fade); push: the camera's end
 // scale per scene; bg: particles, grain (film grain and vignette) or none; caps: block (one pill per scene) or lines (one
@@ -206,6 +228,7 @@ export function validateBrand(input) {
   const files = fontFiles(b.fonts?.files, errors);
   const subtitles = subtitleStyle(b.subtitles, errors);
   const sfx = cutSfx(b.sfx, errors);
+  const clip = clipDefaults(b, errors);
   if (b.logoBug != null && typeof b.logoBug !== 'boolean') errors.push('logoBug must be true or false');
   if (b.shine != null && typeof b.shine !== 'boolean') errors.push('shine must be true or false');
   if (b.confetti != null && typeof b.confetti !== 'boolean') errors.push('confetti must be true or false');
@@ -259,6 +282,7 @@ export function validateBrand(input) {
     },
     music: { file: b.music?.file || null, gainDb: gain, ...(b.music?.duck ? { duck: true } : {}) },
     ...(sfx ? { sfx } : {}),
+    ...clip,
     sources: { allowedHosts: hosts },
   };
 }

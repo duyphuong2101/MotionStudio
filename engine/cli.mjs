@@ -13,6 +13,7 @@ import { writeBanner, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES } from './
 import { makePackGlb, DEPTH_RANGE, FINISHES } from './pack-glb.mjs';
 import { nodeProblem } from './runtime.mjs';
 import { importRemotion } from './remotion.mjs';
+import { importSceneScript, readScriptFile } from './scenescript.mjs';
 
 const USAGE = `Motion Studio engine
 
@@ -55,6 +56,9 @@ const USAGE = `Motion Studio engine
         read a Remotion project's files as text (nothing in it is run) and write a queued brief: format and length from the
         composition, its texts as fact lines naming their files, its scenes with their seconds in the notes, and the
         public/ files it references saved as brand assets (default template explainer, first composition)
+  node engine/cli.mjs import-script <project> <file.txt> [--job <id>] [--by name]
+        turn a scene script (SCENE 1 — TITLE (0–4 seconds) blocks with CLIP, IMAGES, VOICE and ON SCREEN lines) and the
+        brand assets it names into a scripted job: an explainer with clip scenes, every field locked as written (no model)
 `;
 
 /** `banner` flags, in the shape writeBanner takes (it validates them). */
@@ -156,6 +160,7 @@ async function main(argv) {
   const bench = cmd === 'bench' ? benchOptions(flag(args, 'seconds'), flag(args, 'workers')) : null;
   const banner = cmd === 'banner' ? bannerArgs(args) : null;
   const remotion = cmd === 'import-remotion' ? { job: flag(args, 'job'), template: flag(args, 'template'), composition: flag(args, 'composition') } : null;
+  const sceneJob = cmd === 'import-script' ? flag(args, 'job') : undefined;
   const [project, id, extra] = args.filter((a) => !a.startsWith('--'));
 
   switch (cmd) {
@@ -278,6 +283,20 @@ async function main(argv) {
       for (const a of assets.saved) console.log(`  asset ${a.name}${a.existing ? ' (already in the brand)' : ''} from ${a.ref}`);
       for (const a of assets.skipped) console.log(`  not imported ${a.ref} (${a.from}): ${a.reason}`);
       console.log('Run Director (or /studio run) picks it up.');
+      return;
+    }
+    case 'import-script': {
+      const { text, name } = readScriptFile(id);
+      const r = await importSceneScript(project, text, { job: sceneJob, by, file: name });
+      const b = r.brief;
+      console.log(`${b.project}/${b.id}: scripted, ${[b.template, ...b.mix].join(' + ')} ${b.format}, ${b.duration} s, ${r.script.scenes.length} scenes locked as written`);
+      for (const row of r.rows) {
+        const parts = row.parts.map((p) => `${p.id}${p.assets.length ? ` ${p.assets.join(', ')}` : ''}${p.in !== undefined ? ` ${p.in}-${p.out} s` : ''}${p.hold ? `, hold ${p.hold} s` : ''}`);
+        console.log(`  ${row.at}: ${parts.join('; ')}`);
+      }
+      for (const n of r.notes) console.log(`  note: ${n}`);
+      for (const w of r.warnings) console.log(`  warning: ${w}`);
+      console.log(`Build the storyboard in the UI, or: node engine/cli.mjs prepare ${b.project} ${b.id}`);
       return;
     }
     case 'reset-dirty': {

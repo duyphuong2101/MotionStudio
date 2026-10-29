@@ -1,0 +1,64 @@
+VIDEO ID: HUY-DRILL-001
+
+TITLE:
+The Drill Works Perfectly Until It Touches Wood
+
+MAIN CHARACTER:
+CHAR-01 — HUY
+
+DURATION:
+45 seconds
+
+FORMAT:
+Vertical 9:16
+
+STYLE:
+Photorealistic technical repair short film.
+
+SCENE 1 — THE MYSTERY (0–4 seconds)
+CLIP: c1.mp4
+
+Huy holds a cordless drill in a realistic Vietnamese workshop. He activates the drill without a load. The motor spins normally.
+
+Camera: Close-up of the rotating chuck, followed by a close-up of Huy's face.
+
+SCENE 2 — INITIAL INVESTIGATION (4–10 seconds)
+CLIP: c2.mp4 0:01-0:07
+
+Huy removes the battery after switching off the drill.
+
+Camera: Over-the-shoulder shot and macro shots of the battery connection.
+
+SCENE 3 — DIAGNOSTIC TEST (10–19 seconds)
+CLIP: c3a.mp4 0:00-0:04, c3b.mp4 0:00-0:05
+VOICE: Huy đo điện áp pin khi có tải.
+ON SCREEN: Voltage drops under load
+
+Huy uses appropriate diagnostic equipment to evaluate battery voltage under a controlled load.
+
+Camera: Close-up of the test setup and measuring instrument.
+
+SCENE 4 — VERIFIED REPAIR (19–31 seconds)
+CLIP: c4.mp4
+
+After confirming that the battery pack is faulty, Huy replaces it with a compatible, verified battery pack.
+
+SCENE 5 — FINAL TEST (31–41 seconds)
+CLIP: c5a.mp4, c5b.mp4
+
+Huy performs a controlled drilling test using suitable wood and a securely supported workpiece.
+
+SCENE 6 — ENDING (41–45 seconds)
+CLIP: c6.mp4 0:00-0:03
+
+Huy switches off the drill, removes the battery, and looks toward the camera with a slight smile.
+
+Optional Vietnamese dialogue:
+
+"Máy không yếu. Nguồn điện mới là vấn đề."
+
+End card:
+ONE SYMPTOM. MULTIPLE POSSIBLE CAUSES.
+
+IMPORTANT TECHNICAL RULE:
+The faulty battery is the confirmed cause in this episode. Do not imply that every drill stopping under load has a faulty battery.

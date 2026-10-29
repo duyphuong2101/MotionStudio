@@ -88,7 +88,7 @@ export function createProject({ id, name, site = '', from = '' } = {}) {
   const base = from ? loadBrand(from) : DEFAULT_BRAND;
   const music = base.music?.file && String(base.music.file).startsWith('library:') ? base.music : { file: null, gainDb: base.music?.gainDb ?? -18, duck: base.music?.duck };
   const brand = validateBrand({
-    ...base, name, site: String(site || '').trim(), logoText: '', logo: null, logoDark: null, music,
+    ...base, name, site: String(site || '').trim(), logoText: '', logo: null, logoDark: null, clipRefs: null, music,
     sources: { allowedHosts: hostsFromSite(site) },
   });
   writeJson(path.join(dir, 'brand.json'), brand);

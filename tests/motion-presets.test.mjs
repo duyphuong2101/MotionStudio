@@ -123,7 +123,7 @@ test('the Brand tab offers every motion the engine takes, in its order, each wit
   assert.deepEqual(MOTION_OPTIONS.map((o) => o.id), MOTIONS);
   for (const o of MOTION_OPTIONS) {
     assert.match(o.label, /^[A-Z][a-z]+$/, `${o.id}: one-word label`);
-    assert.ok(o.hint.endsWith('Applies on the next prepare.') && o.hint.length <= 200 && /^[\x20-\x7e]+$/.test(o.hint), `${o.id}: ${o.hint}`);
+    assert.ok(o.hint.endsWith('Applies when the storyboard is rebuilt.') && o.hint.length <= 200 && /^[\x20-\x7e]+$/.test(o.hint), `${o.id}: ${o.hint}`);
     // The film box shows exactly for a profile that draws film grain.
     assert.equal(!!o.film, MOTION_PROFILES[o.id].bg === 'grain', `${o.id}: film flag`);
     // The carry box shows exactly for a profile with a carrier.

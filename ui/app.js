@@ -1,4 +1,4 @@
-import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, assetPick, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt } from './shots.js';
+import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, assetPick, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt, insertClip } from './shots.js';
 import { HOLD_MAX, HOLD_STEP, CUE_LEAD, roundHold, fmtSec, sceneSpans, totalOf, moveItem, dropIndex, cueWord, snapWord, stepWord, shotTimes, cueRange, sfxOptions, takesCue, editScript } from './timeline.js';
 
 const S = {
@@ -16,6 +16,17 @@ const cut = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const PLACEHOLDER_VO = '[Write what the voice says in this scene]';
 const DRAFT_NOTE_MAX = 300; // engine/script.mjs DRAFT_NOTE_MAX
 const GEN_PROMPT_MAX = 2000; // server/generate.mjs MAX_PROMPT_CHARS
+const GEN_REFS_MAX = 3; // server/generate.mjs MAX_REFS; engine/brand.mjs MAX_CLIP_REFS
+const CLIP_BRIEF_MAX = 1500; // engine/brand.mjs MAX_CLIP_BRIEF
+const GEN_CLIP_NOTE = 'One click makes one clip on your Gemini key, billed per second of clip (no free tier). Google picks the length; it usually takes 1-3 minutes.';
+// A prompt over the Generate cap, as the fix: '' when it fits.
+const promptCut = (text) => (text.length > GEN_PROMPT_MAX ? `${text.length}/${GEN_PROMPT_MAX} characters: cut ${text.length - GEN_PROMPT_MAX}` : '');
+// Up to GEN_REFS_MAX brand pictures (.png, .jpg, .webp) as checkboxes with thumbnails; the rest close once that many are picked.
+const refPickerHtml = (pictures, picked, url) => (pictures.length
+  ? pictures.map((a) => `<label class="refpick-item"><input type="checkbox" value="${esc(a)}"${picked.includes(a) ? ' checked' : ''}><img src="${url(a)}" alt=""><span class="mono">${esc(a)}</span></label>`).join('')
+  : '<span class="muted">No pictures yet: upload .png, .jpg or .webp files under Assets.</span>');
+const pickedRefs = (el) => $$('input:checked', el).map((i) => i.value);
+const capRefs = (el) => { const full = pickedRefs(el).length >= GEN_REFS_MAX; $$('input', el).forEach((i) => { i.disabled = full && !i.checked; }); };
 const MAX_CUTS = 3; // engine/jobs.mjs MAX_CUTS: extra formats per brief
 const MAX_FONT_FILES = 8; // engine/brand.mjs fontFiles cap
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
@@ -30,9 +41,18 @@ const GEN_NOTICE = 'Your prompt and this brand\'s text go to Google under your o
 const iconSvg = (d) => (d ? `<svg viewBox="0 0 100 112" aria-hidden="true"><path d="${esc(d)}"/></svg>` : '');
 
 const STATUS = {
-  queued: 'waiting for Director', scripting: 'Director writing', scripted: 'scripted', dirty: 'edited, needs re-run',
+  queued: 'waiting for Director', scripting: 'Director writing', scripted: 'script ready', dirty: 'edited, needs a rebuild',
   preparing: 'building storyboard', awaiting_review: 'awaiting review', approved: 'approved', rendering: 'rendering',
   done: 'done', error: 'error',
+};
+// A job's status in plain words; an edited job says what it needs next.
+const statusText = (s) => (s.status === 'dirty' ? ((s.dirty_from ?? 99) < 5 ? 'needs the Director' : 'needs a new storyboard') : STATUS[s.status] || s.status);
+// The voice engine a brand names but this machine cannot run, as a sentence; '' when it runs or /options is not loaded.
+const missingEngine = (tts, voices = S.options?.voices) => {
+  const id = String(tts || '').toLowerCase() === 'windows' ? 'sapi' : String(tts || '').toLowerCase();
+  const e = (voices || []).find((x) => x.id === id);
+  if (!e || e.available) return '';
+  return id === 'kokoro' ? `No Kokoro voice model on this machine (${e.reason}). Copy the models/kokoro/ folder from a teammate.` : `${e.label} is not available here (${e.reason}).`;
 };
 const BUSY = ['scripting', 'preparing', 'rendering'];
 const WHO = { human: 'human', director: 'director', tool: 'tool' };
@@ -115,7 +135,7 @@ async function cloudVoicePanel(box, jp) {
     ${why ? `<p class="warn-t small">${esc(why)}</p>` : ''}
     <div class="row"><button class="btn" type="button" id="sc-cloud-go" ${run || !left || why ? 'disabled' : ''}>Make cloud voice (${left} line${left === 1 ? '' : 's'})</button>
       ${st.pause ? '<button class="btn" type="button" id="sc-cloud-unpause">Clear pause</button>' : ''}
-      <span class="muted small">Each line is made once on your key; then re-run from step 5.</span></div></div>`;
+      <span class="muted small">Each line is made once on your key; then rebuild the storyboard.</span></div></div>`;
   box.querySelector('#sc-cloud-go')?.addEventListener('click', async (e) => {
     e.target.disabled = true;
     try { await api(`/jobs/${jp}/cloud-voice`, { method: 'POST', body: {} }); } catch (err) { toast(err.message); }
@@ -150,7 +170,7 @@ async function busy(btn, fn, errBox) {
 const INFLIGHT = new Set();
 const jobKey = (id = S.sel) => `job:${S.project}/${id}`;
 const seqKey = (id = S.seqSel) => `seq:${S.project}/${id}`;
-const FORM_BTNS = { 'form:brief': '#bf-save, #bf-saverun', 'form:seq': '#sf-save', 'form:brand': '#br-save' };
+const FORM_BTNS = { 'form:brief': '#bf-save, #bf-saverun', 'form:script': '#ss-check, #ss-save', 'form:seq': '#sf-save', 'form:brand': '#br-save' };
 const lockedNow = () => [
   S.sel && INFLIGHT.has(jobKey()) ? '#d-top [data-act], #d-edit, #d-del' : '',
   S.seqSel && INFLIGHT.has(seqKey()) ? '#sq-render, .sq-preview, #sq-edit, #sq-del' : '',
@@ -224,7 +244,9 @@ async function boot() {
     drawJobList();
   });
   S.jobFilter = store.get('ms.jobFilter') || 'all';
-  $('#new-brief').addEventListener('click', () => openBriefForm({}));
+  // A blank brief starts on the Explainer, the general template with a quick mode.
+  $('#new-brief').addEventListener('click', () => openBriefForm({ template: 'explainer' }));
+  $('#new-script').addEventListener('click', openSceneScriptForm);
   $('#new-seq').addEventListener('click', () => { if (S.seqMeta) openSeqForm({}); });
   $('#director').addEventListener('click', directorClick);
   $('#director').addEventListener('change', async (e) => {
@@ -329,7 +351,7 @@ function lockPane() {
 }
 function confirmDiscard(withBrand = false) {
   if (!hasUnsaved(withBrand)) return true;
-  const what = briefFormDirty() ? (S.briefForm.edit ? 'your changes to the brief' : 'the new brief')
+  const what = briefFormDirty() ? (S.briefForm.sceneScript ? 'the pasted scene script' : S.briefForm.edit ? 'your changes to the brief' : 'the new brief')
     : S.paneDirty ? `your unsaved ${S.sub === 'source' ? 'Source' : 'Script'} edits`
       : seqFormDirty() ? 'your changes to the sequence' : 'your unsaved Brand edits';
   return window.confirm(`Discard ${what}?`);
@@ -441,9 +463,9 @@ function drawJobList() {
     const s = j.status;
     const pr = s.progress && s.progress.total ? Math.round((s.progress.frame / s.progress.total) * 100) : null;
     return `<button class="job ${S.sel === j.brief.id ? 'on' : ''}" data-id="${esc(j.brief.id)}"${s.status === 'error' && s.error ? ` title="Error: ${esc(s.error)}"` : ''}>
-      <span class="dot s-${esc(s.status)}" role="img" aria-label="Status: ${esc(STATUS[s.status] || s.status)}" title="${esc(STATUS[s.status] || s.status)}"></span>
+      <span class="dot s-${esc(s.status)}" role="img" aria-label="Status: ${esc(statusText(s))}" title="${esc(statusText(s))}"></span>
       <span style="min-width:0;flex:1"><span class="t">${esc(j.brief.id)}</span>${j.brief.quick ? ' <span class="pill" title="Quick video: built from an outline">quick</span>' : ''}<br>
-      <span class="m">${esc(STATUS[s.status] || s.status)} · ${esc(tplName(j.brief))} · ${esc(j.brief.duration)}s</span>
+      <span class="m">${esc(statusText(s))} · ${esc(tplName(j.brief))} · ${esc(j.brief.duration)}s</span>
       ${pr !== null ? `<span class="bar"><i style="width:${pr}%"></i></span>` : ''}</span></button>`;
   }).join('') : S.jobs.length ? '<p class="muted">No job matches this filter.</p>' : '<p class="muted">No jobs yet. Click New brief to write the first one.</p>';
   $('#n-jobs').textContent = S.jobs.length;
@@ -524,11 +546,11 @@ function renderTop() {
   }).join('');
   const busyNow = BUSY.includes(s.status) || Boolean(d.running);
   const findings = (s.lint?.findings || []).length
-    ? `<h3>Lint</h3><ul class="findings">${s.lint.findings.map((f) => `<li class="${esc(f.level)}">[${esc(f.level)}] ${f.scene ? `${esc(f.scene)} · ` : ''}${esc(f.el)}: ${esc(f.msg)}</li>`).join('')}</ul>` : '';
+    ? `<h3>Layout checks</h3><ul class="findings">${s.lint.findings.map((f) => `<li class="${esc(f.level)}">[${esc(f.level)}] ${f.scene ? `${esc(f.scene)} · ` : ''}${esc(f.el)}: ${esc(f.msg)}</li>`).join('')}</ul>` : '';
   $('#d-top').innerHTML = `<div class="head"><h2>${esc(b.id)}</h2>
       <span class="pill">${esc(tplName(b))}</span>${b.quick ? '<span class="pill" title="Quick video: built from an outline">quick</span>' : ''}<span class="pill">${esc(b.format)}</span>${b.platform ? `<span class="pill">${esc(platformLabel(b.platform))}</span>` : ''}<span class="pill">${esc(b.duration)}s</span>
       ${b.lang ? `<span class="pill">${esc(langName(b.lang))}</span>` : ''}${b.voice ? `<span class="pill" title="Voice for this video">${esc(b.voice === 'none:' ? 'no voice' : b.voice.slice(b.voice.indexOf(':') + 1))}</span>` : ''}${b.voiceTake ? `<span class="pill" title="Recorded voice">recorded · ${esc(b.voiceTake)}</span>` : ''}
-      <span class="pill">${esc(STATUS[s.status] || s.status)}</span>
+      <span class="pill">${esc(statusText(s))}</span>
       <span class="hbtns"><button class="btn sm" id="d-edit" ${busyNow ? 'disabled title="Wait until the job finishes"' : ''}>Edit brief</button>
       <button class="btn sm" id="d-dup">Duplicate</button>
       <button class="btn sm" id="d-del" ${busyNow || dirOnJob() ? 'disabled title="Wait until the job finishes"' : ''}>Delete…</button></span></div>
@@ -575,7 +597,7 @@ function banner() {
   switch (s.status) {
     case 'queued': return B('', 'Waiting for the Director. Run it here (Claude Code on your seat, or the API provider you picked), or type <code>/studio run</code> in Claude Code.', dirBtns('Run Director for this job'));
     case 'scripting': return B('busy', 'Director is writing <code>source.json</code> and <code>script.json</code>.');
-    case 'scripted': return B('human', 'Script ready. The Director usually builds the storyboard itself, but you can run it now.', btn('prepare', 'Build storyboard (steps 5-7)', true));
+    case 'scripted': return B('human', 'Script ready. The Director usually builds the storyboard itself, but you can run it now.', btn('prepare', 'Build storyboard', true));
     case 'dirty': {
       const drafts = (d.script?.scenes || []).filter((x) => x.draft).length;
       if (drafts) return B('warn', `${drafts} draft scene(s) waiting — click Run Director for this job.`, dirBtns('Run Director for this job'));
@@ -583,7 +605,7 @@ function banner() {
       if (s.dirty_from === 1) return B('warn', 'You edited the brief. The Director needs to redo the source and script. Fields you edited in the Script and Source tabs stay locked.', dirBtns('Run Director for this job'));
       return (s.dirty_from ?? 99) < 5
         ? B('warn', `You edited the source data. The Director needs to rewrite the script. The fields you edited are locked, so the Director won't overwrite them.`, dirBtns('Run Director for this job'))
-        : B('warn', 'Script edited by hand. Re-run from step 5 to get a new storyboard.', btn('prepare', 'Re-run from step 5', true));
+        : B('warn', 'Script edited by hand. Rebuild the storyboard to see and hear it.', btn('prepare', 'Rebuild storyboard', true));
     }
     case 'preparing': return B('busy', '<span class="spin" aria-hidden="true"></span> Building storyboard…');
     case 'awaiting_review': return B('human', 'Storyboard ready. Check the preview and stills, edit the script if needed, then approve to render. Changed the brand or the voice? Rebuild the storyboard to apply it.', `${btn('prepare', 'Rebuild storyboard')}${btn('approve', 'Approve, allow render', true)}`);
@@ -605,8 +627,8 @@ function banner() {
     }
     case 'error':
       // failed: 'render' keeps the approval, so the same render can simply run again.
-      if (s.failed === 'render') return B('bad', `Render failed: ${esc(String(s.error || 'unknown').replace(/\.$/, ''))}. The storyboard is still approved: retry the render, or edit the script and rebuild it.`, `${btn('render', 'Retry render', true)}${d.script ? btn('prepare', 'Re-run from step 5') : ''}${dirBtns('Run Director again')}`);
-      return B('bad', `Error: ${esc(String(s.error || 'unknown').replace(/\.$/, ''))}. Run the Director again, or edit the script in the Script tab.`, `${dirBtns('Run Director again')}${d.script ? btn('prepare', 'Re-run from step 5') : ''}`);
+      if (s.failed === 'render') return B('bad', `Render failed: ${esc(String(s.error || 'unknown').replace(/\.$/, ''))}. The storyboard is still approved: retry the render, or edit the script and rebuild it.`, `${btn('render', 'Retry render', true)}${d.script ? btn('prepare', 'Rebuild storyboard') : ''}${dirBtns('Run Director again')}`);
+      return B('bad', `Error: ${esc(String(s.error || 'unknown').replace(/\.$/, ''))}. Run the Director again, or edit the script in the Script tab.`, `${dirBtns('Run Director again')}${d.script ? btn('prepare', 'Rebuild storyboard') : ''}`);
     default: return '';
   }
 }
@@ -1084,13 +1106,13 @@ function paneScript(pane) {
       <li><b>JSON</b> fields hold lists and screen data. Tip: Duplicate a similar scene and edit the copy.</li>
       <li><b>Draft for Director</b>: pick the kind, the position and the claim source, write one line about what the scene should show, and the Director writes it on its next run.</li>
     </ul></details>
-    <p class="muted">Edit, add, duplicate, delete or reorder scenes. Saving locks what you changed (and the scene order) and moves the job to "re-run from step 5". The template checks the order and required fields on save.</p>
+    <p class="muted">Edit, add, duplicate, delete or reorder scenes. Saving locks what you changed (and the scene order) and moves the job to "needs a new storyboard". The template checks the order and required fields on save.</p>
     ${locks.scenes ? `<p class="lock">Scene order locked by ${esc(locks.scenes.by)}: the Director keeps this order.</p>` : ''}
     ${sc.generated === 'outline' ? `<div class="banner" role="note"><p><b>Built from an outline (quick mode).</b>${REVIEW ? '' : ' Your edits lock as usual; the Director\'s next run writes a new outline and keeps locked fields.'}</p></div>` : ''}
     ${d.outline ? outlineHtml(d.outline) : ''}
     <div class="f lookrow"><label for="sc-look">Look ${locks.look ? `<span class="lock">locked by ${esc(locks.look.by)}</span>` : ''}</label>
       <select id="sc-look" aria-describedby="sc-look-h">${[LOOK_BRAND, ...(d.looks || [])].map((n) => `<option value="${esc(n)}"${n === (look ?? LOOK_BRAND) ? ' selected' : ''}>${esc(n === LOOK_BRAND ? 'Brand (as set in the Brand tab)' : n[0].toUpperCase() + n.slice(1))}</option>`).join('')}</select>
-      <span class="hint muted" id="sc-look-h">Motion, backdrop, cut sound and music for this video. What the Brand tab sets wins; the look fills the rest. Applies on the next prepare.</span></div>
+      <span class="hint muted" id="sc-look-h">Motion, backdrop, cut sound and music for this video. What the Brand tab sets wins; the look fills the rest. Applies when the storyboard is rebuilt.</span></div>
     ${saved?.length ? `<div class="banner warn" role="status"><p>Saved with warnings:<br>${saved.map(esc).join('<br>')}</p></div>` : ''}
     ${REVIEW ? '' : '<div id="sc-cloud" aria-live="polite"></div>'}
     <div class="scenes" id="sc-list"></div>
@@ -1098,7 +1120,7 @@ function paneScript(pane) {
       <div id="sc-check" aria-live="polite"></div>
       <div class="row"><button class="btn p" id="sc-save">Save script</button>
         <input id="sc-note" class="note" maxlength="200" placeholder="Reason for the edit (optional)" aria-label="Reason for the edit">
-        <span class="muted small">Then re-run from step 5 (step 4 with drafts).</span></div>
+        <span class="muted small">Then rebuild the storyboard, or run the Director when there are drafts.</span></div>
       <p class="warn-t small" id="pane-lock" role="status"></p>
       <div class="err" role="alert" id="sc-err"></div></div></fieldset>`;
   draw();
@@ -1238,7 +1260,7 @@ function paneScript(pane) {
     const drafts = scenes.filter((s) => s.draft).length;
     toast(!r.changed.length ? 'Nothing changed'
       : drafts ? `Saved. ${drafts} draft scene(s) waiting — click Run Director for this job.`
-      : `Saved ${r.changed.length} change(s). Click "Re-run from step 5".`);
+      : `Saved ${r.changed.length} change(s). Click "Rebuild storyboard".`);
     await loadDetail(true);
   }, $('#sc-err')));
   lockPane();
@@ -1278,7 +1300,7 @@ function reviewHtml({ pacing: p, sheet, cuts }, base, stamp) {
   const img = sheet
     ? `<a class="sheet" href="${fileUrl(base, sheet)}?v=${stamp}" target="_blank" rel="noopener" title="Open the full-size sheet"><img src="${fileUrl(base, sheet)}?v=${stamp}" alt="Review sheet: three frames per scene, in, middle and before the cut" loading="lazy"></a>
       <p class="muted small">Main format, one row per scene: in, middle, before the cut. Click to open full size.</p>`
-    : '<p class="muted small">No sheet yet. It appears after the next prepare.</p>';
+    : '<p class="muted small">No sheet yet. It appears after the next storyboard build.</p>';
   const cutImg = cuts
     ? `<a class="sheet" href="${fileUrl(base, cuts)}?v=${stamp}" target="_blank" rel="noopener" title="Open the full-size cut sheet"><img src="${fileUrl(base, cuts)}?v=${stamp}" alt="Cut sheet: frames close around every cut" loading="lazy"></a>
       <p class="muted small">One row per cut, frames from just before to just after it. A row that turns in one frame from one picture to another is a hard cut.</p>`
@@ -1363,7 +1385,7 @@ function panePreView(pane) {
         <p class="muted small" style="margin:0">The exact page the renderer captures frame by frame.${tracks.length ? ` ${[d.has.voice && 'Voice', d.music && 'music', d.has.sfx && 'cut sounds'].filter(Boolean).join(' and ')} play along; the render evens out the loudness.` : ' No sound yet: the brand has no voice or music.'}${d.timing?.beat ? ` Scenes end on the beat (${d.timing.beat.bpm} BPM).` : ''}</p>` : ''}
     </div>
     <div>
-      <h3>Storyboard stills (step 7)</h3><div class="stills">${stills || '<span class="muted">None yet.</span>'}</div>
+      <h3>Storyboard stills</h3><div class="stills">${stills || '<span class="muted">None yet.</span>'}</div>
       <h3 style="margin-top:14px">Review sheet</h3><div id="revbox"><span class="muted small">Loading…</span></div>
       ${REVIEW ? '' : '<h3 style="margin-top:14px">Notes for the Director</h3><div id="notebox"><span class="muted small">Loading…</span></div>'}
       <h3 style="margin-top:14px">Timing (${esc(d.timing?.source || '')})</h3>
@@ -1522,7 +1544,7 @@ function mountTimeline(box, go) {
         <div class="tl-play" hidden></div><div class="tl-drop" hidden></div>
       </div></div>
       <div class="tl-sounds" role="group" aria-label="Cut sounds">${chips}</div>
-      <p class="small ${stale() ? 'warn-t' : 'muted'}" id="tl-note">${stale() ? 'Lengths are from the last storyboard and the preview still plays it. Re-run from step 5 to hear these changes.' : 'Lengths come from the voice; only a pause after a line makes a scene longer.'}</p>
+      <p class="small ${stale() ? 'warn-t' : 'muted'}" id="tl-note">${stale() ? 'Lengths are from the last storyboard and the preview still plays it. Rebuild the storyboard to hear these changes.' : 'Lengths come from the voice; only a pause after a line makes a scene longer.'}</p>
       <p class="small" id="tl-st" role="status"></p><div class="err" role="alert" id="tl-err"></div>`;
     const f = focus || S.tlFocus;
     S.tlFocus = null;
@@ -1549,7 +1571,7 @@ function mountTimeline(box, go) {
     let msg;
     try {
       const r = await api(`/jobs/${jobPath()}/script`, { method: 'PUT', body: { doc, note, stamp: S.detail.stamps?.script } });
-      msg = { text: r.changed.length ? `Saved: ${note.slice(10)}. Re-run from step 5 to hear it.` : 'Nothing changed.' };
+      msg = { text: r.changed.length ? `Saved: ${note.slice(10)}. Rebuild the storyboard to hear it.` : 'Nothing changed.' };
       if (r.warnings?.length) msg.text += ` Warnings: ${r.warnings.join('; ')}`;
     } catch (err) { msg = { text: err.message, bad: true }; }
     saving = false;
@@ -1796,6 +1818,7 @@ const briefBody = () => ({
 });
 // A new brief counts as unsaved once it has a message; an edit once any field differs from the stored brief.
 function briefFormDirty() {
+  if (S.briefForm?.sceneScript) return Boolean($('#ss-text')?.value.trim());
   if (!S.briefForm || !$('#bf')) return false;
   return S.briefForm.edit ? JSON.stringify(briefBody()) !== S.briefSnap : Boolean($('#bf-msg').value.trim());
 }
@@ -1809,6 +1832,9 @@ function renderBriefForm(pre) {
   const opt = (v, label, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(label)}</option>`;
   const hasScript = pre.edit && pre.hasScript;
   const heading = pre.edit ? 'Edit brief' : pre.from ? `Duplicate of ${esc(pre.from)}` : 'New brief';
+  // A new brief starts in quick mode where the template has one; an edit or a duplicate keeps what the brief says.
+  const quickInit = pre.quick ?? (!pre.edit && !pre.from);
+  const moreOpen = Boolean(pre.mix?.length || pre.alsoFormats?.length || pre.voiceTake || pre.cutOnBeat || pre.motionBlur);
   const editNote = !pre.edit ? ''
     : pre.started ? '<div class="banner warn"><p>The Director already worked on this job. Saving a change sends it back to the Director: the next Director run redoes the source and script. Fields you edited in the Script and Source tabs stay locked.</p></div>'
       : '<p class="muted" style="margin:0">The Director has not run yet. Saving only updates the brief file.</p>';
@@ -1819,27 +1845,14 @@ function renderBriefForm(pre) {
         <span class="muted hint" id="bf-tplabout"></span>
         ${hasScript ? `<span class="muted hint" id="bf-tplhint">${TPL_CHANGE_NOTE}</span>` : ''}</div>
       <div class="f"><label for="bf-dur">Duration (seconds)</label><input id="bf-dur" type="number" value="${esc(pre.duration ?? 20)}"><span class="muted mono" id="bf-durhint"></span></div>
-      <fieldset class="mix" id="bf-mix" aria-describedby="bf-mixhint"><legend>Mix in scenes from</legend><div class="row" id="bf-mixlist"></div><span class="muted hint" id="bf-mixhint"></span></fieldset>
       <div class="f"><label for="bf-plat">Platform</label><select id="bf-plat" aria-describedby="bf-plathint"></select><span class="muted hint" id="bf-plathint"></span></div>
       <div class="f"><label for="bf-fmt">Format</label><select id="bf-fmt"></select></div>
-      <fieldset class="mix" id="bf-also" aria-describedby="bf-alsohint"><legend>Also make (same script and voice)</legend><div class="row" id="bf-alsolist"></div><span class="muted hint" id="bf-alsohint"></span></fieldset>
-      <div class="f"><label for="bf-id">Job id</label>${pre.edit
-        ? `<input id="bf-id" value="${esc(pre.id)}" readonly><span class="muted hint">The job id is the file name and cannot change.</span>`
-        : '<input id="bf-id" maxlength="64" placeholder="auto from name + format">'}</div>
-    </div>
-    <div class="grid2">
       <div class="f"><label for="bf-lang">Language</label><select id="bf-lang" aria-describedby="bf-langhint"></select>
         <span class="muted hint" id="bf-langhint">The Director writes the script in this language.</span></div>
       <div class="f"><label for="bf-voice">Voice</label><select id="bf-voice" aria-describedby="bf-voicehint"></select>
         <span class="muted hint" id="bf-voicehint"></span></div>
-      <div class="f"><label for="bf-take">Recorded voice</label><select id="bf-take" aria-describedby="bf-takehint">${opt('', 'None — use the brand voice', !pre.voiceTake)}${pre.voiceTake ? opt(pre.voiceTake, pre.voiceTake, true) : ''}</select>
-        <span class="muted hint" id="bf-takehint">One take reading every voice line in order. Prepare matches it to the scenes.</span></div>
-      <div class="f" style="grid-column:1/-1" id="bf-quickrow"><label class="chk"><input type="checkbox" id="bf-quick" ${pre.quick ? 'checked' : ''} aria-describedby="bf-quickhint"> Quick video (outline)</label>
+      <div class="f" style="grid-column:1/-1" id="bf-quickrow"><label class="chk"><input type="checkbox" id="bf-quick" ${quickInit ? 'checked' : ''} aria-describedby="bf-quickhint"> Quick video (outline)</label>
         <span class="muted hint" id="bf-quickhint"></span></div>
-      <div class="f" style="grid-column:1/-1"><label class="chk"><input type="checkbox" id="bf-beat" ${pre.cutOnBeat ? 'checked' : ''} aria-describedby="bf-beathint"> Cut scenes on the music beat</label>
-        <span class="muted hint" id="bf-beathint"></span>
-        <label class="chk"><input type="checkbox" id="bf-blur" ${pre.motionBlur ? 'checked' : ''} aria-describedby="bf-blurhint"> Motion blur on fast moves</label>
-        <span class="muted hint" id="bf-blurhint">Softens fast movement like a camera shutter. Rendering takes about 4 times as long; the storyboard does not change.</span></div>
     </div>
     <h3 style="margin:6px 0 -4px">Content</h3>
     <div class="grid2">
@@ -1854,6 +1867,20 @@ function renderBriefForm(pre) {
       <div class="f"><label for="bf-cta">CTA</label><input id="bf-cta" maxlength="80" placeholder="Try a free sample" value="${esc(pre.cta || '')}"></div>
       <div class="f"><label for="bf-notes">Notes for the Director</label><input id="bf-notes" maxlength="1000" value="${esc(pre.notes || '')}"></div>
     </div>
+    <details class="more" id="bf-more" ${moreOpen ? 'open' : ''}><summary>More options <span class="muted">· mix, extra sizes, recorded voice, beat, motion blur, job id</span></summary>
+    <div class="grid2">
+      <fieldset class="mix" id="bf-mix" aria-describedby="bf-mixhint"><legend>Mix in scenes from</legend><div class="row" id="bf-mixlist"></div><span class="muted hint" id="bf-mixhint"></span></fieldset>
+      <fieldset class="mix" id="bf-also" aria-describedby="bf-alsohint"><legend>Also make (same script and voice)</legend><div class="row" id="bf-alsolist"></div><span class="muted hint" id="bf-alsohint"></span></fieldset>
+      <div class="f"><label for="bf-take">Recorded voice</label><select id="bf-take" aria-describedby="bf-takehint">${opt('', 'None — use the brand voice', !pre.voiceTake)}${pre.voiceTake ? opt(pre.voiceTake, pre.voiceTake, true) : ''}</select>
+        <span class="muted hint" id="bf-takehint">One take reading every voice line in order. The storyboard build matches it to the scenes.</span></div>
+      <div class="f"><label for="bf-id">Job id</label>${pre.edit
+        ? `<input id="bf-id" value="${esc(pre.id)}" readonly><span class="muted hint">The job id is the file name and cannot change.</span>`
+        : '<input id="bf-id" maxlength="64" placeholder="auto from name + format">'}</div>
+      <div class="f" style="grid-column:1/-1"><label class="chk"><input type="checkbox" id="bf-beat" ${pre.cutOnBeat ? 'checked' : ''} aria-describedby="bf-beathint"> Cut scenes on the music beat</label>
+        <span class="muted hint" id="bf-beathint"></span>
+        <label class="chk"><input type="checkbox" id="bf-blur" ${pre.motionBlur ? 'checked' : ''} aria-describedby="bf-blurhint"> Motion blur on fast moves</label>
+        <span class="muted hint" id="bf-blurhint">Softens fast movement like a camera shutter. Rendering takes about 4 times as long; the storyboard does not change.</span></div>
+    </div></details>
     ${editNote}
     <div class="row"><button class="btn p" type="submit" id="bf-save">${pre.edit ? 'Save changes' : 'Save brief'}</button>
       ${pre.edit ? '' : '<button class="btn" type="button" id="bf-saverun">Save and run Director</button>'}
@@ -1944,7 +1971,7 @@ function renderBriefForm(pre) {
   };
   // Quick mode (engine/jobs.mjs validateBrief): only a template with a quick block, never with a mix. The tick the
   // person chose comes back when the box is allowed again.
-  let quickWanted = pre.quick === true;
+  let quickWanted = quickInit === true;
   const quickTpls = tpls.filter((x) => x.quick).map((x) => x.label).join(', ');
   const syncQuick = () => {
     const t = tpl(), mixed = mixPicked().length > 0, box = $('#bf-quick');
@@ -1968,9 +1995,11 @@ function renderBriefForm(pre) {
     const sel = $('#bf-voice').selectedOptions[0];
     const vl = sel?.dataset.lang, lang = pickedLang();
     const clash = Boolean(sel?.value && vl && vl.split('-')[0] !== lang.split('-')[0]);
-    $('#bf-voicehint').textContent = !sel?.value ? `Uses the brand voice (${bv.tts || 'none'}${bv.voice ? ` · ${bv.voice}` : ''}).`
-      : clash ? `This voice speaks ${vl}; the video is ${lang}. Pick a voice in that language.` : '';
-    $('#bf-voicehint').classList.toggle('bad-t', clash);
+    const missing = !sel?.value && missingEngine(bv.tts);
+    $('#bf-voicehint').textContent = missing ? `${missing} This video would have music only: pick a Windows voice here, or set one on the Brand tab.`
+      : !sel?.value ? `Uses the brand voice (${bv.tts || 'none'}${bv.voice ? ` · ${bv.voice}` : ''}).`
+        : clash ? `This voice speaks ${vl}; the video is ${lang}. Pick a voice in that language.` : '';
+    $('#bf-voicehint').classList.toggle('bad-t', clash || Boolean(missing));
   };
   const fillVoices = (opts) => {
     const groups = (opts?.voices || []).filter((e) => e.available && e.voices.length).map((e) => `<optgroup label="${esc(e.label)}">${e.voices.map((v) => {
@@ -2022,7 +2051,7 @@ function renderBriefForm(pre) {
     if (pre.edit) {
       const res = await api(`/briefs/${jobPath(S.project, pre.id)}`, { method: 'PUT', body });
       toast(res.newScript ? `Saved. ${pre.id} is back in the Director queue for a new script; the old one is in script.prev.json.`
-        : res.requeued ? `Saved. ${pre.id} is back in the Director queue.` : res.rePrepare ? `Saved. Re-run ${pre.id} from step 5 to hear the new voice.` : res.changed.length ? `Saved brief ${pre.id}.` : 'Nothing changed.');
+        : res.requeued ? `Saved. ${pre.id} is back in the Director queue.` : res.rePrepare ? `Saved. Rebuild the storyboard of ${pre.id} to hear the new voice.` : res.changed.length ? `Saved brief ${pre.id}.` : 'Nothing changed.');
     } else {
       await api('/briefs', { method: 'POST', body });
       toast(`Saved brief ${body.id}. Waiting for Director.`);
@@ -2041,6 +2070,229 @@ function renderBriefForm(pre) {
   applyLocks();
   $('#bf-saverun')?.addEventListener('click', (e) => save(e.currentTarget, true));
   wireEvidence();
+}
+
+/* ---------------- new from script ---------------- */
+// A person's scene script and the brand's clips become a scripted job (engine/scenescript.mjs): no Director, no model.
+const SCRIPT_CHARS = 64 * 1024; // engine/scenescript.mjs SCENE_SCRIPT_CAPS.chars
+const scriptPart = (p) => `${p.id}: ${p.assets.length ? p.assets.join(', ') : p.kind === 'title' ? 'title card' : 'closing card'}${p.in !== undefined ? ` ${p.in}–${p.out} s` : ''}${p.hold ? `, holds the last frame ${p.hold} s` : ''}${p.kind === 'video' && !p.sound ? ', no sound' : ''}`;
+
+function openSceneScriptForm() {
+  if (!confirmDiscard()) return;
+  stopPreview();
+  if (S.sel) S.prevSel = S.sel;
+  S.briefForm = { sceneScript: true }; S.sel = null; S.detail = null; S.paneDirty = false; S.seqSel = null; S.seqForm = null;
+  $$('#joblist .job, #seqlist .job').forEach((x) => x.classList.remove('on'));
+  const P = encodeURIComponent(S.project);
+  $('#detail').innerHTML = `<div class="head"><h2>New from script</h2><span class="pill">${esc(S.project)}</span></div>
+  <form class="stack" id="ss" novalidate>
+    <p class="muted" style="margin:0">Paste a scene script: <code>TITLE:</code> with a <code>VOICE:</code> line for the opening card, then
+      <code>SCENE 1 — TITLE (0–4 seconds)</code> blocks, each with <code>CLIP: name.mp4 0:00-0:04</code> (one or more) or <code>IMAGES:</code> (2-4 pictures),
+      and optional <code>VOICE:</code> and <code>ON SCREEN:</code> lines. An <code>End card:</code> takes its own <code>VOICE:</code> and <code>BUTTON:</code>.
+      Other lines stay as notes. The job is an explainer with every field locked as you wrote it; no Director runs.</p>
+    <div class="f"><label for="ss-text">Scene script</label><textarea id="ss-text" maxlength="${SCRIPT_CHARS}" spellcheck="false"></textarea></div>
+    <div class="grid2">
+      <div class="f"><label for="ss-file">Or load a .txt or .md file</label><input type="file" id="ss-file" accept=".txt,.md,text/plain,text/markdown" aria-describedby="ss-filest">
+        <span class="muted hint" id="ss-filest" role="status"></span></div>
+      <div class="f"><label for="ss-id">Job id</label><input id="ss-id" maxlength="64" placeholder="auto from VIDEO ID or TITLE"></div>
+      <div class="f ss-drop" id="ss-drop" style="grid-column:1/-1"><label for="ss-media">Clips and pictures <span class="muted">· pick several at once, or drop them here</span></label>
+        <input type="file" id="ss-media" multiple accept=".mp4,.webm,.mov,.png,.jpg,.jpeg,.webp" aria-describedby="ss-up">
+        <span class="muted hint" id="ss-up" role="status">Uploaded to this brand's assets, as in the Brand tab. The script names them by file name.</span>
+        <ul class="ss-uploaded" id="ss-list" aria-label="Files uploaded from this form"></ul></div>
+    </div>
+    <div class="row"><button class="btn" type="button" id="ss-check">Check script</button><button class="btn p" type="submit" id="ss-save">Create job</button>
+      <button class="btn" type="button" id="ss-cancel">Cancel</button><span class="muted mono" id="ss-path"></span></div>
+    <div id="ss-rows" aria-live="polite"></div>
+    <div class="err" role="alert" id="ss-err"></div>
+  </form>`;
+  let fileName = '';
+  const body = (check) => ({ text: $('#ss-text').value, job: $('#ss-id').value.trim(), file: fileName, check });
+  const syncPath = (id) => { const j = $('#ss-id').value.trim() || id; $('#ss-path').textContent = j ? `→ briefs/${S.project}/${j}.json` : ''; };
+
+  // Generate clip (server/generate.mjs): one click makes one clip for one scene; nothing starts on its own.
+  const project = S.project;
+  let last = null, gen = null, making = null, genTimer = 0;
+  const prompts = {}; // edited prompts by scene number, kept while the composed prompt stays the same
+  const formAlive = () => Boolean($('#ss')?.isConnected) && Boolean(S.briefForm?.sceneScript) && S.project === project;
+  const sceneOf = (row) => last?.scenes?.find((s) => row.at === `Scene ${s.n}`);
+  const promptOf = (s) => (prompts[s.n]?.base === s.prompt ? prompts[s.n].text : s.prompt);
+  const genPanel = (s) => `<details class="ss-gen"><summary class="btn sm">Generate clip</summary>
+      <div class="f"><label for="ss-gp-${s.n}">Clip prompt for scene ${s.n} <span class="muted">(edit it before the click)</span></label><textarea id="ss-gp-${s.n}" data-gp="${s.n}" spellcheck="false">${esc(promptOf(s))}</textarea></div>
+      <div class="row"><button class="btn p sm" type="button" data-gg="${s.n}">Make clip for scene ${s.n}</button><span class="small" data-gc="${s.n}"></span></div></details>`;
+  const genHead = () => (last?.scenes?.length ? `<div class="banner" role="group" aria-label="Generate clips"><p class="small" style="margin:0">
+      <b>Generate clip:</b> ${esc(last.clip.aspect)}, reference pictures ${last.clip.refs.length ? esc(last.clip.refs.join(', ')) : 'none (text only)'}${last.clip.brief ? '' : ', no clip brief yet'} (Brand tab → Clip defaults). ${esc(GEN_CLIP_NOTE)} The saved clip goes into its scene's CLIP line; check the script again after each one.</p>
+      <label class="small" id="ss-genackrow" style="display:inline-flex;gap:6px;align-items:center"${gen?.notice ? ' hidden' : ''}><input type="checkbox" id="ss-genack"> ${esc(GEN_NOTICE)} I understand.</label>
+      <p class="small" id="ss-genstate" role="status" style="margin:0"></p></div>` : '');
+  // Why no clip can start now, or ''.
+  const genBlock = () => {
+    if (!gen) return 'Restart npm run ui to enable generation.';
+    if (!gen.hasKey) return `Add ${gen.keyEnv || 'GEMINI_API_KEY'} to .env in the Motion Studio folder (or set it in your environment), then restart npm run ui.`;
+    if (gen.error) return gen.error;
+    if (gen.running && !making) return 'Another Gemini request is running.';
+    if (gen.pause) return `Paused until ${new Date(gen.pause.until).toLocaleString('en-US')} after a Gemini quota or spend limit. Clear it in the Brand tab.`;
+    const u = gen.usage.videos, c = gen.caps;
+    if (u.day >= c.maxVideosPerDay) return `Daily clip limit reached (${c.maxVideosPerDay}, generate.maxVideosPerDay).`;
+    if (u.month >= c.maxVideosPerMonth) return `Monthly clip limit reached (${c.maxVideosPerMonth}, generate.maxVideosPerMonth).`;
+    return '';
+  };
+  const drawPromptState = (ta) => {
+    const n = ta.dataset.gp, text = ta.value.trim(), over = promptCut(text), why = genBlock();
+    const out = $(`[data-gc="${n}"]`), btn = $(`[data-gg="${n}"]`);
+    if (out) { out.className = `small ${over ? 'bad-t' : 'muted'}`; out.textContent = over || `${text.length}/${GEN_PROMPT_MAX} characters`; }
+    if (btn) {
+      btn.disabled = Boolean(over || !text || why || making);
+      btn.title = over ? 'Cut the prompt first' : !text ? 'Write a prompt first' : why || (making ? 'A clip is being made' : '');
+    }
+  };
+  const drawGenState = () => {
+    const st = $('#ss-genstate');
+    if (!st) return;
+    const why = genBlock(), u = gen?.usage?.videos, c = gen?.caps;
+    st.innerHTML = making ? `<span class="spin" aria-hidden="true"></span> Making the clip for scene ${esc(making.n)}, usually 1-3 minutes…`
+      : why ? `<span class="bad-t">${esc(why)}</span>` : `<span class="muted">Clips: ${esc(u.day)}/${esc(c.maxVideosPerDay)} today · ${esc(u.month)}/${esc(c.maxVideosPerMonth)} this month</span>`;
+    $('#ss-genackrow')?.toggleAttribute('hidden', Boolean(gen?.notice));
+    $$('[data-gp]').forEach(drawPromptState);
+  };
+  const loadGen = async () => { try { gen = (await api(`/projects/${P}`)).generate || null; } catch { /* the next check tries again */ } };
+  // Polls while this form's clip is made; once it is saved, its name goes into that scene's CLIP line.
+  const watchClip = () => {
+    clearTimeout(genTimer);
+    genTimer = setTimeout(async () => {
+      if (!formAlive() || !making) return;
+      await loadGen();
+      if (!formAlive()) return;
+      if (gen?.running?.project === project) { drawGenState(); watchClip(); return; }
+      const done = gen?.last, n = making.n;
+      making = null;
+      if (done?.status === 'done') {
+        const next = insertClip($('#ss-text').value, n, done.name);
+        if (next !== null) $('#ss-text').value = next;
+        toast(next === null ? `Saved ${done.name}. Scene ${n} is not in the text any more: add it to its CLIP line.` : `Saved ${done.name} into scene ${n}'s CLIP line. Check the script.`);
+      } else if (done) $('#ss-err').textContent = `Scene ${n}: ${done.message}`;
+      drawGenState();
+    }, 3000);
+  };
+  const makeClip = async (n) => {
+    const text = $(`[data-gp="${n}"]`)?.value.trim() || '';
+    $('#ss-err').textContent = '';
+    const over = promptCut(text);
+    if (over) { $('#ss-err').textContent = `Scene ${n}: the prompt is ${over}.`; return; }
+    if (making || !last) return;
+    making = { n };
+    drawGenState();
+    try {
+      await api(`/projects/${P}/generate`, { method: 'POST', body: {
+        kind: 'video', prompt: text, aspectRatio: last.clip.aspect, refs: last.clip.refs, unique: true,
+        name: `${$('#ss-id').value.trim() || last.id}-scene-${n}.mp4`, acknowledged: Boolean($('#ss-genack')?.checked),
+      } });
+    } catch (err) {
+      making = null;
+      $('#ss-err').textContent = `Scene ${n}: ${err.message}`;
+      drawGenState();
+      return;
+    }
+    watchClip();
+  };
+  $('#ss-rows').addEventListener('input', (e) => {
+    const ta = e.target.closest('[data-gp]');
+    const s = ta && last?.scenes?.find((x) => String(x.n) === ta.dataset.gp);
+    if (!s) return;
+    prompts[s.n] = { base: s.prompt, text: ta.value };
+    drawPromptState(ta);
+  });
+  $('#ss-rows').addEventListener('click', (e) => {
+    const go = e.target.closest('[data-gg]');
+    if (go && !go.disabled) makeClip(Number(go.dataset.gg));
+  });
+
+  const drawRows = (r) => {
+    last = r;
+    const inRows = new Set(r.rows.flatMap((x) => [...x.errors, ...x.warnings]));
+    const loose = [...r.errors, ...r.warnings].filter((x) => !inRows.has(x));
+    const head = r.errors.length ? `<p class="small bad-t">${r.errors.length} problem(s) to fix before Create job.</p>`
+      : `<p class="small">Ready: job ${esc(r.id)}${r.exists ? ' <span class="bad-t">(this id is taken: set another job id)</span>' : ''}, ${esc(['explainer', ...r.mix].join(' + '))} ${esc(r.format)}, about ${esc(r.duration)} s.</p>`;
+    $('#ss-rows').innerHTML = `${head}${loose.length ? `<ul class="small">${loose.map((x) => `<li class="${r.errors.includes(x) ? 'bad-t' : 'warn-t'}">${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${genHead()}
+      <ol class="ss-rows">${r.rows.map((row) => `<li class="${row.errors.length ? 'bad' : ''}">
+        <div><b>${esc(row.at)}</b> ${esc(row.title)}${row.span ? ` <span class="muted mono">${esc(row.span[0])}–${esc(row.span[1])} s</span>` : ''}</div>
+        ${row.parts.map((p) => `<div class="mono small">${esc(scriptPart(p))}</div>`).join('')}
+        ${row.errors.map((x) => `<div class="small bad-t">${esc(x)}</div>`).join('')}${row.warnings.map((x) => `<div class="small warn-t">${esc(x)}</div>`).join('')}
+        ${sceneOf(row) ? genPanel(sceneOf(row)) : ''}</li>`).join('')}</ol>
+      ${r.notes.length ? `<ul class="muted small">${r.notes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
+    syncPath(r.id);
+    drawGenState();
+  };
+  const check = (btn) => guarded('form:script', btn, async () => {
+    if (!$('#ss-text').value.trim()) throw new Error('Paste the scene script first.');
+    const r = await api(`/projects/${P}/scene-script`, { method: 'POST', body: body(true) });
+    await loadGen();
+    drawRows(r);
+  }, $('#ss-err'));
+  $('#ss-check').addEventListener('click', (e) => check(e.currentTarget));
+  $('#ss').addEventListener('submit', (e) => {
+    e.preventDefault();
+    guarded('form:script', $('#ss-save'), async () => {
+      if (!$('#ss-text').value.trim()) throw new Error('Paste the scene script first.');
+      const r = await api(`/projects/${P}/scene-script`, { method: 'POST', body: body(false) });
+      S.briefForm = null;
+      toast(`Created ${r.brief.id}: ${r.script.scenes.length} scenes, locked as written. Build the storyboard next.`);
+      await refreshJobs(false);
+      await selectJob(r.brief.id);
+    }, $('#ss-err'));
+  });
+  $('#ss-cancel').addEventListener('click', closeBriefForm);
+  $('#ss-id').addEventListener('input', () => syncPath(''));
+  $('#ss-file').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (!/\.(txt|md)$/i.test(f.name)) { $('#ss-err').textContent = 'Load a .txt or .md file.'; return; }
+    if (f.size > SCRIPT_CHARS * 4) { $('#ss-err').textContent = `${f.name} is larger than ${SCRIPT_CHARS * 4 / 1024} KB.`; return; }
+    $('#ss-text').value = await f.text();
+    fileName = f.name;
+    $('#ss-err').textContent = '';
+    // The picker is cleared so the same file can be loaded again; this line says what was loaded.
+    $('#ss-filest').className = 'hint ok-t';
+    $('#ss-filest').textContent = `Loaded ${f.name} · ${$('#ss-text').value.length} characters`;
+  });
+  $('#ss-text').addEventListener('input', () => { if (!$('#ss-text').value.trim()) fileName = ''; });
+  // Uploads go through the Brand tab's asset route and checks, one file at a time; a name the server cleaned is said.
+  const uploaded = [];
+  const uploadMedia = async (files) => {
+    if (!files.length) return;
+    const say = (text, cls = 'muted') => { const st = $('#ss-up'); if (st) { st.className = `hint ${cls}`; st.textContent = text; } };
+    const done = [], failed = [];
+    S.uploading = (S.uploading || 0) + 1;
+    try {
+      const o = S.options || (S.options = await api('/options'));
+      // A name already in the assets is used as it is: the script names files, so it needs no second copy.
+      const have = new Set((await api(`/projects/${P}`)).assets || []);
+      for (const [i, f] of files.entries()) {
+        if (have.has(f.name)) { done.push(`${f.name} (already in assets, kept)`); continue; }
+        const why = uploadProblem(f, o.assetTypes, o.maxAssetMB * 1024 * 1024, o.maxVideoMB * 1024 * 1024);
+        if (why) { failed.push(`${f.name}: ${why}`); continue; }
+        try {
+          const data = await postFile(`/projects/${P}/assets?name=${encodeURIComponent(f.name)}&replace=0`, f, 'application/octet-stream', (p) => say(`Uploading ${i + 1} of ${files.length}: ${Math.round(p * 100)}%`));
+          done.push(data.name === f.name ? data.name : `${f.name} saved as ${data.name}`);
+        } catch (err) { failed.push(`${f.name}: ${err.message}`); }
+      }
+    } catch (err) { failed.push(err.message); } finally { S.uploading -= 1; }
+    say([done.length ? `${done.length} of ${files.length} file(s) ready in this brand's assets.` : '', failed.join(' ')].filter(Boolean).join(' '), failed.length ? 'bad-t' : 'ok-t');
+    uploaded.push(...done);
+    if ($('#ss-list')) $('#ss-list').innerHTML = uploaded.map((n) => `<li class="mono">${esc(n)}</li>`).join('');
+    if (done.length && $('#ss-text')?.value.trim()) check($('#ss-check'));
+  };
+  $('#ss-media').addEventListener('change', (e) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = '';
+    uploadMedia(files);
+  });
+  const drop = $('#ss-drop');
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); uploadMedia([...(e.dataTransfer?.files || [])]); });
+  applyLocks();
+  $('#ss-text').focus();
 }
 
 /* ---------------- evidence (brief form) ---------------- */
@@ -2444,7 +2696,7 @@ function renderSeqForm(pre) {
   const draw = () => {
     const f = fmt(), usable = usableOf(f), full = parts.length >= meta.maxParts, picked = $('#sf-add').value;
     const nDone = doneOf(f).length;
-    $('#sf-add').innerHTML = usable.map((j) => opt(j.brief.id, `${j.brief.id} · ${tplName(j.brief)} · ${partReady(j.brief.id, f) ? `${j.status.outputs.duration}s` : `not rendered (${STATUS[j.status.status] || j.status.status})`}`, j.brief.id === picked)).join('');
+    $('#sf-add').innerHTML = usable.map((j) => opt(j.brief.id, `${j.brief.id} · ${tplName(j.brief)} · ${partReady(j.brief.id, f) ? `${j.status.outputs.duration}s` : `not rendered (${statusText(j.status)})`}`, j.brief.id === picked)).join('');
     $('#sf-add').disabled = $('#sf-addbtn').disabled = !usable.length || full;
     $('#sf-addhint').textContent = !usable.length ? `No ${f} jobs in ${S.project} yet. Write a brief in this format first.`
       : full ? `A sequence takes at most ${meta.maxParts} parts.` : `${usable.length} ${f} job${usable.length === 1 ? '' : 's'} to choose from, ${nDone} rendered.`;
@@ -2664,7 +2916,7 @@ function renderHelp() {
     <li><b>Audio + export</b> (tool): mixes voice, footage sound and music if present, normalises to -14 LUFS, exports <code>final.mp4</code> + captions.</li>
     <li><b>Done</b>: download the MP4 from the Jobs tab.</li></ol>
     <p><b>Sequences</b>: to play several finished videos as one MP4 (say a logo reveal, a product demo and a testimonial), switch the list to <b>Sequences</b>, click New sequence, pick the parts in order, choose a transition (cut, crossfade, dips, wipes, slides, zoom punch, whip pan, spin, film dissolve and more) and render it. Any job in the same format can be a part: set up the film early as a draft, give it a target length to see every part against it, and render once every part is done.</p>
-    <h2>Editing mid-way</h2><p>Editing Source locks that field and needs the Director to re-run from step 4. Editing Script locks that field and you click "Re-run from step 5" yourself. The Director never overwrites a locked field.</p>
+    <h2>Editing mid-way</h2><p>Editing Source locks that field and needs the Director to re-run from step 4. Editing Script locks that field and you click "Rebuild storyboard" yourself. The Director never overwrites a locked field.</p>
     <h2>Reviewing</h2><p>The Composition preview plays the voice-over in sync, so you can hear the storyboard before you approve. Background music is mixed in at render.</p>
     <h2>Cleaning up</h2><p><b>Delete…</b> on a job moves its brief and output to <code>trash/</code>. A job that a sequence plays must leave the sequence first. Deleting a project (Brand tab) moves the whole project to <code>trash/</code>.</p></div>`;
 }
@@ -2888,6 +3140,9 @@ async function renderBrand() {
   let icons = d.icons;
   let transcripts = d.transcripts || {};
   let gen = d.generate || null;
+  // Picked reference pictures: this click's (from the brand's defaults) and the brand's own clipRefs.
+  let genRefs = [...(b.clipRefs || [])];
+  let clipRefs = [...(b.clipRefs || [])];
   const sttOk = Boolean(d.stt?.available);
   let palette = (b.palette || []).map((p) => ({ ...p }));
   let fontFiles = (b.fonts.files || []).map((x) => ({ ...x }));
@@ -2925,6 +3180,8 @@ async function renderBrand() {
     return e.voices.map((v) => `<option value="${esc(v.id)}" ${sel === v.id ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
   };
   const tts = String(b.voice?.tts || 'kokoro').toLowerCase() === 'windows' ? 'sapi' : String(b.voice?.tts || 'kokoro').toLowerCase();
+  // Advanced motion fields the brand sets; the section stays closed and says how many.
+  const fxOn = [b.film === false, b.shine, b.carry, b.leaks, b.confetti, b.reveal, b.ease, b.backdrop, b.wipe, b.blend].filter(Boolean).length;
 
   box.innerHTML = `<h2>Brand · ${esc(project)}</h2><form class="stack" id="brf" novalidate style="max-width:860px">
     <h3>Identity</h3>
@@ -2936,7 +3193,7 @@ async function renderBrand() {
         <div class="logoprev dark" id="lp-dark"></div></div></div>
     <p class="muted mono" style="margin:0">Upload logo files (.svg, .png, .jpg, .webp) under Assets below, then pick them here.</p>
     <div class="f"><label class="chk"><input type="checkbox" id="br-logobug" ${b.logoBug ? 'checked' : ''} aria-describedby="br-logobughint"> Corner logo on every scene</label>
-      <span class="muted hint" id="br-logobughint">Keeps the logo file fixed top-left in every scene, the dark-background logo on dark scenes; scenes then leave out their own logo. Needs a logo file. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-logobughint">Keeps the logo file fixed top-left in every scene, the dark-background logo on dark scenes; scenes then leave out their own logo. Needs a logo file. Applies when the storyboard is rebuilt.</span></div>
 
     <h3>Colors</h3>
     <div class="grid2">${COLORS.map(([k, l]) => `<div class="swatch"><input type="color" id="brc-${k}" value="${esc(b.colors[k])}" aria-label="${l}"><input class="hex mono" data-hexfor="brc-${k}" value="${esc(b.colors[k])}" maxlength="7" aria-label="${l} hex"><span>${l}</span></div>`).join('')}</div>
@@ -2950,47 +3207,51 @@ async function renderBrand() {
     <div class="f"><span class="flabel" id="br-ffl">Font files (licensed fonts uploaded under Assets)</span>
       <div id="br-fonts" class="fontfiles" role="group" aria-labelledby="br-ffl" aria-describedby="br-ffhint"></div>
       <div class="row"><button class="btn" type="button" id="br-addfont">+ Add font file</button></div>
-      <span class="muted hint" id="br-ffhint">Loaded in every video instead of Google Fonts. Give the file the family name you typed as Display or Body font, and one row per weight and style. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-ffhint">Loaded in every video instead of Google Fonts. Give the file the family name you typed as Display or Body font, and one row per weight and style. Applies when the storyboard is rebuilt.</span></div>
     <div class="f" style="max-width:360px"><label for="br-motion">Motion style</label><select id="br-motion" aria-describedby="br-motionhint">
       ${MOTION_OPTIONS.map((o) => `<option value="${o.id}"${motionOpt(b.motion) === o ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>
       <span class="muted hint" id="br-motionhint"></span></div>
+    <details class="more" id="br-fx"><summary>Advanced motion <span class="muted">· ${fxOn ? `${fxOn} set` : 'all off'}: grain, shine, light leaks, confetti, reveal, curve, backdrop, wipe, blend</span></summary>
+    <p class="muted small" style="margin:0 0 8px">Leave these off and each video's Look (Script tab) picks a matching set. What you set here wins over the Look.</p>
     <div class="f" id="br-filmrow"><label class="chk"><input type="checkbox" id="br-film" ${b.film === false ? '' : 'checked'} aria-describedby="br-filmhint"> Film grain and vignette</label>
-      <span class="muted hint" id="br-filmhint">A fine moving grain and slightly darker corners over every scene. Off keeps the frame clean and the rest of the cinematic motion. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-filmhint">A fine moving grain and slightly darker corners over every scene. Off keeps the frame clean and the rest of the cinematic motion. Applies when the storyboard is rebuilt.</span></div>
     <div class="f"><label class="chk"><input type="checkbox" id="br-shine" ${b.shine ? 'checked' : ''} aria-describedby="br-shinehint"> Shine on buttons</label>
-      <span class="muted hint" id="br-shinehint">A soft light band sweeps across the call-to-action button once it is in, and again near the end of a long scene. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-shinehint">A soft light band sweeps across the call-to-action button once it is in, and again near the end of a long scene. Applies when the storyboard is rebuilt.</span></div>
     <div class="f" id="br-carryrow"><label class="chk"><input type="checkbox" id="br-carry" ${b.carry ? 'checked' : ''} aria-describedby="br-carryhint"> Accent bar carries every cut</label>
-      <span class="muted hint" id="br-carryhint">A short bar in the accent colour sits under each scene's kicker or heading and glides to the next one at every cut, so the film reads as one piece. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-carryhint">A short bar in the accent colour sits under each scene's kicker or heading and glides to the next one at every cut, so the film reads as one piece. Applies when the storyboard is rebuilt.</span></div>
     <div class="f"><label class="chk"><input type="checkbox" id="br-leaks" ${b.leaks ? 'checked' : ''} aria-describedby="br-leakshint"> Light leaks at cuts</label>
-      <span class="muted hint" id="br-leakshint">A warm glow, with a touch of the accent colour, flares across the frame at every scene change and fades. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-leakshint">A warm glow, with a touch of the accent colour, flares across the frame at every scene change and fades. Applies when the storyboard is rebuilt.</span></div>
     <div class="f"><label class="chk"><input type="checkbox" id="br-confetti" ${b.confetti ? 'checked' : ''} aria-describedby="br-confettihint"> Confetti on the call to action</label>
-      <span class="muted hint" id="br-confettihint">A short burst of pieces in the brand colours flies from the call-to-action button as it lands. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-confettihint">A short burst of pieces in the brand colours flies from the call-to-action button as it lands. Applies when the storyboard is rebuilt.</span></div>
     <div class="f" id="br-revealrow" style="max-width:360px"><label for="br-reveal">Heading reveal</label><select id="br-reveal" aria-describedby="br-revealhint">
       ${[['', 'Whole heading'], ['chars', 'Letter by letter'], ['lines', 'Line by line, out of a mask']].map(([v, l]) => `<option value="${v}"${(b.reveal || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
-      <span class="muted hint" id="br-revealhint">How headings come in. Cinematic and Editorial reveal headings word by word on their own. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-revealhint">How headings come in. Cinematic and Editorial reveal headings word by word on their own. Applies when the storyboard is rebuilt.</span></div>
     <div class="f" style="max-width:360px"><label for="br-ease">Movement curve</label><select id="br-ease" aria-describedby="br-easehint">
       ${[['', "The motion style's own"], ['snappy', 'Snappy: fast start, quiet stop'], ['soft', 'Soft: eases in and out'], ['spring', 'Spring: overshoots a little, then settles']].map(([v, l]) => `<option value="${v}"${(b.ease || '') === v ? ' selected' : ''}>${l}</option>`).join('')}${b.ease && !['snappy', 'soft', 'spring'].includes(b.ease) ? `<option value="${esc(b.ease)}" selected>Custom curve (from brand.json)</option>` : ''}</select>
-      <span class="muted hint" id="br-easehint">The curve every move without its own curve follows, so the brand moves the same way in every video. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-easehint">The curve every move without its own curve follows, so the brand moves the same way in every video. Applies when the storyboard is rebuilt.</span></div>
     <div class="grid2"><div class="f"><label for="br-backdrop">Backdrop (WebGL)</label><select id="br-backdrop" aria-describedby="br-gfxhint">${[['', 'None'], ...Object.entries(BACKDROP_NAMES)].map(([v, l]) => `<option value="${v}"${(b.backdrop || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="f"><label for="br-wipe">Cut wipe (WebGL)</label><select id="br-wipe" aria-describedby="br-gfxhint">${[['', 'None'], ['liquid', 'Liquid wipe'], ['iris', 'Iris'], ['burn', 'Burn'], ['glitch', 'Glitch'], ['flash', 'Flash through white']].map(([v, l]) => `<option value="${v}"${(b.wipe || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
-    <span class="muted hint" id="br-gfxhint">Drawn in the brand colours. The backdrop moves slowly behind every scene that has no background of its own; the wipe sweeps a band across the frame at every scene change. Applies on the next prepare.</span>
+    <span class="muted hint" id="br-gfxhint">Drawn in the brand colours. The backdrop moves slowly behind every scene that has no background of its own; the wipe sweeps a band across the frame at every scene change. Applies when the storyboard is rebuilt.</span>
     <div class="f" style="max-width:360px"><label for="br-blend">Cut blend</label><select id="br-blend" aria-describedby="br-blendhint">${[['', 'None'], ['whip', 'Whip pan'], ['zoom', 'Zoom through'], ['warp', 'Cross warp'], ['split', 'Colour split']].map(([v, l]) => `<option value="${v}"${(b.blend || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
-      <span class="muted hint" id="br-blendhint">Both scenes show for half a second around every scene change and are mixed: they slide past with a motion blur, zoom through, bend into each other, or split into colours. It replaces the cut wipe, so picking one sets the other to None. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-blendhint">Both scenes show for half a second around every scene change and are mixed: they slide past with a motion blur, zoom through, bend into each other, or split into colours. It replaces the cut wipe, so picking one sets the other to None. Applies when the storyboard is rebuilt.</span></div>
+    </details>
     <div class="grid2"><div class="f"><label for="br-substyle">Subtitles</label><select id="br-substyle" aria-describedby="br-subhint">${subOptions(b.subtitles)}</select></div>
       <div class="f"><label for="br-subfont">Subtitle font</label><select id="br-subfont">${['Roboto', 'Montserrat', 'Inter', 'brand'].map((x) => `<option value="${x}"${(b.subtitles?.font || 'Roboto') === x ? ' selected' : ''}>${x === 'brand' ? 'Brand body font' : x}</option>`).join('')}</select></div></div>
-    <span class="muted hint" id="br-subhint">One look for every clip of this brand. Classic: white words on a light blurred box. Highlighter: the same, with a marker sweeping across the spoken word. Minimal: white words with a dark halo, fading softly. Pill: a pill in the marker colour slides from word to word. Pop: larger words pop in one by one as they are spoken. Each shows a few words at a time, sized for a phone and kept clear of player controls. Applies on the next prepare.</span>
+    <span class="muted hint" id="br-subhint">One look for every clip of this brand. Classic: white words on a light blurred box. Highlighter: the same, with a marker sweeping across the spoken word. Minimal: white words with a dark halo, fading softly. Pill: a pill in the marker colour slides from word to word. Pop: larger words pop in one by one as they are spoken. Each shows a few words at a time, sized for a phone and kept clear of player controls. Applies when the storyboard is rebuilt.</span>
 
     <h3>Voice-over</h3>
     <div class="grid2"><div class="f"><label for="br-tts">Voice engine</label><select id="br-tts">${engines.map((e) => `<option value="${esc(e.id)}" ${tts === e.id ? 'selected' : ''} ${e.available ? '' : 'disabled'}>${esc(e.label)}${e.available ? '' : ` (unavailable: ${esc(e.reason || '')})`}</option>`).join('')}</select></div>
       <div class="f"><label for="br-voice">Voice</label><select id="br-voice">${voiceOptions(tts, b.voice?.voice)}</select></div></div>
+    ${missingEngine(tts, engines) ? `<div class="banner warn"><p>${esc(missingEngine(tts, engines))} Until then every video of this brand has music only. Pick Windows voices above to get a voice now.</p></div>` : ''}
     <div class="f"><label for="br-cloud">Cloud voice id (ElevenLabs, optional)</label><input id="br-cloud" maxlength="40" pattern="[A-Za-z0-9]{8,40}" value="${esc(b.voice?.cloud?.voice || '')}" aria-describedby="br-cloudhint">
       <span class="muted hint" id="br-cloudhint">With a voice id here and ELEVENLABS_API_KEY in .env, each job gets a Make cloud voice button in its Script tab: every line is made once on your key, with word times for the captions. Lines not made keep the voice above.</span></div>
     <div class="row"><div class="f" style="width:160px"><label for="br-speed">Speed</label><input id="br-speed" type="number" min="0.6" max="1.5" step="0.05" value="${esc(b.voice?.speed ?? 1)}"></div>
       <button class="btn" type="button" id="br-vprev" style="align-self:flex-end">▶ Preview voice</button><audio id="br-vaudio" preload="none"></audio>
       <span class="muted mono" id="br-vnote" style="align-self:flex-end"></span></div>
     <div class="f"><label for="br-say">Say as</label><textarea id="br-say" rows="3" placeholder="AMAD = A M A D&#10;.NET = dot net" aria-describedby="br-sayhint">${esc(sayText(b.voice?.say))}</textarea>
-      <span class="muted hint" id="br-sayhint">One word per line: the word as written, =, then what the voice says. Captions keep the written word. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-sayhint">One word per line: the word as written, =, then what the voice says. Captions keep the written word. Applies when the storyboard is rebuilt.</span></div>
     <div class="f"><label class="chk"><input type="checkbox" id="br-cleanup" ${b.voice?.cleanup ? 'checked' : ''} aria-describedby="br-cleanuphint"> Clean up recorded voice</label>
-      <span class="muted hint" id="br-cleanuphint">For a voice take recorded at home or on a phone: removes low rumble, steady background noise and harsh "s" sounds, and evens out the level. Leave it off for a studio recording. Applies on the next prepare.</span></div>
+      <span class="muted hint" id="br-cleanuphint">For a voice take recorded at home or on a phone: removes low rumble, steady background noise and harsh "s" sounds, and evens out the level. Leave it off for a studio recording. Applies when the storyboard is rebuilt.</span></div>
 
     <h3>Background music</h3>
     <div class="grid2"><div class="f"><label for="br-music">Track</label><select id="br-music">${musicOptions(b.music?.file || '')}</select></div>
@@ -3002,7 +3263,7 @@ async function renderBrand() {
     <h3>Cut sound</h3>
     <div class="grid2"><div class="f"><label for="br-sfx">Sound at each cut</label><select id="br-sfx" aria-describedby="br-sfxhint"><option value="none">None</option>${(opts.sfx || []).map((x) => `<option value="${esc(x.id)}"${b.sfx?.cut === x.id ? ' selected' : ''}>${esc(x.label)}</option>`).join('')}</select></div>
       <div class="f"><label for="br-sfxgain">Level (dB)</label><input id="br-sfxgain" type="number" min="-30" max="0" step="1" value="${esc(b.sfx?.gainDb ?? -12)}"></div></div>
-    <span class="muted hint" id="br-sfxhint">A soft sound where one scene cuts to the next (not at the start of the video), mixed under the voice and never ducked by it. A scene can pick its own in the Script tab. Applies on the next prepare.</span>
+    <span class="muted hint" id="br-sfxhint">A soft sound where one scene cuts to the next (not at the start of the video), mixed under the voice and never ducked by it. A scene can pick its own in the Script tab. Applies when the storyboard is rebuilt.</span>
     <div class="row"><button class="btn" type="button" id="br-sprev">▶ Preview sound</button><audio id="br-saudio" preload="none"></audio></div>
 
     <h3>Sources and tone</h3>
@@ -3035,14 +3296,24 @@ async function renderBrand() {
     </div>
     <div class="small" id="gen-fetched"></div>
     <p class="muted small" style="margin:0">A listed model can still be refused by Google: a retired id stays in the list for a while.</p>
-    <div class="grid2"><div class="f"><label for="gen-kind">Kind</label><select id="gen-kind"><option value="image">Image</option></select></div>
+    <div class="grid2"><div class="f"><label for="gen-kind">Kind</label><select id="gen-kind"><option value="image">Image</option><option value="video">Clip (Gemini Omni, with sound)</option></select></div>
       <div class="f"><label for="gen-model">Model for this click</label><select id="gen-model"></select></div></div>
+    <p class="muted small" id="gen-cliphint" style="margin:0" hidden>${esc(GEN_CLIP_NOTE)}</p>
     <div class="f"><label for="gen-prompt">Prompt</label><textarea id="gen-prompt" rows="3" maxlength="${GEN_PROMPT_MAX}">${esc(`${b.name} product photo, brand colors ${b.colors.primary} and ${b.colors.secondary}, clean studio background`)}</textarea></div>
+    <div class="f" id="gen-refrow" hidden><span class="flabel" id="gen-refl">Reference pictures <span class="muted">(optional, up to ${GEN_REFS_MAX}: the clip keeps their subject, e.g. one character)</span></span>
+      <div class="refpick" id="gen-refs" role="group" aria-labelledby="gen-refl"></div></div>
     <div class="grid2"><div class="f"><label for="gen-ar">Aspect ratio</label><select id="gen-ar"></select></div>
       <div class="f"><label for="gen-name">File name (optional)</label><input id="gen-name" class="mono" maxlength="80" placeholder="gen-yyyymmdd-hhmm.jpg"></div></div>
     <label class="muted" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="gen-replace"> Replace an existing file with the same name</label>
     <div class="row"><button class="btn p" type="button" id="gen-go">Generate</button><span class="small" id="gen-status" role="status"></span></div>
-    <div class="err" role="alert" id="gen-err"></div>` : '<p class="muted" style="margin:0">Restart npm run ui to enable generation.</p>'}</div>
+    <div class="err" role="alert" id="gen-err"></div>` : '<p class="muted" style="margin:0">Restart npm run ui to enable generation.</p>'}
+    <details class="more" id="br-clipdef"${b.clipBrief || b.clipRefs?.length ? ' open' : ''}><summary>Clip defaults for New from script <span class="muted">· the start of every scene's Generate clip</span></summary>
+      <div class="f"><label for="br-clipbrief">Clip brief</label><textarea id="br-clipbrief" rows="6" maxlength="${CLIP_BRIEF_MAX}" aria-describedby="br-clipbriefhint">${esc(b.clipBrief || '')}</textarea>
+        <span class="muted hint" id="br-clipbriefhint">The character and style block every clip shares: who the character is, what they wear, the look and the light. Each scene's prompt adds its title, its description lines and the aspect. At most ${CLIP_BRIEF_MAX} characters.</span></div>
+      <div class="f"><span class="flabel" id="br-clipl">Default reference pictures <span class="muted">(up to ${GEN_REFS_MAX})</span></span>
+        <div class="refpick" id="br-cliprefs" role="group" aria-labelledby="br-clipl"></div></div>
+      <div class="row"><button class="btn" type="button" id="br-clipsave">Save clip defaults</button><span class="muted small">Saved with the brand, as Save brand does.</span></div>
+    </details></div>
 
   <h3 style="margin-top:22px">Hero banner</h3>
   <div class="gen" id="br-banner">
@@ -3077,6 +3348,7 @@ async function renderBrand() {
   </div>`;
 
   $('#br-del').addEventListener('click', () => openDeleteProject(project, b.name, assets.length));
+  $('#br-clipsave').addEventListener('click', () => $('#brf').requestSubmit());
   $('#hb-go').addEventListener('click', async () => {
     const go = $('#hb-go');
     go.disabled = true;
@@ -3177,21 +3449,29 @@ async function renderBrand() {
     const missing = available.length ? Object.entries(defaults).filter(([k, id]) => !available.some((m) => m.id === id && m.kind === k)).map(([, id]) => id) : [];
     $('#gen-fetched').innerHTML = `<span class="muted">${fetchedAt ? `Model list fetched ${esc(when(fetchedAt))}` : 'Click Refresh models to see what your key can reach'}</span>${missing.map((id) => `<br><span class="bad-t">${esc(id)} is not in the fetched list</span>`).join('')}`;
     $('#gen-ackrow').hidden = Boolean(gen.notice);
-    const u = gen.usage.images, c = gen.caps;
+    const clip = kind === 'video';
+    $('#gen-refrow').hidden = !clip;
+    $('#gen-cliphint').hidden = !clip;
+    $('#gen-name').placeholder = `gen-yyyymmdd-hhmm.${clip ? 'mp4' : 'jpg'}`;
+    const c = gen.caps;
+    // The kind picked is the one whose caps close the button.
+    const k = clip ? { u: gen.usage.videos, day: c?.maxVideosPerDay, month: c?.maxVideosPerMonth, what: 'clip' } : { u: gen.usage.images, day: c?.maxImagesPerDay, month: c?.maxImagesPerMonth, what: 'image' };
     const blocked = !gen.hasKey || Boolean(gen.error);
     let status;
     if (!gen.hasKey) status = `<span class="bad-t">Add ${esc(gen.keyEnv || 'GEMINI_API_KEY')} to .env in the Motion Studio folder (or set it in your environment), then restart npm run ui.</span>`;
     else if (gen.error) status = `<span class="bad-t">${esc(gen.error)}</span>`;
-    else if (genMine()) status = '<span class="spin" aria-hidden="true"></span> Generating…';
+    else if (genMine()) status = `<span class="spin" aria-hidden="true"></span> ${gen.running.kind === 'video' ? 'Making a clip, usually 1-3 minutes…' : 'Generating…'}`;
     else if (gen.running) status = '<span class="muted">Another Gemini request is running</span>';
     else if (gen.pause) status = `<span class="bad-t">Paused until ${esc(when(gen.pause.until))}</span> · <button class="btn sm" type="button" id="gen-unpause">Clear pause</button>`;
-    else if (u.day >= c.maxImagesPerDay) status = `<span class="bad-t">Daily image limit reached (${esc(c.maxImagesPerDay)}). Generate opens again tomorrow.</span>`;
-    else if (u.month >= c.maxImagesPerMonth) status = `<span class="bad-t">Monthly image limit reached (${esc(c.maxImagesPerMonth)}). Generate opens again next month.</span>`;
-    else status = `<span class="muted">Images: ${esc(u.day)}/${esc(c.maxImagesPerDay)} today · ${esc(u.month)}/${esc(c.maxImagesPerMonth)} this month</span>`;
+    else if (k.u.day >= k.day) status = `<span class="bad-t">Daily ${k.what} limit reached (${esc(k.day)}). Generate opens again tomorrow.</span>`;
+    else if (k.u.month >= k.month) status = `<span class="bad-t">Monthly ${k.what} limit reached (${esc(k.month)}). Generate opens again next month.</span>`;
+    else {
+      const iu = gen.usage.images, vu = gen.usage.videos;
+      status = `<span class="muted">Images: ${esc(iu.day)}/${esc(c.maxImagesPerDay)} today · ${esc(iu.month)}/${esc(c.maxImagesPerMonth)} this month · Clips: ${esc(vu.day)}/${esc(c.maxVideosPerDay)} today · ${esc(vu.month)}/${esc(c.maxVideosPerMonth)} this month</span>`;
+    }
     $('#gen-status').innerHTML = status;
     for (const id of ['#gen-dimg', '#gen-dvid', '#gen-refresh']) $(id).disabled = blocked || Boolean(gen.running);
-    // Kind is Image only (no clip route on the server), so the image caps are the ones that close the button.
-    const capped = u.day >= c.maxImagesPerDay ? 'The daily image limit is reached' : u.month >= c.maxImagesPerMonth ? 'The monthly image limit is reached' : '';
+    const capped = k.u.day >= k.day ? `The daily ${k.what} limit is reached` : k.u.month >= k.month ? `The monthly ${k.what} limit is reached` : '';
     $('#gen-go').disabled = blocked || Boolean(gen.running) || Boolean(gen.pause) || Boolean(capped);
     $('#gen-go').title = capped || (gen.pause ? 'Paused after a quota error' : gen.running ? 'Another Gemini request is running' : '');
   };
@@ -3238,6 +3518,15 @@ async function renderBrand() {
     const keep = (id, fn) => { const v = $(id).value; $(id).innerHTML = fn(v); };
     keep('#br-logo', imgOptions); keep('#br-logodark', imgOptions); keep('#br-music', musicOptions);
     drawLogoPreview();
+    const pictures = assets.filter((a) => SHOT_RE.test(a));
+    genRefs = genRefs.filter((a) => pictures.includes(a));
+    clipRefs = clipRefs.filter((a) => pictures.includes(a));
+    for (const [id, picked] of [['#gen-refs', genRefs], ['#br-cliprefs', clipRefs]]) {
+      const el = $(id);
+      if (!el) continue;
+      el.innerHTML = refPickerHtml(pictures, picked, assetUrl);
+      capRefs(el);
+    }
     // A transcript poll redraws the assets; it must not take the focus from a family name being typed.
     if (!$('#br-fonts').contains(document.activeElement)) drawFonts();
   };
@@ -3276,6 +3565,7 @@ async function renderBrand() {
           method: 'POST',
           body: {
             kind: $('#gen-kind').value, prompt: $('#gen-prompt').value, aspectRatio: $('#gen-ar').value, model: $('#gen-model').value,
+            ...($('#gen-kind').value === 'video' ? { refs: genRefs } : {}),
             name: $('#gen-name').value.trim(), replace: $('#gen-replace').checked, acknowledged: $('#gen-ack').checked,
           },
         });
@@ -3306,8 +3596,16 @@ async function renderBrand() {
       const x = fontFiles[+el.dataset.fi];
       x[el.dataset.fk] = el.dataset.fk === 'weight' ? Number(el.value) : el.dataset.fk === 'family' ? el.value.trim() : el.value;
     }
+    // The clip defaults sit next to Generate, outside the brand form, and save with it.
+    if (el.id === 'br-clipbrief') markDirty();
   });
   box.addEventListener('change', (e) => {
+    const refBox = e.target.closest('#gen-refs, #br-cliprefs');
+    if (refBox) {
+      capRefs(refBox);
+      if (refBox.id === 'gen-refs') genRefs = pickedRefs(refBox);
+      else { clipRefs = pickedRefs(refBox); markDirty(); }
+    }
     if (e.target.id === 'br-logo' || e.target.id === 'br-logodark') drawLogoPreview();
     if (e.target.id === 'br-tts') { $('#br-voice').innerHTML = voiceOptions(e.target.value, ''); $('#br-vnote').textContent = ''; }
   });
@@ -3490,6 +3788,8 @@ async function renderBrand() {
         music: { file: $('#br-music').value || null, gainDb: num('#br-gain', 'Music level (dB)', -40, 0), duck: $('#br-duck').checked },
         sfx: sfxOn ? { cut: $('#br-sfx').value, gainDb: num('#br-sfxgain', 'Cut sound level (dB)', -30, 0) } : undefined,
         sources: { allowedHosts: $('#br-hosts').value.split(',').map((x) => x.trim()).filter(Boolean) },
+        clipBrief: $('#br-clipbrief').value.trim() || undefined,
+        clipRefs: clipRefs.length ? clipRefs : undefined,
       };
       const saved = await api(`/projects/${P}/brand`, { method: 'PUT', body: { brand, voiceNotes: $('#br-notes').value } });
       // An empty host list is filled from the site on save: show what was stored.
@@ -3499,7 +3799,7 @@ async function renderBrand() {
       resetTemplatePreviews();
       S.state = await api('/state');
       fillProjects(); // the project picker shows the brand name
-      toast('Brand saved. New jobs and jobs re-run from step 5 will use it.');
+      toast('Brand saved. New jobs and rebuilt storyboards use it.');
     }, $('#br-err'));
   });
 }
