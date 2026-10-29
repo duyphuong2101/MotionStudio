@@ -158,7 +158,15 @@ export function deleteJob(project, id) {
     fs.rmdirSync(trash);
     throw new StudioError(`Could not move out/${project}/${id} (${err.code || err.message}). Close the video if it is open and try again.`, 409);
   }
-  fs.renameSync(file, path.join(trash, 'brief.json'));
+  try {
+    fs.renameSync(file, path.join(trash, 'brief.json'));
+  } catch (err) {
+    // Half a delete would leave a brief with no status.json, which reads as queued: the Director would script it
+    // again. The job's folder goes back, so the job is exactly as it was.
+    if (exists(path.join(trash, 'out'))) fs.renameSync(path.join(trash, 'out'), dir);
+    fs.rmSync(trash, { recursive: true, force: true });
+    throw new StudioError(`Could not move briefs/${project}/${id}.json (${err.code || err.message}). Close it if it is open and try again.`, 409);
+  }
   return { id, trash: path.relative(DIRS.trash, trash) };
 }
 

@@ -551,9 +551,14 @@ export const directorSlots = () => (current && current.backend !== 'api' ? 1 : 0
  * prepare it ran was killed with it and never writes its own error).
  */
 export function resetUnfinished(project, jobs, run) {
-  for (const id of run.status === 'done' ? [] : jobs) {
+  for (const id of jobs) {
     const st = getStatus(project, id).status;
-    if (st === 'scripting') setStatus(project, id, { status: 'error', error: `Director run ${run.status}: ${run.message}` }, 'director run ended early', 'server');
+    // A run that finished can still leave a job it claimed without a script (it stopped after the source): scripting
+    // counts as busy, so the job would be refused everywhere until the next run.
+    if (st === 'scripting' && run.status === 'done') {
+      setStatus(project, id, { status: 'error', error: 'The Director finished without writing a script for this job. Click Run Director again.' }, 'director run ended without a script', 'server');
+    } else if (run.status === 'done') continue;
+    else if (st === 'scripting') setStatus(project, id, { status: 'error', error: `Director run ${run.status}: ${run.message}` }, 'director run ended early', 'server');
     else if (st === 'preparing') {
       setStatus(project, id, { status: 'error', error: `Director run ${run.status} during prepare: ${run.message}. The prepare was stopped. Click Run Director again.` }, 'director run ended during prepare', 'server');
     }

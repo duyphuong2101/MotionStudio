@@ -79,6 +79,15 @@ test('a script draft for another template is refused; one without a template is 
   assert.doesNotThrow(() => assertCommittable({ status: 'scripting' }, { ...ok, kind: 'source', draft: { template: 'other' } }));
 });
 
+test('a draft with a null scene or a list in a text field is refused with a message, not a crash', (t) => {
+  seed(t, { status: 'scripting', approvedBy: null });
+  const file = jobFile(P, ID, 'script.draft.json');
+  writeJson(file, { scenes: [null] });
+  assert.throws(() => commit(P, ID, 'script', 'claude-seat'), (e) => e.code === 400 && /scenes\[0\] must be an object/.test(e.message));
+  writeJson(file, { scenes: [{ id: 'a', kind: 'title', vo: 'Hi.', title: ['x'.repeat(500)] }] });
+  assert.throws(() => commit(P, ID, 'script', 'claude-seat'), (e) => e.code === 400 && /a: title must be text/.test(e.message));
+});
+
 test('commit refuses a stale draft left over from before the storyboard', (t) => {
   seed(t, { status: 'awaiting_review', approvedBy: null });
   fs.writeFileSync(jobFile(P, ID, 'index.html'), '<!doctype html>', 'utf8');

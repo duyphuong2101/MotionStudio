@@ -56,6 +56,11 @@ test('the verdict: wrong length or no audio fails; loudness, black, freeze and p
     'error:length', 'error:audio', 'warning:loudness', 'warning:loudness', 'warning:black', 'warning:freeze', 'warning:platform', 'warning:captions',
   ], 'a 0.3 s black flash is ignored, a 1 s one is not');
   assert.equal(judge({ ...base, loudness: { integrated: null, range: 0, truePeak: null } }, { ...expect, silent: true }).warnings, 0, 'a silent video is not judged on loudness');
+  // The picture: a file without video, or at another size than its format, fails.
+  assert.deepEqual(judge({ ...base, probe: { ...base.probe, hasVideo: false } }, expect).findings.map((x) => x.check), ['video']);
+  const small = judge({ ...base, probe: { ...base.probe, width: 1280, height: 720 } }, expect);
+  assert.deepEqual([small.passed, small.findings[0].msg], [false, 'the picture is 1280x720, the format is 1920x1080']);
+  assert.equal(judge({ ...base, probe: { ...base.probe, width: 1920, height: 1080 } }, expect).passed, true);
 });
 
 test('hard cuts: scdet hits are read, hits a frame apart are one cut, a low score is no cut', () => {

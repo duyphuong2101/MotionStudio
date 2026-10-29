@@ -29,9 +29,12 @@ test('a run that ended early puts its scripting and preparing jobs into error, a
   assert.deepEqual([getStatus(P, 'a').status, getStatus(P, 'b').status, getStatus(P, 'c').status], ['error', 'error', 'awaiting_review']);
   assert.equal(getStatus(P, 'a').error, 'Director run cancelled: Cancelled in the UI');
   assert.match(getStatus(P, 'b').error, /^Director run cancelled during prepare: Cancelled in the UI\. The prepare was stopped\. Click Run Director again\.$/);
-  set({ a: 'preparing' });
-  resetUnfinished(P, ['a'], { status: 'done', message: 'Finished' });
-  assert.equal(getStatus(P, 'a').status, 'preparing', 'a finished run resets nothing');
+  set({ a: 'preparing', b: 'scripting', c: 'awaiting_review' });
+  resetUnfinished(P, ['a', 'b', 'c'], { status: 'done', message: 'Finished' });
+  assert.equal(getStatus(P, 'a').status, 'preparing', 'a finished run leaves a prepare to its own status');
+  assert.equal(getStatus(P, 'c').status, 'awaiting_review');
+  assert.equal(getStatus(P, 'b').status, 'error', 'a job it claimed but never scripted is not left busy');
+  assert.match(getStatus(P, 'b').error, /finished without writing a script/);
 });
 
 test('on start, children of a stopped server are killed only when the pid is still theirs, and their jobs leave the busy state', () => {

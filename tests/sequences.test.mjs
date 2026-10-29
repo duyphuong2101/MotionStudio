@@ -256,4 +256,10 @@ test('captions are shifted to where each part plays and clipped to its length', 
   const srt = joinCaptions([{ srt: a, start: 0, duration: 10 }, { srt: '', start: 10, duration: 4 }, { srt: b, start: 13.6, duration: 5 }]);
   assert.equal(srt, '1\n00:00:00,500 --> 00:00:02,000\nHello\n\n2\n00:00:09,000 --> 00:00:10,000\nLate cue\n\n3\n00:00:14,600 --> 00:00:16,850\nWorld\n');
   assert.equal(joinCaptions([{ srt: '', start: 0, duration: 3 }]), '');
+  // A crossfade overlaps two parts (the next starts 0.5 s before this one ends): the last caption stops where the next
+  // part starts, so two captions never show at once.
+  const end = '1\n00:00:08,000 --> 00:00:10,000\nLast words\n';
+  const first = '1\n00:00:00,000 --> 00:00:01,000\nNext part\n';
+  assert.equal(joinCaptions([{ srt: end, start: 0, duration: 10 }, { srt: first, start: 9.5, duration: 5 }]),
+    '1\n00:00:08,000 --> 00:00:09,500\nLast words\n\n2\n00:00:09,500 --> 00:00:10,500\nNext part\n');
 });

@@ -90,6 +90,10 @@ export function judge(measured, expect, rules = QA_RULES) {
     f.push({ level: 'error', check: 'length', msg: `file is ${round(probe.duration, 2)} s, the storyboard is ${expect.duration} s` });
   }
   if (!probe.hasAudio) f.push({ level: 'error', check: 'audio', msg: 'the file has no audio track' });
+  if (probe.hasVideo === false) f.push({ level: 'error', check: 'video', msg: 'the file has no video track' });
+  else if (expect.width && probe.width && (probe.width !== expect.width || probe.height !== expect.height)) {
+    f.push({ level: 'error', check: 'size', msg: `the picture is ${probe.width}x${probe.height}, the format is ${expect.width}x${expect.height}` });
+  }
   if (!expect.silent && loudness) {
     if (loudness.integrated === null) {
       f.push({ level: 'warning', check: 'loudness', msg: 'the sound track is silent: check the voice and music' });
@@ -137,7 +141,7 @@ export async function runQa(file, expect, captionsText = null) {
   args.push('-f', 'null', '-');
   const log = await ffmpegReport(args);
   const measured = {
-    probe: { duration: round(probe.duration, 3), hasAudio: probe.hasAudio, hasVideo: probe.hasVideo },
+    probe: { duration: round(probe.duration, 3), hasAudio: probe.hasAudio, hasVideo: probe.hasVideo, width: probe.width, height: probe.height },
     loudness: probe.hasAudio ? parseLoudness(log) : null,
     black: parseBlack(log),
     freeze: parseFreeze(log, probe.duration),

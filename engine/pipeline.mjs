@@ -128,8 +128,12 @@ export function commit(project, id, kind, by) {
     const { beats } = loadBriefTemplate(brief);
     const icons = Object.keys(iconsFor(project));
     if (kind === 'outline') quick = outlineScript(project, id, brief, beats, draft, icons);
+    const src = quick ? quick.script : draft;
+    // The repairs and the merge read every scene: a null or a list in the draft is a refusal that says so, not a crash.
+    const bad = Array.isArray(src?.scenes) ? src.scenes.findIndex((s) => !s || typeof s !== 'object' || Array.isArray(s)) : 0;
+    if (bad >= 0) throw new StudioError(Array.isArray(src?.scenes) ? `script.draft.json: scenes[${bad}] must be an object (a scene)` : 'script.draft.json: scenes must be a list', 400);
     // Mechanical fixes first, on the draft only: the merge then restores every locked field as the person left it.
-    const fixed = repairScript(quick ? quick.script : draft, beats, { icons, existing });
+    const fixed = repairScript(src, beats, { icons, existing });
     repairs = fixed.repairs;
     ({ doc, kept } = mergeRespectingLocks(target, existing, fixed.doc));
     try {

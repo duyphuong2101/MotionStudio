@@ -62,6 +62,8 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES,
   const warnings = [];
   const scenes = Array.isArray(script?.scenes) ? script.scenes : null;
   if (!scenes) return { errors: ['script.scenes must be an array'], warnings };
+  const notObject = scenes.findIndex((s) => !s || typeof s !== 'object' || Array.isArray(s));
+  if (notObject >= 0) return { errors: [`script.scenes[${notObject}] must be an object (a scene)`], warnings };
   if (source) errors.push(...sourceRefProblems(script, source, brief));
   const look = lookProblem(script.look);
   if (look) errors.push(look);
@@ -102,6 +104,8 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES,
     for (const k of Object.keys(s)) if (!allowed.has(k)) warnings.push(`${s.id}: field "${k}" is ignored by this template`);
     for (const [f, max] of Object.entries(L)) {
       if (f === 'voWords') continue;
+      // A text field with a limit is text: a list or number would skip the count and reach the page as String(x).
+      if (s[f] !== undefined && typeof s[f] !== 'string') { errors.push(`${s.id}: ${f} must be text`); continue; }
       const len = typeof s[f] === 'string' ? stripMarks(s[f]).length : 0;
       if (len > max) errors.push(overLimit(s.id, f, len, 'chars', max));
     }

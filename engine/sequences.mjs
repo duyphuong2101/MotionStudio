@@ -576,12 +576,16 @@ function parseSrt(srt) {
 /** One SRT from each part's captions ({ srt, start, duration }), shifted to where the part plays; '' when none has captions. */
 export function joinCaptions(parts) {
   const cues = [];
-  for (const p of parts) {
+  parts.forEach((p, i) => {
+    // A transition overlaps two parts: a part's captions end where the next part starts, not at its own end, so
+    // two captions never show at once.
+    const until = Math.min(p.start + p.duration, parts[i + 1]?.start ?? Infinity);
     for (const c of parseSrt(p.srt)) {
-      if (c.start >= p.duration) continue;
-      cues.push({ start: p.start + c.start, end: p.start + Math.min(c.end, p.duration), text: c.text });
+      const start = p.start + c.start;
+      if (start >= until) continue;
+      cues.push({ start, end: Math.min(p.start + c.end, until), text: c.text });
     }
-  }
+  });
   return cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join('\n');
 }
 
