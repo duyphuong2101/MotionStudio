@@ -19,6 +19,22 @@ function job(t, { script = true, status = 'approved' } = {}) {
   return brief;
 }
 
+/* ---------- a Director run that failed keeps the "redo from step N" mark ---------- */
+test('a job left in error by a failed Director run still needs the Director before prepare', async (t) => {
+  const brief = job(t);
+  updateBrief(P, ID, { ...brief, message: 'a new message' });
+  assert.equal(getStatus(P, ID).dirty_from, 1);
+  const { claim, fail, prepare } = await import('../engine/pipeline.mjs');
+  claim(P, ID, 'test');
+  fail(P, ID, 'source page did not load', 'test');
+  assert.deepEqual([getStatus(P, ID).status, getStatus(P, ID).dirty_from], ['error', 1]);
+  await assert.rejects(prepare(P, ID, 'test'), /director has to run first/);
+  // A prepare-only edit (the voice) on that job must not lower the mark to step 5.
+  const res = updateBrief(P, ID, { ...brief, message: 'a new message', format: '9:16', platform: 'tiktok' });
+  assert.equal(getStatus(P, ID).dirty_from, 1);
+  assert.equal(res.requeued, true);
+});
+
 /* ---------- which brief edits re-run what ---------- */
 test('a platform change keeps the approval: QA reads the platform at render time', (t) => {
   const brief = job(t);

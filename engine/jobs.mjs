@@ -367,9 +367,10 @@ export function updateBrief(project, id, input, { providers, by = 'ui' } = {}) {
   if (changed.every((k) => NO_STEP.includes(k))) return { brief, changed, requeued: false, rePrepare: false };
   const prepareOnly = hasScript && changed.every((k) => PREPARE_ONLY.includes(k) || NO_STEP.includes(k));
   const from = prepareOnly ? 5 : newScript && !changed.some((k) => SOURCE_INPUTS.includes(k)) ? 3 : 1;
-  // An earlier edit the Director has not handled yet keeps its lower step.
-  const dirtyFrom = Math.min(from, st.status === 'dirty' ? st.dirty_from ?? 99 : 99);
-  const moved = newScript ? `; script moved to script.prev.json${carried.length ? `; locks carried: ${carried.join(', ')}` : ''}` : '';
+  // An earlier edit the Director has not handled yet keeps its lower step, also when a failed run left the job in error.
+  const dirtyFrom = Math.min(from, st.dirty_from ?? 99);
+  const carriedNote = carried.length ? `; locks carried: ${carried.join(', ')}` : '';
+  const moved = !newScript ? '' : hasScript ? `; script moved to script.prev.json${carriedNote}` : `; carried locks rechecked${carriedNote}`;
   if (started) setStatus(project, id, { status: 'dirty', dirty_from: dirtyFrom, step: dirtyFrom }, `brief edited in UI: ${changed.join(', ')}${moved}`, by);
   return { brief, changed, requeued: started && dirtyFrom < 5, rePrepare: started && dirtyFrom === 5, newScript };
 }

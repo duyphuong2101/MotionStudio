@@ -542,7 +542,7 @@ async function api(req, res, url, review = false) {
       const what = body.action;
       if (!['prepare', 'render'].includes(what)) throw new StudioError('action must be prepare or render', 400);
       assertNoDrafts(readJson(jobFile(project, id, 'script.json'), null));
-      if (what === 'prepare' && st.status === 'dirty' && (st.dirty_from || 99) < 5) {
+      if (what === 'prepare' && (st.dirty_from || 99) < 5) {
         throw new StudioError('This change needs the Director first: click Run Director, or type /studio run in Claude Code', 409);
       }
       if (what === 'render' && !canRender(st)) throw new StudioError('Approve the storyboard first', 409);

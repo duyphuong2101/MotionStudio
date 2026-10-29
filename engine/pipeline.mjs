@@ -165,8 +165,10 @@ export async function prepare(project, id, by = 'engine') {
   const st = getStatus(project, id);
   requireStatus(st, ['scripted', 'dirty', 'awaiting_review', 'error'], 'prepare');
   assertNoDrafts(readJson(jobFile(project, id, 'script.json'), null));
-  if (st.status === 'dirty' && st.dirty_from && st.dirty_from < 5) {
-    throw new StudioError(`This job changed at step ${st.dirty_from}; the director has to run first (/studio run).`, 409);
+  // Whatever the status: a Director run that failed or stopped leaves the job in error with the mark still set,
+  // and only a script commit or a finished prepare clears it.
+  if (st.dirty_from && st.dirty_from < 5) {
+    throw new StudioError(`This job changed at step ${st.dirty_from}; the director has to run first (Run Director or /studio run).`, 409);
   }
   const brief = loadBrief(project, id);
   const brandFile = loadBrand(project);
