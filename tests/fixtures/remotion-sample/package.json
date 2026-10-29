@@ -1,0 +1,6 @@
+{
+  "name": "remotion-sample",
+  "description": "A tiny fake Remotion project for tests/remotion.test.mjs: read as text, never installed or run",
+  "private": true,
+  "dependencies": { "remotion": "4.0.0" }
+}

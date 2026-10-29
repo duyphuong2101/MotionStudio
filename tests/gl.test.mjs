@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { loadStudioConfig } from '../engine/core.mjs';
-import { validateBrand } from '../engine/brand.mjs';
+import { validateBrand, WIPES } from '../engine/brand.mjs';
 import { openComposition, usesGl } from '../engine/media.mjs';
 import { DIRS } from '../engine/core.mjs';
 import { saveAsset } from '../engine/assets.mjs';
@@ -17,7 +17,7 @@ import { sizeFor } from '../engine/pipeline.mjs';
 import { sampleGlb, isGlb } from '../engine/glb.mjs';
 import { copyThree } from '../engine/vendor.mjs';
 import { page } from '../templates/kit.mjs';
-import { glLayers } from '../templates/gl.mjs';
+import { glLayers, glData, SCALE, WIPE_WINDOW } from '../templates/gl.mjs';
 import { build as explainer } from '../templates/explainer/template.mjs';
 
 const BRAND = {
@@ -42,6 +42,55 @@ test('brand keeps a WebGL backdrop and cut wipe; none or an unknown one is named
   assert.ok(!('backdrop' in none) && !('wipe' in none));
   assert.throws(() => validateBrand({ ...BRAND, backdrop: 'plasma' }), /backdrop must be none or one of mesh, aurora, flow, shapes/);
   assert.throws(() => validateBrand({ ...BRAND, wipe: 'zoom' }), /wipe must be none or one of liquid/);
+  for (const w of WIPES) assert.equal(validateBrand({ ...BRAND, wipe: w }).wipe, w);
+});
+
+test('every wipe has a canvas scale, its own window per cut, and a choice in the Brand tab', () => {
+  const ui = fs.readFileSync(new URL('../ui/app.js', import.meta.url), 'utf8');
+  for (const w of WIPES) {
+    assert.ok(SCALE[w] > 0 && WIPE_WINDOW[w], w);
+    assert.deepEqual(glData({ wipe: w }, BRAND.colors, [4]).cuts, [[4, ...WIPE_WINDOW[w]]], w);
+    assert.ok(ui.includes(`['${w}', '`), `the Brand tab offers ${w}`);
+  }
+  assert.deepEqual(glData({ wipe: 'glitch' }, BRAND.colors, [2, 2.4]).cuts, [[2, 0.3, 0.2], [2.4, 0.2, 0.3]]);
+});
+
+// Real Chrome on SwiftShader: each new wipe compiles, covers the middle of the frame at the cut (in primary, a flash in
+// white), is gone mid-scene, and draws the same frame twice.
+test('every wipe covers the cut and is gone mid-scene', { timeout: 240000 }, async (t) => {
+  const cfg = loadStudioConfig();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-wipes-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const gsapDir = path.dirname(createRequire(import.meta.url).resolve('gsap/dist/gsap.min.js'));
+  fs.mkdirSync(path.join(dir, 'vendor'));
+  for (const f of ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js']) fs.copyFileSync(path.join(gsapDir, f), path.join(dir, 'vendor', f));
+  for (const w of WIPES.filter((x) => x !== 'liquid')) {
+    const file = path.join(dir, `${w}.html`);
+    fs.writeFileSync(file, page(args({ ...BRAND, wipe: w }, 3)), 'utf8');
+    let opened;
+    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, width: 640, height: 360 }); } catch (err) {
+      if (/Composition|render script|WebGL|shader/.test(err.message)) throw err;
+      t.skip(`Chrome is not available: ${err.message}`); return;
+    }
+    const { browser, page: pg } = opened;
+    try {
+      const px = () => pg.evaluate(() => {
+        const src = document.getElementById('glw'), c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+        const x = c.getContext('2d'); x.drawImage(src, 0, 0); return [...x.getImageData(src.width >> 1, src.height >> 1, 1, 1).data];
+      });
+      const want = w === 'flash' ? [255, 255, 255] : [0x1e, 0x29, 0x3b];
+      for (const cut of [2, 4]) {
+        await pg.evaluate((x) => window.seek(x), cut - 0.01);
+        const got = await px();
+        assert.ok(got[3] > 250 && got.slice(0, 3).every((v, i) => Math.abs(v - want[i]) < 12), `${w} covers the cut at ${cut} s: ${got}`);
+      }
+      await pg.evaluate(() => window.seek(3));
+      assert.equal((await px())[3], 0, `${w}: no wipe in the middle of a scene`);
+      // Mid-wipe, twice: the same pixels.
+      const shot = async () => { await pg.evaluate(() => window.seek(4.12)); return crypto.createHash('sha1').update(await pg.screenshot()).digest('hex'); };
+      assert.equal(await shot(), await shot(), `${w} draws the same frame again`);
+    } finally { await browser.close(); }
+  }
 });
 
 test('WebGL code reaches a page only when the brand asks; a wipe needs a cut; an overlay gets none', () => {

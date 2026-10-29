@@ -63,7 +63,8 @@ export function pacing(timing, script, opts = {}) {
     heard += span;
     row.silence = length > 0 ? round(Math.min(1, Math.max(0, 1 - span / length)), 3) : 0;
     if (row.wps !== null && row.wps > o.fastWps) row.flags.push('fast');
-    if (i < last && row.tail !== null && row.tail > o.slowTail) row.flags.push('slowTail');
+    // A `hold` the person set (timing.json records it) is a chosen pause, not a slow tail.
+    if (i < last && row.tail !== null && row.tail - (s.hold || 0) > o.slowTail) row.flags.push('slowTail');
     if (!ws.length && !row.sound) row.flags.push('dead');
     if (gains.has(s.id)) row.gainDb = gains.get(s.id);
     return row;

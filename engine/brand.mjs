@@ -1,4 +1,5 @@
 import { StudioError } from './core.mjs';
+import { cloudVoice } from './cloudvoice.mjs';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const FONT = /^[A-Za-z0-9 ]{1,40}$/;
@@ -35,9 +36,13 @@ export const SUBTITLE_STYLES = ['classic', 'highlighter', 'minimal', 'pill', 'po
 export const SUBTITLE_FONTS = { Roboto: 'Roboto:wght@400;500;700', Montserrat: 'Montserrat:wght@400;500;700', Inter: 'Inter:wght@400;500;700' };
 const WEIGHT = (v) => Number.isInteger(v) && v >= 100 && v <= 900 && v % 100 === 0;
 // WebGL layers (templates/gl.mjs) in the brand colours: a moving backdrop behind every scene (a mesh gradient,
-// aurora curtains, topographic lines, or lit 3D shapes drifting past the camera) and a wipe over every cut.
+// aurora curtains, topographic lines, or lit 3D shapes drifting past the camera) and a wipe over every cut: a liquid
+// band, an iris closing and opening on the middle, a burn with glowing edges, glitch blocks, or a flash through white.
 export const BACKDROPS = ['mesh', 'aurora', 'flow', 'shapes'];
-export const WIPES = ['liquid'];
+export const WIPES = ['liquid', 'iris', 'burn', 'glitch', 'flash'];
+// brand.blend (templates/blend.mjs): both scenes show over every cut and are mixed, a whip pan, a zoom through, a
+// cross-warp or a chromatic split. It takes the cut's place, so a brand sets a wipe or a blend, not both.
+export const BLENDS = ['whip', 'zoom', 'warp', 'split'];
 // brand.reveal: headings split into characters or masked lines by GSAP SplitText (templates/kit.mjs), on the
 // profiles whose entrance is the plain rise; cinematic and editorial reveal headings word by word already.
 export const REVEALS = ['chars', 'lines'];
@@ -193,6 +198,7 @@ export function validateBrand(input) {
   if (b.voice?.tts != null && !['kokoro', 'sapi', 'windows', 'none'].includes(String(b.voice.tts).toLowerCase())) errors.push('voice.tts must be kokoro, sapi or none');
   const say = sayMap(b.voice?.say, errors);
   const cast = castMap(b.voice?.cast, errors);
+  const cloud = cloudVoice(b.voice?.cloud, errors);
   if (b.voice?.cleanup != null && typeof b.voice.cleanup !== 'boolean') errors.push('voice.cleanup must be true or false');
   for (const k of ['logo', 'logoDark']) {
     if (b[k] != null && b[k] !== '' && !IMAGE_ASSET.test(b[k])) errors.push(`${k} must be an image asset name (.png, .jpg, .webp, .svg)`);
@@ -213,6 +219,8 @@ export function validateBrand(input) {
   if (b.motion != null && !MOTIONS.includes(b.motion)) errors.push(`motion must be one of ${MOTIONS.join(', ')}`);
   if (b.backdrop != null && b.backdrop !== 'none' && !BACKDROPS.includes(b.backdrop)) errors.push(`backdrop must be none or one of ${BACKDROPS.join(', ')}`);
   if (b.wipe != null && b.wipe !== 'none' && !WIPES.includes(b.wipe)) errors.push(`wipe must be none or one of ${WIPES.join(', ')}`);
+  if (b.blend != null && b.blend !== 'none' && !BLENDS.includes(b.blend)) errors.push(`blend must be none or one of ${BLENDS.join(', ')}`);
+  if (WIPES.includes(b.wipe) && BLENDS.includes(b.blend)) errors.push('set wipe or blend, not both: pick None for one of them');
   const palette = Array.isArray(b.palette) ? b.palette : [];
   if (palette.length > 16) errors.push('palette holds at most 16 custom colors');
   const seen = new Set(COLOR_KEYS);
@@ -240,11 +248,13 @@ export function validateBrand(input) {
     ...(motionProfile(b).carrier && b.carry === true ? { carry: true } : {}),
     ...(BACKDROPS.includes(b.backdrop) ? { backdrop: b.backdrop } : {}),
     ...(WIPES.includes(b.wipe) ? { wipe: b.wipe } : {}),
+    ...(BLENDS.includes(b.blend) ? { blend: b.blend } : {}),
     voice: {
       tts: String(b.voice?.tts || 'kokoro').slice(0, 20), voice: String(b.voice?.voice || '').slice(0, 40),
       speed: Math.min(1.5, Math.max(0.6, Number(b.voice?.speed) || 1)), lang: String(b.voice?.lang || 'en').slice(0, 8),
       ...(say ? { say } : {}),
       ...(cast ? { cast } : {}),
+      ...(cloud ? { cloud } : {}),
       ...(b.voice?.cleanup ? { cleanup: true } : {}),
     },
     music: { file: b.music?.file || null, gainDb: gain, ...(b.music?.duck ? { duck: true } : {}) },

@@ -518,8 +518,8 @@ export function listJobs(project) {
 const SOURCE_FIELDS = ['name', 'image', 'bullets', 'facts'];
 // Every field any template's beats.json lets a scene carry, so a UI edit of any of them is locked.
 let sceneFields = null;
-// `speaker` (a voice from brand.voice.cast) and `stress` (louder phrases) are scene fields of every template.
-const sceneFieldNames = () => sceneFields ||= [...new Set(['speaker', 'stress', ...listTemplates().flatMap((t) => Object.values(t.fields || {}).flatMap((f) => [...f.required, ...f.optional]))])].sort();
+// `speaker` (a voice from brand.voice.cast), `stress` (louder phrases) and `hold` (quiet after the line) are scene fields of every template.
+const sceneFieldNames = () => sceneFields ||= [...new Set(['speaker', 'stress', 'hold', ...listTemplates().flatMap((t) => Object.values(t.fields || {}).flatMap((f) => [...f.required, ...f.optional]))])].sort();
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Lock key for an edit that changed only bullet screenshots: no claim changed, so the Director may still rewrite bullets.

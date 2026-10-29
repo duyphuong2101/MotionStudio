@@ -11,7 +11,7 @@ import {
 } from './jobs.mjs';
 import { iconsFor, loadBrandIcons } from './icons.mjs';
 import { motionProfile } from './brand.mjs';
-import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, sourceRefProblems, MAX_HOLD } from './script.mjs';
+import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, sourceRefProblems } from './script.mjs';
 import { repairScript } from './repair.mjs';
 import { lookBrand, BRAND_LOOK } from './looks.mjs';
 import { validateOutline, expandOutline } from './quick.mjs';
@@ -216,7 +216,8 @@ export async function prepare(project, id, by = 'engine') {
     }
     // Footage clips set their scene's length; a motion scene's clip does only when it plays its own sound.
     const timed = clips.filter((c) => footage || c.hasAudio);
-    const fixed = timed.length ? Object.fromEntries(timed.map((c) => [c.id, round(c.seconds + (c.hold || 0), 3)])) : null;
+    // A scene's `hold` comes on top in the timing (engine/timing.mjs `sceneHold`), after the clip or the line, whichever ends later.
+    const fixed = timed.length ? Object.fromEntries(timed.map((c) => [c.id, c.seconds])) : null;
     const tts = ttsProvider(brand);
     const beat = brief.cutOnBeat ? await musicBeat(project, brand) : null;
     const snap = beat?.grid ? beatSnap(beat.grid) : null;
@@ -324,7 +325,7 @@ export function lengthFindings(duration, target, timingCfg) {
 
 /**
  * Scene lengths when a voice line outlasts the clip with sound that fixes its scene (`fixed`, clip seconds by scene
- * id): that scene grows to the line's last word plus its tail. The kit holds a clip's last frame while its scene runs
+ * id): that scene grows to the line's last word plus its tail (its `hold` comes on top in the timing). The kit holds a clip's last frame while its scene runs
  * on, and the clip's sound plays once from the scene start. Null when every line fits its clip.
  */
 export function voiceHolds(timing, fixed, script, { cfg, pace = null, tight = false }) {
@@ -402,9 +403,7 @@ async function sceneVideos(project, script) {
     // A clip that speaks with no voice line over it is captioned: from the typed `caption` when the scene has one
     // (timed on what is heard), else from what is heard.
     const speaks = sc.sound === true && info.hasAudio;
-    // `hold`: the scene runs this much past the clip, on its last frame (the kit's clip rule), before the cut.
-    const hold = Math.min(MAX_HOLD, Math.max(0, Number(sc.hold) || 0));
-    out.push({ id: sc.id, asset: sc.video, file, from, seconds: round(to - from, 3), hold, hasAudio: speaks, hasVideo: true, fit: 'contain', text: '',
+    out.push({ id: sc.id, asset: sc.video, file, from, seconds: round(to - from, 3), hasAudio: speaks, hasVideo: true, fit: 'contain', text: '',
       ...(speaks && !String(sc.vo || '').trim() ? { caption: true, typed: String(sc.caption || '').trim() } : {}) });
   }
   return out;

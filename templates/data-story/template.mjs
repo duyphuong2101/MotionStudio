@@ -70,7 +70,9 @@ export function parts({ brand, script, size }) {
   const rowH = short ? 92 : port ? 116 : 88;
   const scenes = [];
   const blocks = [];
-  const head = (sc) => `${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd dtt" data-lint>${h(sc.title)}</div>`;
+  // A line break in a title is kept: each line is its own block, so the break never falls mid-phrase.
+  const titleHtml = (t) => (String(t ?? '').includes('\n') ? String(t).split('\n').map((l) => `<span class="tl">${h(l.trim())}</span>`).join('') : h(t));
+  const head = (sc) => `${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd dtt" data-lint>${titleHtml(sc.title)}</div>`;
   for (const sc of script.scenes) {
     const id = sc.id;
     const f = sc.format || 'int';
@@ -196,13 +198,14 @@ export function parts({ brand, script, size }) {
   // Written only when a scene uses them, so every other page stays byte for byte the same.
   const hasTone = script.scenes.some((s) => toneClass(s)), hasSeries = script.scenes.some((s) => s.kind === 'bars' && Array.isArray(s.series) && s.series.length === 2);
   const hasCols = script.scenes.some((s) => s.kind === 'bars' && s.layout === 'columns');
+  const hasBreak = script.scenes.some((s) => String(s.title ?? '').includes('\n'));
   const hasFocus = script.scenes.some((s) => s.pace === 'focus' && ['stat', 'bars', 'line', 'donut', 'stripes'].includes(s.kind));
   const dsubAt = hasFocus ? 'later' : 'cue';
   const hasDark = script.scenes.some((s) => s.kind !== 'cta' && s.theme === 'dark'), hasAcc = script.scenes.some((s) => s.theme === 'accent');
   const css = `
 .box{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:${px(port ? 120 : 90)} ${padX(land ? 220 : 90)};gap:${px(28)}}
 .box.center{align-items:center;text-align:center}
-.dtt{font-size:${px(port ? 92 : 80)}}.dsub{font-size:${px(42)};color:var(--muted);line-height:1.3}
+.dtt{font-size:${px(port ? 92 : 80)}}${hasBreak ? '.dtt .tl{display:block}' : ''}.dsub{font-size:${px(42)};color:var(--muted);line-height:1.3}
 .big{font-family:var(--display);font-weight:900;font-size:${px(port ? 250 : 230)};line-height:1;color:var(--primary2);font-variant-numeric:tabular-nums}${C.mark ? `
 .big{color:var(--ink);padding:0 ${px(24)};background:linear-gradient(transparent 58%,${C.mark} 58%,${C.mark} 90%,transparent 90%) no-repeat;background-size:0% 100%}
 .lval{color:var(--ink) !important;padding:0 ${px(10)};background:linear-gradient(transparent 55%,${C.mark} 55%,${C.mark} 92%,transparent 92%)}` : ''}.big small{font-size:${px(90)};margin-left:${px(12)}}

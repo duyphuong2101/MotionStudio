@@ -218,6 +218,6 @@ whichever template leads. `dark` reaches the page only when a `subs` style is se
 
 ## Build, run, CI
 
-- No build step. `npm install` once (Node 20+, Chrome installed; ffmpeg from `ffmpeg-static`).
+- No build step. `npm install` once (Node 22.23.4+, 24.22.1+ or 26.12.1+, Chrome installed; ffmpeg from `ffmpeg-static`).
 - `npm run ui` → http://127.0.0.1:4780. `node engine/cli.mjs help` for the engine. `npm test` for tests.
 - No CI pipeline. The folder is not a git repository yet.

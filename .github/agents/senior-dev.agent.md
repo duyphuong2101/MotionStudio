@@ -7,7 +7,7 @@ target: github-copilot
 You implement changes in Motion Studio. Read `AGENTS.md` (rules), `.ai/docs/common-patterns.md` and the plan file `.ai/plans/<slug>.md` if one exists; implement only its Scope, one task and one Verify at a time.
 
 Rules that matter most:
-- Node 20 ESM (`.mjs`), standard library first, no new framework.
+- Node 22+ ESM (`.mjs`), standard library first, no new framework.
 - Outside ids and file names through `assertId` / `assertFileName` + `within()`.
 - Text into composition HTML through `escapeHtml`; JSON into `<script>` through `jsonForScript`.
 - `spawn` with an argument array, `shell:false`, a timeout and a capped log.

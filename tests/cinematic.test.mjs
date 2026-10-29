@@ -222,13 +222,14 @@ test('flash items are 2-12 strings of at most 40 characters; title and theme are
 });
 
 // A radio bite of 1.9 s cut away as soon as it ended (NSC a1 `king`, 2026-10-26): `hold` keeps the last frame a moment.
-test('a sound clip may hold its last frame for up to 3 s after the clip ends', () => {
+// Updated 2026-10-29: `hold` became a field of every scene (the Timeline's pause after a line), 0-4 s.
+test('a sound clip may hold its last frame for up to 4 s after the clip ends', () => {
   const { beats } = loadTemplate('explainer');
   const errs = (patch) => validateScript({ scenes: [S('k', 'video', { title: 'King', video: 'king.mp4', sound: true, vo: '', ...patch })] }, beats, { assets: ['king.mp4'] }).errors.filter((e) => !/at position \d/.test(e)).join(' | ');
   assert.equal(errs({ hold: 0.7 }), '');
   assert.equal(errs({ hold: '1' }), '');
-  assert.match(errs({ hold: 4 }), /hold must be 0 to 3 seconds/);
-  assert.match(errs({ hold: -1 }), /hold must be 0 to 3 seconds/);
+  assert.match(errs({ hold: 4.5 }), /hold must be 0 to 4 seconds/);
+  assert.match(errs({ hold: -1 }), /hold must be 0 to 4 seconds/);
   assert.ok(beats.fields.video.optional.includes('hold'));
 });
 

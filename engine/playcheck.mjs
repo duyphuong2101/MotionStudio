@@ -142,6 +142,9 @@ function install(o) {
     fresh();
     const hits = new Map();
     const add = (h) => { if (!hits.has(h.key)) hits.set(h.key, { i, ...h }); };
+    // A brand blend (templates/blend.mjs) shows both scenes of a cut on purpose: inside its window their text may meet,
+    // and the other scene may pass under a caption.
+    const mixing = (S.blends || []).some(([a, b]) => t > a && t < b), now = sceneAt(t);
     const txt = pieces().filter((p) => !p.own.cap);
     const caps = [...stage.querySelectorAll('.subt')].filter((el) => style(el).visibility === 'visible' && opOf(el) >= o.opacity)
       .map((el) => ({ el, r: box((el.querySelector('.sw') || el).getBoundingClientRect()) }));
@@ -150,6 +153,7 @@ function install(o) {
       add({ k: 'caps', key: `caps|${names}`, scene: sceneAt(t), el: 'captions', what: names });
     }
     for (const c of caps) for (const p of txt) {
+      if (mixing && p.own.scene && p.own.scene !== now) continue;
       if (meets([c.r], p.rects)) add({ k: 'cover', key: `cover|${tag(p.root)}`, scene: p.own.scene || sceneAt(t), el: name(p.root), what: `${c.el.id} over ${label(p.root)}` });
     }
     for (let x = 0; x < txt.length; x++) for (let y = x + 1; y < txt.length; y++) {
@@ -157,13 +161,14 @@ function install(o) {
       if (a.root === b.root || a.root.contains(b.root) || b.root.contains(a.root) || !meets(a.rects, b.rects)) continue;
       if (tag(a.root) > tag(b.root)) [a, b] = [b, a];
       const across = a.own.scene && b.own.scene && a.own.scene !== b.own.scene;
+      if (across && mixing) continue;
       const k = across ? 'across' : 'text';
       add({
         k, key: `${k}|${tag(a.root)}|${tag(b.root)}`, scene: a.own.scene || b.own.scene || sceneAt(t), el: `${name(a.root)} × ${name(b.root)}`,
         what: across ? `${label(a.root)} (${a.own.scene}) × ${label(b.root)} (${b.own.scene})` : `${label(a.root)} × ${label(b.root)}`,
       });
     }
-    if (o.oneScene) {
+    if (o.oneScene && !mixing) {
       const on = [...new Set(txt.map((p) => p.own.scene).filter(Boolean))];
       if (on.length > 1) add({ k: 'scenes', key: `scenes|${on.join('+')}`, scene: on[0], el: 'scenes', what: on.join(' + ') });
     }

@@ -102,6 +102,17 @@
     "imageSize": "1K",
     "maxLogBytes": 200000
   },
+  "voiceCloud": {
+    "keyEnv": "ELEVENLABS_API_KEY",
+    "maxLinesPerRun": 40,
+    "maxLinesPerDay": 120,
+    "maxCharsPerDay": 12000,
+    "maxCharsPerLine": 600,
+    "requestTimeoutSeconds": 60,
+    "maxResponseBytes": 8000000,
+    "pauseMinutes": 30,
+    "maxLogBytes": 200000
+  },
   "engine": {
     "maxConcurrentRuns": 1,
     "runTimeoutMinutes": 15,

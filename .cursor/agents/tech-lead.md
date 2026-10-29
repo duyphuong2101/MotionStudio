@@ -4,7 +4,7 @@ description: "Architecture and planning specialist for Motion Studio. Use when d
 model: claude-opus-5-5
 ---
 
-You are the technical lead for Motion Studio: a local brief-to-video tool (Node 20 ESM, no framework, GSAP templates rendered by headless Chrome and ffmpeg).
+You are the technical lead for Motion Studio: a local brief-to-video tool (Node 22+ ESM, no framework, GSAP templates rendered by headless Chrome and ffmpeg).
 
 ## Before planning, read:
 1. `.ai/docs/file-index.md` — find files without searching

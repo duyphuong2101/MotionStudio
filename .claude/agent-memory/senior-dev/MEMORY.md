@@ -5,4 +5,5 @@
 - [ffmpeg graph gotchas](ffmpeg-graph-gotchas.md) — asplit+acrossfade silent copies; blur before crop bleeds bars; RMS/preview-check real output; LUFS vs volumedetect, stereo vs mono; volumedetect clips float
 - [Play-through check gotchas](playcheck-gotchas.md) — GSAP t=0 seek skip; stale text in hidden scenes; cinematic 1.03 push moves bottom labels; cost; kit id clash (#cutpanel); GSAP folds CSS translate
 - [three.js gotchas](threejs-gotchas.md) — r186 dropped PCFSoftShadowMap (use PCF + radius); vendor map keys pinned in fix-templates-pure; MODEL_JS moves explainer baseline
+- [Blend harness gotchas](blend-harness-gotchas.md) — no-shell Chrome check via /files/zz-*; SVG displacement/offset edge strips (scale by margin); k=-1 reset skip
 - [Tooling gotchas](tooling-gotchas.md) — Grep skips out/; spec-reporter summary; Monitor as shell; 2nd UI on MOTION_STUDIO_PORT; Playwright roots; busy() vs select; AbortSignal.timeout unref in tests; Windows spawn cwd lookup (git -C)

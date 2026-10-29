@@ -32,9 +32,10 @@ function draftErrors(s) {
   return [];
 }
 
-/** Returns { errors, warnings } for a script against a template's beats.json. */
-// A sound clip's scene may keep the last frame this long after the clip ends, so a short bite does not cut away at once.
-export const MAX_HOLD = 3;
+// `hold` (every template): seconds of quiet a scene keeps after its sound ends (its voice line, or a clip that plays its
+// own sound, on the clip's last frame), before the next scene's gap. engine/timing.mjs `sceneHold`; the Timeline sets it.
+export const MAX_HOLD = 4;
+const holdOk = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number(v) >= 0 && Number(v) <= MAX_HOLD;
 
 const SOURCE_REF_RE = /^(bullets|facts)\[(\d+)\]$|^brief\.([a-zA-Z]+)$/;
 
@@ -57,7 +58,8 @@ export function sourceRefProblems(script, source, brief = null) {
   return out;
 }
 
-export function validateScript(script, beats, { assets = [], icons = ICON_NAMES, source = null, brief = null } = {}) {
+/** Returns { errors, warnings } for a script against a template's beats.json. */
+export function validateScript(script, beats,{ assets = [], icons = ICON_NAMES, source = null, brief = null } = {}) {
   const errors = [];
   const warnings = [];
   const scenes = Array.isArray(script?.scenes) ? script.scenes : null;
@@ -100,7 +102,7 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES,
       const v = s[f];
       if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) errors.push(`${s.id}: ${f} is required`);
     }
-    const allowed = new Set(['id', 'kind', 'draft', 'speaker', 'stress', ...spec.required, ...spec.optional]);
+    const allowed = new Set(['id', 'kind', 'draft', 'speaker', 'stress', 'hold', ...spec.required, ...spec.optional]);
     for (const k of Object.keys(s)) if (!allowed.has(k)) warnings.push(`${s.id}: field "${k}" is ignored by this template`);
     for (const [f, max] of Object.entries(L)) {
       if (f === 'voWords') continue;
@@ -149,7 +151,7 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES,
     if (s.speaker !== undefined && (typeof s.speaker !== 'string' || !/^[a-z][a-z0-9-]{0,19}$/.test(s.speaker))) errors.push(`${s.id}: speaker must name a voice in the brand's voice cast`);
     if (s.stress !== undefined) errors.push(...stressErrors(s));
     if (s.logo !== undefined && typeof s.logo !== 'boolean') errors.push(`${s.id}: logo must be true or false`);
-    if (s.hold !== undefined && s.hold !== '' && !(Number(s.hold) >= 0 && Number(s.hold) <= MAX_HOLD)) errors.push(`${s.id}: hold must be 0 to ${MAX_HOLD} seconds`);
+    if (s.hold !== undefined && s.hold !== '' && !holdOk(s.hold)) errors.push(`${s.id}: hold must be 0 to ${MAX_HOLD} seconds`);
     if (s.video && s.sound === true && wordsOf(s.vo).length) warnings.push(`${s.id}: the clip plays its own sound under the voice line; if the voice runs longer than the clip, the scene holds the clip's last frame until the voice ends`);
     if (s.shots !== undefined) errors.push(...validateShots(s, rules, assets));
     if (rules.data?.[kind]) errors.push(...validateData(s, kind, rules.data[kind], icons));

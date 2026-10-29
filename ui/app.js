@@ -1,4 +1,5 @@
 import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, assetPick, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt } from './shots.js';
+import { HOLD_MAX, HOLD_STEP, CUE_LEAD, roundHold, fmtSec, sceneSpans, totalOf, moveItem, dropIndex, cueWord, snapWord, stepWord, shotTimes, cueRange, sfxOptions, takesCue, editScript } from './timeline.js';
 
 const S = {
   state: null, project: null, jobs: [], briefForm: null, sel: null, detail: null, sub: 'preview', view: 'auto', paneDirty: false, lastStamp: null,
@@ -94,6 +95,37 @@ function toast(msg) {
   t.classList.add('show');
   clearTimeout(toast.t);
   toast.t = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+/**
+ * Make cloud voice (server/voice-cloud.mjs): shown only when the brand has a cloud voice id. One click makes the
+ * missing lines on the person's own key; while it runs the panel polls, and it stops polling once it leaves the page.
+ */
+async function cloudVoicePanel(box, jp) {
+  if (!box) return;
+  let st;
+  try { st = await api(`/jobs/${jp}/cloud-voice`); } catch { return; }
+  if (!box.isConnected || !st.voice) { box.innerHTML = ''; return; }
+  const run = st.running, last = st.last;
+  const left = st.missing.length;
+  const why = st.error || (!st.hasKey ? `Add ${st.keyEnv} to .env, then restart npm run ui.` : st.pause ? `Paused until ${new Date(st.pause.until).toLocaleString('en-US')} after a quota or rate limit.` : '');
+  box.innerHTML = `<div class="banner" role="group" aria-label="Cloud voice"><p><b>Cloud voice</b> (ElevenLabs ${esc(st.voice.voice)}): ${st.lines - left} of ${st.lines} lines made${left ? `, missing ${esc(st.missing.join(', '))}` : ''}.
+    Today ${st.usage.lines} lines, ${st.usage.chars} characters${st.caps ? ` of ${st.caps.maxLinesPerDay} and ${st.caps.maxCharsPerDay}` : ''}.</p>
+    ${run ? `<p class="muted">Making line ${run.made + 1} of ${run.lines}…</p>` : last?.message ? `<p class="${last.status === 'error' ? 'err' : 'muted'}">${esc(last.message)}</p>` : ''}
+    ${why ? `<p class="warn-t small">${esc(why)}</p>` : ''}
+    <div class="row"><button class="btn" type="button" id="sc-cloud-go" ${run || !left || why ? 'disabled' : ''}>Make cloud voice (${left} line${left === 1 ? '' : 's'})</button>
+      ${st.pause ? '<button class="btn" type="button" id="sc-cloud-unpause">Clear pause</button>' : ''}
+      <span class="muted small">Each line is made once on your key; then re-run from step 5.</span></div></div>`;
+  box.querySelector('#sc-cloud-go')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { await api(`/jobs/${jp}/cloud-voice`, { method: 'POST', body: {} }); } catch (err) { toast(err.message); }
+    cloudVoicePanel(box, jp);
+  });
+  box.querySelector('#sc-cloud-unpause')?.addEventListener('click', async () => {
+    try { await api(`/jobs/${jp}/cloud-voice/pause`, { method: 'DELETE' }); } catch (err) { toast(err.message); }
+    cloudVoicePanel(box, jp);
+  });
+  if (run) setTimeout(() => { if (box.isConnected) cloudVoicePanel(box, jp); }, 2000);
 }
 
 async function busy(btn, fn, errBox) {
@@ -1060,6 +1092,7 @@ function paneScript(pane) {
       <select id="sc-look" aria-describedby="sc-look-h">${[LOOK_BRAND, ...(d.looks || [])].map((n) => `<option value="${esc(n)}"${n === (look ?? LOOK_BRAND) ? ' selected' : ''}>${esc(n === LOOK_BRAND ? 'Brand (as set in the Brand tab)' : n[0].toUpperCase() + n.slice(1))}</option>`).join('')}</select>
       <span class="hint muted" id="sc-look-h">Motion, backdrop, cut sound and music for this video. What the Brand tab sets wins; the look fills the rest. Applies on the next prepare.</span></div>
     ${saved?.length ? `<div class="banner warn" role="status"><p>Saved with warnings:<br>${saved.map(esc).join('<br>')}</p></div>` : ''}
+    ${REVIEW ? '' : '<div id="sc-cloud" aria-live="polite"></div>'}
     <div class="scenes" id="sc-list"></div>
     <div class="savebar">
       <div id="sc-check" aria-live="polite"></div>
@@ -1079,6 +1112,7 @@ function paneScript(pane) {
     }
   }
 
+  if (!REVIEW) cloudVoicePanel($('#sc-cloud'), jobPath());
   const find = (id) => scenes.find((s) => s.id === id);
   const drawChecksSoon = () => queueMicrotask(drawChecks);
   $('#sc-look').addEventListener('change', (e) => {
@@ -1334,7 +1368,8 @@ function panePreView(pane) {
       ${REVIEW ? '' : '<h3 style="margin-top:14px">Notes for the Director</h3><div id="notebox"><span class="muted small">Loading…</span></div>'}
       <h3 style="margin-top:14px">Timing (${esc(d.timing?.source || '')})</h3>
       <table class="mono timing"><tbody>${rows}</tbody></table>
-    </div></div>`;
+    </div></div>
+    ${d.script && d.timing ? '<section class="tl" id="tl" aria-labelledby="tl-h"></section>' : ''}`;
   $$('[data-view]', pane).forEach((b) => b.addEventListener('click', () => { S.view = b.dataset.view; renderPane(); }));
   $$('[data-cut]', pane).forEach((b) => b.addEventListener('click', () => { S.cut = b.dataset.cut || null; S.view = 'auto'; renderPane(); }))
   $$('[data-editscene]', pane).forEach((b) => b.addEventListener('click', () => goSub('script', { scene: b.dataset.editscene })));
@@ -1350,11 +1385,15 @@ function panePreView(pane) {
     $$('[data-sid]', pane).forEach((el) => el.classList.toggle('cur', el.dataset.sid === curScene));
   };
   const notebox = $('#notebox', pane);
+  // The Timeline seeks whichever player the tab shows; `play` is set once the composition's player exists.
+  let play = null;
+  const tl = $('#tl', pane) ? mountTimeline($('#tl', pane), (t) => play?.(t)) : null;
   if (view !== 'comp') {
     const v = $('video', pane);
     if (notebox && v) fillNotes(notebox, S.project, S.sel, { t: () => v.currentTime, go: (t) => { v.pause(); v.currentTime = t; } });
     if (v) {
-      v.addEventListener('timeupdate', () => markScene(v.currentTime));
+      play = (t) => { v.currentTime = t; };
+      v.addEventListener('timeupdate', () => { markScene(v.currentTime); tl?.at(v.currentTime); });
       if (jumpT !== null) v.addEventListener('loadedmetadata', () => { v.currentTime = jumpT; markScene(jumpT); }, { once: true });
       $$('.still', pane).forEach((b) => b.addEventListener('click', () => { v.currentTime = +b.dataset.t; }));
     }
@@ -1383,8 +1422,9 @@ function panePreView(pane) {
   };
   const seek = (t) => {
     const w = frame.contentWindow;
-    if (w && w.__ready) { w.seek(t); rng.value = t; tc.textContent = `${Number(t).toFixed(2)}s`; markScene(t); }
+    if (w && w.__ready) { w.seek(t); rng.value = t; tc.textContent = `${Number(t).toFixed(2)}s`; markScene(t); tl?.at(t); }
   };
+  play = (t) => { stopPlay(); pl.textContent = '▶ Play'; seek(t); };
   frame.addEventListener('load', () => waitReady(frame, () => seek(jumpT ?? 0)));
   if (notebox) fillNotes(notebox, S.project, S.sel, { t: () => +rng.value, go: (t) => { stopPlay(); pl.textContent = '▶ Play'; seek(t); } });
   rng.addEventListener('input', () => { stopPlay(); pl.textContent = '▶ Play'; seek(+rng.value); });
@@ -1411,8 +1451,296 @@ function panePreView(pane) {
   $$('.still', pane).forEach((b) => b.addEventListener('click', () => { stopPlay(); pl.textContent = '▶ Play'; seek(+b.dataset.t); }));
 }
 
+/* ---------------- timeline (Preview tab) ---------------- */
+// Reorder scenes, pause after a line (`hold`), pick the sound at each cut and move ui-story shot cues. Every edit saves
+// the script through the Script tab's route: it locks like any person edit and sends the job back to step 5.
+const TL_MIN_PPS = 28; // px per second at the least; a long video scrolls sideways
+const TL_BLOCK_MIN = 18; // px: a very short scene still shows its grip
+const TL_KEY_REST_MS = 700; // keyboard nudges save once the keys rest
+const TL_TICKS = [1, 2, 5, 10, 15, 30, 60];
+
+/** Draws the Timeline into `box` and wires it; `go(t)` seeks the preview. Returns { at(t) } for the playhead. */
+function mountTimeline(box, go) {
+  const tpl = () => S.detail.template;
+  const bareKind = (k) => k.slice(k.indexOf('.') + 1);
+  let work = structuredClone(S.detail.script);
+  let spans = [], pps = TL_MIN_PPS, sel = null, timer = 0, saving = false, lastFocus = null;
+  const labels = new Map();
+  const editable = () => !REVIEW && !saving && !jobBusy();
+  // The preview plays the last storyboard: after an edit its times no longer match the blocks.
+  const stale = () => S.detail.status.status === 'dirty';
+  const oldStart = (id) => S.detail.timing?.scenes.find((x) => x.id === id)?.start ?? 0;
+  const say = (text, bad = false) => { $('#tl-st', box).textContent = bad ? '' : text; $('#tl-err', box).textContent = bad ? text : ''; };
+  const scene = (id) => work.scenes.find((s) => s.id === id);
+
+  const cutHtml = (sc, i) => {
+    if (!i) return '';
+    const opts = sfxOptions(tpl(), sc.kind), sound = sc.sfx || S.detail.cutSound;
+    const what = `Cut into ${sc.id}: ${sound}${sc.sfx ? '' : ' (brand)'}`;
+    return `<button type="button" class="tl-cut${sc.sfx ? ' own' : ''}${sel === sc.id ? ' on' : ''}" data-cut="${esc(sc.id)}"${opts ? ` aria-pressed="${sel === sc.id}"` : ' aria-disabled="true"'}
+      aria-label="${esc(what)}" title="${esc(opts ? `${what}. Click, then pick a sound below, or drag a sound here.` : `${what}. This template uses the brand's cut sound.`)}">${esc(sound)}</button>`;
+  };
+  const shotsHtml = (sc, sp) => {
+    if (!takesCue(S.detail.brief.template, sc.kind) || !Array.isArray(sc.shots)) return '';
+    return shotTimes(sc.shots, sp.words, sp.length).map((x, k) => {
+      const cue = sc.shots[k]?.cue;
+      return `<button type="button" class="tl-shot${cue ? ' cued' : ''}" data-shot="${esc(sc.id)}:${k}" style="left:${(x.t * pps).toFixed(1)}px"
+        aria-label="${esc(`Shot ${k + 1} of ${sc.id}: ${cue ? `starts on "${cue}"` : 'no cue word'}. Arrow keys pick the word, Delete clears it.`)}">${k + 1}${cue ? ` ${esc(cue)}` : ''}</button>`;
+    }).join('');
+  };
+  const blockHtml = (sp, i) => {
+    const sc = work.scenes[i];
+    const len = `${fmtSec(sp.base)}${sp.hold ? ` + ${fmtSec(sp.hold)}` : ''}`;
+    return `<div class="tl-block${sp.estimated ? ' est' : ''}" role="listitem" tabindex="0" data-i="${i}" data-id="${esc(sp.id)}" style="width:${Math.max(TL_BLOCK_MIN, sp.length * pps).toFixed(1)}px"
+        aria-label="${esc(`${i + 1}. ${sp.id}, ${bareKind(sp.kind)}, ${len}${sp.estimated ? ', estimated' : ''}. Arrow keys move it, Enter plays it.`)}" title="${esc(`${sp.id} · ${sp.kind} · ${len}${sp.estimated ? ' (estimated: not prepared yet)' : ''}`)}">
+      <span class="tl-lab"><b>${esc(sp.id)}</b> <span class="muted">${esc(bareKind(sp.kind))}</span></span>
+      <span class="tl-len mono">${esc(len)}</span>
+      <span class="tl-hold" style="width:${(sp.hold * pps).toFixed(1)}px"></span>
+      <span class="tl-grip" role="slider" tabindex="0" data-grip="${i}" aria-label="${esc(`Pause after the line of ${sp.id}`)}" aria-valuemin="0" aria-valuemax="${HOLD_MAX}" aria-valuenow="${sp.hold}" aria-valuetext="${esc(fmtSec(sp.hold))}"></span>
+      ${cutHtml(sc, i)}${shotsHtml(sc, sp)}</div>`;
+  };
+
+  const draw = (focus = null) => {
+    const d = S.detail;
+    spans = sceneSpans(work, d.timing);
+    const total = totalOf(spans);
+    pps = Math.max(TL_MIN_PPS, ((box.clientWidth || 640) - 24) / Math.max(total, 1));
+    const tick = TL_TICKS.find((x) => x * pps >= 48) || 60;
+    const ruler = Array.from({ length: Math.floor(total / tick) + 1 }, (_, k) => `<span style="left:${(k * tick * pps).toFixed(1)}px">${k * tick}s</span>`).join('');
+    const cues = work.scenes.some((sc) => takesCue(d.brief.template, sc.kind) && Array.isArray(sc.shots));
+    const pickable = work.scenes.some((sc, i) => i && sfxOptions(tpl(), sc.kind));
+    const choices = [...new Set(work.scenes.flatMap((sc) => sfxOptions(tpl(), sc.kind) || []))];
+    const chips = pickable ? `<span class="small muted" id="tl-pick">${sel ? esc(`Sound at the cut into ${sel}:`) : 'Click a cut, then a sound, or drag a sound onto a cut:'}</span>
+      ${choices.map((n) => `<button type="button" class="tl-chip" draggable="true" data-snd="${esc(n)}">${esc(n)}</button>`).join('')}
+      <button type="button" class="tl-chip" draggable="true" data-snd="">${esc(`brand (${d.cutSound})`)}</button>`
+      : `<span class="small muted">${esc(`This template uses the brand's cut sound (${d.cutSound}) at every cut.`)}</span>`;
+    box.innerHTML = `<div class="tl-head"><h3 id="tl-h">Timeline</h3><span class="mono muted" id="tl-total">${esc(`${fmtSec(total)}${d.brief.duration ? ` · brief ${d.brief.duration} s` : ''}`)}</span>
+        <span class="muted small">${REVIEW ? 'Scene lengths, cuts and shot cues of this storyboard.' : `Drag a scene to reorder it, drag its right edge for up to ${HOLD_MAX} s of quiet after its line${cues ? ', drag a shot number onto a word' : ''}. Each change saves.`}</span></div>
+      <div class="tl-scroll"><div class="tl-inner" style="width:${(total * pps + TL_BLOCK_MIN).toFixed(0)}px">
+        <div class="tl-ruler" aria-hidden="true">${ruler}</div>
+        <div class="tl-track${cues ? ' cues' : ''}" role="list" aria-label="Scenes in order">${spans.map(blockHtml).join('')}</div>
+        <div class="tl-play" hidden></div><div class="tl-drop" hidden></div>
+      </div></div>
+      <div class="tl-sounds" role="group" aria-label="Cut sounds">${chips}</div>
+      <p class="small ${stale() ? 'warn-t' : 'muted'}" id="tl-note">${stale() ? 'Lengths are from the last storyboard and the preview still plays it. Re-run from step 5 to hear these changes.' : 'Lengths come from the voice; only a pause after a line makes a scene longer.'}</p>
+      <p class="small" id="tl-st" role="status"></p><div class="err" role="alert" id="tl-err"></div>`;
+    const f = focus || S.tlFocus;
+    S.tlFocus = null;
+    if (f) $(f, box)?.focus();
+    if (S.tlMsg) { say(S.tlMsg.text, S.tlMsg.bad); S.tlMsg = null; }
+  };
+
+  // One save at a time: keyboard nudges gather in `labels` (the latest per target) and go out once the keys rest.
+  const edit = (e, label, focus, now = true) => {
+    work = editScript(work, e);
+    labels.set(e.order ? `order:${e.moved}` : e.hold !== undefined ? `hold:${e.hold}` : e.sfx !== undefined ? `sfx:${e.sfx}` : `cue:${e.cue}:${e.shot}`, label);
+    lastFocus = focus;
+    draw(focus);
+    clearTimeout(timer);
+    timer = setTimeout(flush, now ? 0 : TL_KEY_REST_MS);
+  };
+  const flush = async () => {
+    if (saving || !labels.size) return;
+    const note = `Timeline: ${[...labels.values()].join('; ')}`.slice(0, 200), focus = lastFocus;
+    const doc = editScript(work, {});
+    labels.clear();
+    saving = true;
+    INFLIGHT.add(jobKey());
+    let msg;
+    try {
+      const r = await api(`/jobs/${jobPath()}/script`, { method: 'PUT', body: { doc, note, stamp: S.detail.stamps?.script } });
+      msg = { text: r.changed.length ? `Saved: ${note.slice(10)}. Re-run from step 5 to hear it.` : 'Nothing changed.' };
+      if (r.warnings?.length) msg.text += ` Warnings: ${r.warnings.join('; ')}`;
+    } catch (err) { msg = { text: err.message, bad: true }; }
+    saving = false;
+    INFLIGHT.delete(jobKey());
+    S.tlMsg = msg; S.tlFocus = focus;
+    // The first edit sends the job back to step 5, which redraws the whole pane and mounts a fresh Timeline.
+    try { await loadDetail(false); } catch (err) { S.tlMsg = { text: err.message, bad: true }; }
+    if (!box.isConnected) return;
+    work = structuredClone(S.detail.script);
+    draw();
+  };
+
+  // Pointer drags: a block moves, a grip sets the pause, a shot number snaps to a word. A press without a drag plays.
+  const drag = (e, el, { onMove, onDrop, onClick }) => {
+    const x0 = e.clientX;
+    let moved = false;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 4) return;
+      if (!editable()) return;
+      moved = true;
+      onMove(ev.clientX - x0);
+    };
+    const end = (ev) => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', end);
+      el.removeEventListener('pointercancel', end);
+      if (ev.type === 'pointercancel') { draw(); return; }
+      if (moved) onDrop(); else onClick?.();
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  };
+  const paintHold = (block, sp, v) => {
+    const len = `${fmtSec(sp.base)}${v ? ` + ${fmtSec(v)}` : ''}`;
+    block.style.width = `${Math.max(TL_BLOCK_MIN, (sp.base + v) * pps).toFixed(1)}px`;
+    $('.tl-hold', block).style.width = `${(v * pps).toFixed(1)}px`;
+    $('.tl-len', block).textContent = len;
+    $('#tl-total', box).textContent = fmtSec(totalOf(spans) - sp.hold + v);
+    say(`${sp.id}: ${len}`);
+  };
+
+  box.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const block = e.target.closest('.tl-block');
+    if (!block || e.target.closest('.tl-cut')) return;
+    const i = Number(block.dataset.i), sp = spans[i];
+    const grip = e.target.closest('.tl-grip'), shot = e.target.closest('.tl-shot');
+    if (grip) {
+      e.preventDefault();
+      let v = sp.hold;
+      return drag(e, grip, {
+        onMove: (dx) => { v = roundHold(sp.hold + dx / pps); paintHold(block, sp, v); },
+        onDrop: () => (v === sp.hold ? draw() : edit({ hold: sp.id, value: v }, `pause after ${sp.id} ${fmtSec(v)}`, `.tl-block[data-id="${CSS.escape(sp.id)}"] .tl-grip`)),
+      });
+    }
+    if (shot) {
+      e.preventDefault();
+      const k = Number(shot.dataset.shot.split(':').pop()), sc = scene(sp.id);
+      const times = shotTimes(sc.shots, sp.words, sp.length), { lo, hi } = cueRange(times, k);
+      let w = -1;
+      return drag(e, shot, {
+        onMove: (dx) => {
+          if (!sp.words.length) { say(`${sp.id} has no word timing yet: build the storyboard first.`, true); return; }
+          w = snapWord(sp.words, times[k].t + CUE_LEAD + dx / pps, lo, hi);
+          if (w < 0) return;
+          shot.style.left = `${((sp.words[w].at - CUE_LEAD) * pps).toFixed(1)}px`;
+          shot.textContent = `${k + 1} ${cueWord(sp.words[w].w)}`;
+        },
+        onDrop: () => {
+          const v = w >= 0 ? cueWord(sp.words[w].w) : '';
+          if (!v || v === sc.shots[k].cue) { draw(); return; }
+          edit({ cue: sp.id, shot: k, value: v }, `shot ${k + 1} of ${sp.id} on "${v}"`, `[data-shot="${CSS.escape(`${sp.id}:${k}`)}"]`);
+        },
+        onClick: () => go(oldStart(sp.id) + times[k].t),
+      });
+    }
+    let to = i;
+    const drop = $('.tl-drop', box);
+    drag(e, block, {
+      onMove: (dx) => {
+        block.classList.add('drag');
+        block.style.transform = `translateX(${dx}px)`;
+        to = dropIndex(spans, i, sp.start + sp.length / 2 + dx / pps);
+        const rest = spans.filter((_, j) => j !== i);
+        drop.hidden = false;
+        drop.style.left = `${((rest[to]?.start ?? totalOf(spans)) * pps).toFixed(1)}px`;
+      },
+      onDrop: () => {
+        if (to === i) { draw(); return; }
+        edit({ order: moveItem(work.scenes.map((s) => s.id), i, to), moved: sp.id }, `moved ${sp.id} to place ${to + 1}`, `.tl-block[data-id="${CSS.escape(sp.id)}"]`);
+      },
+      onClick: () => go(oldStart(sp.id)),
+    });
+  });
+
+  box.addEventListener('keydown', (e) => {
+    const el = e.target;
+    const block = el.closest?.('.tl-block');
+    if (!block) return;
+    const i = Number(block.dataset.i), sp = spans[i];
+    const dir = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+    if (el.classList.contains('tl-grip')) {
+      const v = e.key === 'Home' ? 0 : e.key === 'End' ? HOLD_MAX : dir ? roundHold(sp.hold + dir * HOLD_STEP * (e.shiftKey ? 10 : 1)) : null;
+      if (v === null) return;
+      e.preventDefault();
+      if (!editable() || v === sp.hold) return;
+      edit({ hold: sp.id, value: v }, `pause after ${sp.id} ${fmtSec(v)}`, `.tl-block[data-id="${CSS.escape(sp.id)}"] .tl-grip`, false);
+      return;
+    }
+    if (el.classList.contains('tl-shot')) {
+      const k = Number(el.dataset.shot.split(':').pop()), sc = scene(sp.id);
+      const times = shotTimes(sc.shots, sp.words, sp.length), { lo, hi } = cueRange(times, k);
+      const focus = `[data-shot="${CSS.escape(`${sp.id}:${k}`)}"]`;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        if (editable() && sc.shots[k].cue) edit({ cue: sp.id, shot: k, value: '' }, `shot ${k + 1} of ${sp.id} without a cue`, focus, false);
+        return;
+      }
+      if (!dir || e.key === 'ArrowUp' || e.key === 'ArrowDown') return;
+      e.preventDefault();
+      if (!editable()) return;
+      const from = times[k].word >= 0 ? times[k].word : snapWord(sp.words, times[k].t + CUE_LEAD, lo, hi) - dir;
+      const w = stepWord(sp.words, from, dir, lo, hi);
+      if (w >= 0) edit({ cue: sp.id, shot: k, value: cueWord(sp.words[w].w) }, `shot ${k + 1} of ${sp.id} on "${cueWord(sp.words[w].w)}"`, focus, false);
+      return;
+    }
+    if (el !== block) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(oldStart(sp.id)); return; }
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const to = i + dir;
+    if (!editable() || to < 0 || to >= spans.length) return;
+    edit({ order: moveItem(work.scenes.map((s) => s.id), i, to), moved: sp.id }, `moved ${sp.id} to place ${to + 1}`, `.tl-block[data-id="${CSS.escape(sp.id)}"]`, false);
+  });
+
+  // Cut sounds: pick a cut, then a sound chip; or drag a chip onto a cut.
+  const setSound = (id, value) => {
+    const sc = scene(id), opts = sfxOptions(tpl(), sc.kind);
+    if (!opts) { say(`The cut into ${id} takes the brand's cut sound: this kind of scene has no sound of its own.`, true); return; }
+    if (value && !opts.includes(value)) { say(`The cut into ${id} can be ${opts.join(', ')}.`, true); return; }
+    if ((sc.sfx || '') === value) return;
+    sel = null;
+    edit({ sfx: id, value }, `sound at the cut into ${id}: ${value || `brand (${S.detail.cutSound})`}`, `[data-cut="${CSS.escape(id)}"]`);
+  };
+  box.addEventListener('click', (e) => {
+    const cut = e.target.closest('.tl-cut'), chip = e.target.closest('.tl-chip');
+    if (cut) {
+      if (cut.getAttribute('aria-disabled') === 'true') { say(cut.title); return; }
+      if (!editable()) return;
+      sel = sel === cut.dataset.cut ? null : cut.dataset.cut;
+      draw(`[data-cut="${CSS.escape(cut.dataset.cut)}"]`);
+    } else if (chip) {
+      if (!editable()) return;
+      if (!sel) { say('Click the cut first, then the sound.', true); return; }
+      setSound(sel, chip.dataset.snd);
+    }
+  });
+  box.addEventListener('dragstart', (e) => {
+    const chip = e.target.closest?.('.tl-chip');
+    if (chip) e.dataTransfer.setData('text/x-tl-sound', chip.dataset.snd);
+  });
+  box.addEventListener('dragover', (e) => {
+    const cut = e.target.closest?.('.tl-cut');
+    if (!cut || cut.getAttribute('aria-disabled') === 'true' || ![...e.dataTransfer.types].includes('text/x-tl-sound') || !editable()) return;
+    e.preventDefault();
+    cut.classList.add('over');
+  });
+  box.addEventListener('dragleave', (e) => e.target.closest?.('.tl-cut')?.classList.remove('over'));
+  box.addEventListener('drop', (e) => {
+    const cut = e.target.closest?.('.tl-cut');
+    if (!cut || ![...e.dataTransfer.types].includes('text/x-tl-sound')) return;
+    e.preventDefault();
+    setSound(cut.dataset.cut, e.dataTransfer.getData('text/x-tl-sound'));
+  });
+
+  draw();
+  return {
+    at(t) {
+      const line = $('.tl-play', box);
+      if (!line) return;
+      // Once the script changed, the preview's clock belongs to the old order: no playhead over the new one.
+      line.hidden = stale();
+      if (!stale()) line.style.left = `${(t * pps).toFixed(1)}px`;
+    },
+  };
+}
+
 /* ---------------- briefs ---------------- */
-const FORMAT_NAME = { '9:16': 'vertical', '1:1': 'square', '16:9': 'landscape', '4:5': 'portrait', '2:3': 'tall', '21:9': 'ultrawide' };
+const FORMAT_NAME ={ '9:16': 'vertical', '1:1': 'square', '16:9': 'landscape', '4:5': 'portrait', '2:3': 'tall', '21:9': 'ultrawide' };
 // Field labels follow what the template films: a product, an app, an event, a topic...
 const SUBJECT_HINTS = {
   product: { subject: 'Product name', subjectPh: 'MegaMax', url: 'Product page' },
@@ -2643,8 +2971,10 @@ async function renderBrand() {
       ${[['', "The motion style's own"], ['snappy', 'Snappy: fast start, quiet stop'], ['soft', 'Soft: eases in and out'], ['spring', 'Spring: overshoots a little, then settles']].map(([v, l]) => `<option value="${v}"${(b.ease || '') === v ? ' selected' : ''}>${l}</option>`).join('')}${b.ease && !['snappy', 'soft', 'spring'].includes(b.ease) ? `<option value="${esc(b.ease)}" selected>Custom curve (from brand.json)</option>` : ''}</select>
       <span class="muted hint" id="br-easehint">The curve every move without its own curve follows, so the brand moves the same way in every video. Applies on the next prepare.</span></div>
     <div class="grid2"><div class="f"><label for="br-backdrop">Backdrop (WebGL)</label><select id="br-backdrop" aria-describedby="br-gfxhint">${[['', 'None'], ...Object.entries(BACKDROP_NAMES)].map(([v, l]) => `<option value="${v}"${(b.backdrop || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
-      <div class="f"><label for="br-wipe">Cut wipe (WebGL)</label><select id="br-wipe" aria-describedby="br-gfxhint">${[['', 'None'], ['liquid', 'Liquid wipe']].map(([v, l]) => `<option value="${v}"${(b.wipe || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
+      <div class="f"><label for="br-wipe">Cut wipe (WebGL)</label><select id="br-wipe" aria-describedby="br-gfxhint">${[['', 'None'], ['liquid', 'Liquid wipe'], ['iris', 'Iris'], ['burn', 'Burn'], ['glitch', 'Glitch'], ['flash', 'Flash through white']].map(([v, l]) => `<option value="${v}"${(b.wipe || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
     <span class="muted hint" id="br-gfxhint">Drawn in the brand colours. The backdrop moves slowly behind every scene that has no background of its own; the wipe sweeps a band across the frame at every scene change. Applies on the next prepare.</span>
+    <div class="f" style="max-width:360px"><label for="br-blend">Cut blend</label><select id="br-blend" aria-describedby="br-blendhint">${[['', 'None'], ['whip', 'Whip pan'], ['zoom', 'Zoom through'], ['warp', 'Cross warp'], ['split', 'Colour split']].map(([v, l]) => `<option value="${v}"${(b.blend || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <span class="muted hint" id="br-blendhint">Both scenes show for half a second around every scene change and are mixed: they slide past with a motion blur, zoom through, bend into each other, or split into colours. It replaces the cut wipe, so picking one sets the other to None. Applies on the next prepare.</span></div>
     <div class="grid2"><div class="f"><label for="br-substyle">Subtitles</label><select id="br-substyle" aria-describedby="br-subhint">${subOptions(b.subtitles)}</select></div>
       <div class="f"><label for="br-subfont">Subtitle font</label><select id="br-subfont">${['Roboto', 'Montserrat', 'Inter', 'brand'].map((x) => `<option value="${x}"${(b.subtitles?.font || 'Roboto') === x ? ' selected' : ''}>${x === 'brand' ? 'Brand body font' : x}</option>`).join('')}</select></div></div>
     <span class="muted hint" id="br-subhint">One look for every clip of this brand. Classic: white words on a light blurred box. Highlighter: the same, with a marker sweeping across the spoken word. Minimal: white words with a dark halo, fading softly. Pill: a pill in the marker colour slides from word to word. Pop: larger words pop in one by one as they are spoken. Each shows a few words at a time, sized for a phone and kept clear of player controls. Applies on the next prepare.</span>
@@ -2652,6 +2982,8 @@ async function renderBrand() {
     <h3>Voice-over</h3>
     <div class="grid2"><div class="f"><label for="br-tts">Voice engine</label><select id="br-tts">${engines.map((e) => `<option value="${esc(e.id)}" ${tts === e.id ? 'selected' : ''} ${e.available ? '' : 'disabled'}>${esc(e.label)}${e.available ? '' : ` (unavailable: ${esc(e.reason || '')})`}</option>`).join('')}</select></div>
       <div class="f"><label for="br-voice">Voice</label><select id="br-voice">${voiceOptions(tts, b.voice?.voice)}</select></div></div>
+    <div class="f"><label for="br-cloud">Cloud voice id (ElevenLabs, optional)</label><input id="br-cloud" maxlength="40" pattern="[A-Za-z0-9]{8,40}" value="${esc(b.voice?.cloud?.voice || '')}" aria-describedby="br-cloudhint">
+      <span class="muted hint" id="br-cloudhint">With a voice id here and ELEVENLABS_API_KEY in .env, each job gets a Make cloud voice button in its Script tab: every line is made once on your key, with word times for the captions. Lines not made keep the voice above.</span></div>
     <div class="row"><div class="f" style="width:160px"><label for="br-speed">Speed</label><input id="br-speed" type="number" min="0.6" max="1.5" step="0.05" value="${esc(b.voice?.speed ?? 1)}"></div>
       <button class="btn" type="button" id="br-vprev" style="align-self:flex-end">▶ Preview voice</button><audio id="br-vaudio" preload="none"></audio>
       <span class="muted mono" id="br-vnote" style="align-self:flex-end"></span></div>
@@ -2776,6 +3108,9 @@ async function renderBrand() {
     $('#br-revealrow').hidden = !o.reveal;
   };
   $('#br-motion').addEventListener('change', drawMotion);
+  // A brand takes a cut wipe or a cut blend, not both (validateBrand).
+  $('#br-wipe').addEventListener('change', () => { if ($('#br-wipe').value) $('#br-blend').value = ''; });
+  $('#br-blend').addEventListener('change', () => { if ($('#br-blend').value) $('#br-wipe').value = ''; });
   drawMotion();
   const drawLogoPreview = () => {
     const l = $('#br-logo').value, dk = $('#br-logodark').value || l;
@@ -3138,7 +3473,8 @@ async function renderBrand() {
         colors: Object.fromEntries(COLORS.map(([k]) => [k, $(`#brc-${k}`).value])),
         palette,
         fonts: { ...b.fonts, display: $('#br-fd').value.trim(), body: $('#br-fb').value.trim(), googleFonts: $('#br-gf').value.trim(), files: fontFiles },
-        voice: { ...b.voice, tts: $('#br-tts').value, voice: $('#br-voice').value, speed: num('#br-speed', 'Voice speed', 0.6, 1.5), say: parseSay($('#br-say').value) ?? undefined, cleanup: $('#br-cleanup').checked || undefined },
+        voice: { ...b.voice, tts: $('#br-tts').value, voice: $('#br-voice').value, speed: num('#br-speed', 'Voice speed', 0.6, 1.5), say: parseSay($('#br-say').value) ?? undefined, cleanup: $('#br-cleanup').checked || undefined,
+          cloud: $('#br-cloud').value.trim() ? { provider: 'elevenlabs', voice: $('#br-cloud').value.trim(), ...(b.voice?.cloud?.model ? { model: b.voice.cloud.model } : {}) } : undefined },
         motion: $('#br-motion').value,
         film: motionOpt($('#br-motion').value).film && !$('#br-film').checked ? false : undefined,
         shine: $('#br-shine').checked,
@@ -3149,6 +3485,7 @@ async function renderBrand() {
         carry: motionOpt($('#br-motion').value).carry && $('#br-carry').checked ? true : undefined,
         backdrop: $('#br-backdrop').value || undefined,
         wipe: $('#br-wipe').value || undefined,
+        blend: $('#br-blend').value || undefined,
         subtitles: subValue(b.subtitles, $('#br-substyle').value, $('#br-subfont').value),
         music: { file: $('#br-music').value || null, gainDb: num('#br-gain', 'Music level (dB)', -40, 0), duck: $('#br-duck').checked },
         sfx: sfxOn ? { cut: $('#br-sfx').value, gainDb: num('#br-sfxgain', 'Cut sound level (dB)', -30, 0) } : undefined,

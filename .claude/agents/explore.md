@@ -48,5 +48,5 @@ Say so explicitly. Do not invent file paths, function names, or behavior. If `.a
 
 ## MCP Use
 
-- `context7` — fetch up-to-date library docs (GSAP 3, playwright-core, ffmpeg, Node 20 APIs) when training data may be stale
+- `context7` — fetch up-to-date library docs (GSAP 3, playwright-core, ffmpeg, Node 22+ APIs) when training data may be stale
 - `deepwiki` — fetch deepwiki content when the caller references an external open-source library by URL or name

@@ -11,6 +11,7 @@ import {
 import {
   STEPS, PLATFORMS, listProjects, listTemplates, listJobs, loadBrief, validateBrief, saveBrief, updateBrief, getStatus, setStatus,
   jobDir, jobFile, profileDir, listAssets, loadVoiceNotes, loadBrand, humanEdit, editDirtyFrom, loadBriefTemplate, createProject, deleteProject, deleteJob,
+  markDirty,
 } from '../engine/jobs.mjs';
 import { sceneHelp } from '../engine/help.mjs';
 import { MAX_MIX_EXTRAS } from '../engine/mix.mjs';
@@ -45,6 +46,8 @@ import { keyEnvNames, loadKeysFromEnvFile } from './keys.mjs';
 import { templatePreview, previewFile } from '../engine/template-preview.mjs';
 import { writeBanner, bannerFile, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES, BANNER_LIMITS } from '../engine/banner.mjs';
 import { transitionPreview, transitionPreviewFile } from '../engine/transition-preview.mjs';
+import { nodeProblem } from '../engine/runtime.mjs';
+import { FILES as VOICE_CLOUD_FILES, startCloudVoice, voiceCloudState, voiceCloudHas } from './voice-cloud.mjs';
 import { COOKIE, lanInterface, newCode, codeMatches, cookieCode, reviewRoute, reviewPage } from './review.mjs';
 import {
   evidenceConfig, repoAliases, resolveRepo, gitSearch, csvEvidence, csvColumns, decodeCsv, csvName, MAX_CSV_BYTES, MAX_RANGES, MAX_TICKETS,
@@ -63,7 +66,9 @@ const PROVIDERS_FILE = path.join(DIRS.config, 'providers.json');
 
 // Fixed path, read once here: no request or config value can point the server at another file.
 try {
-  const loaded = loadKeysFromEnvFile(path.join(ROOT, '.env'), keyEnvNames(readJson(PROVIDERS_FILE)), process.env);
+  const voiceKey = cfg.voiceCloud?.keyEnv ? { providers: { voiceCloud: { keyEnv: cfg.voiceCloud.keyEnv } } } : null;
+  const names = [...new Set([...keyEnvNames(readJson(PROVIDERS_FILE)), ...keyEnvNames(voiceKey)])];
+  const loaded = loadKeysFromEnvFile(path.join(ROOT, '.env'), names, process.env);
   if (loaded.length) console.log(`Keys from .env: ${loaded.join(', ')}`);
 } catch (err) {
   console.error(`Could not read .env (${err.code || 'unreadable'}). Keys come from the environment only.`);
@@ -399,6 +404,8 @@ function jobDetail(project, id) {
     },
     running: running.get(`${project}/${id}`) || null,
     music: musicFor(project, script?.look),
+    // The Timeline's cut markers: the brand's cut sound under the script's look, for scenes that set none.
+    cutSound: lookBrand(lookProblem(script?.look) ? null : script?.look, loadBrand(project)).sfx?.cut || 'none',
     looks: LOOK_NAMES,
     template: beats,
     help: sceneHelp(beats),
@@ -541,6 +548,22 @@ async function api(req, res, url, review = false) {
     loadBrief(project, id); // a sequence shares out/<project>/<id>/: job actions need a real brief
     if (m === 'GET' && action === 'review' && parts.length === 4) return send(res, 200, reviewOf(project, id));
     if (m === 'GET' && action === 'notes' && parts.length === 4) return send(res, 200, { notes: loadNotes(project, id) });
+    // Make cloud voice: never through the review link (its allowlist has no such route).
+    if (action === 'cloud-voice' && !review) {
+      if (m === 'GET' && parts.length === 4) return send(res, 200, voiceCloudState(cfg.voiceCloud, project, id));
+      if (m === 'DELETE' && parts[4] === 'pause' && parts.length === 5) { clearPauseFile(VOICE_CLOUD_FILES.pause); return send(res, 200, { ok: true }); }
+      if (m === 'POST' && parts.length === 4) {
+        const st = getStatus(project, id);
+        if (BLOCKED_WHILE_BUSY.includes(st.status) || st.status === 'scripting') throw new StudioError(`Job is ${st.status}; wait until it finishes`, 409);
+        if (directorHas(project, id)) throw new StudioError('The Director is working on this job. Wait for it to finish.', 409);
+        // New lines change what prepare hears: a job past prepare goes back to step 5.
+        const onDone = (run) => {
+          const now = getStatus(project, id).status;
+          if (['awaiting_review', 'approved', 'done', 'error'].includes(now)) markDirty(project, id, 5, { by: run.by });
+        };
+        return send(res, 202, startCloudVoice(cfg.voiceCloud, { project, job: id, by: USER, onDone }));
+      }
+    }
     if (m === 'DELETE' && action === 'notes' && parts.length === 5) {
       if (!/^\d{1,4}$/.test(parts[4])) throw new StudioError('Give the note number', 400);
       return send(res, 200, deleteNote(project, id, parts[4]));
@@ -592,6 +615,7 @@ async function api(req, res, url, review = false) {
       if (directorHas(project, id)) throw new StudioError('The Director is working on this job. Wait for it to finish.', 409);
       const what = body.action;
       if (!['prepare', 'render'].includes(what)) throw new StudioError('action must be prepare or render', 400);
+      if (voiceCloudHas(project, id)) throw new StudioError('Cloud voice lines are being made for this job. Wait for them to finish.', 409);
       assertNoDrafts(readJson(jobFile(project, id, 'script.json'), null));
       if (what === 'prepare' && (st.dirty_from || 99) < 5) {
         throw new StudioError('This change needs the Director first: click Run Director, or type /studio run in Claude Code', 409);
@@ -659,6 +683,7 @@ async function api(req, res, url, review = false) {
       if ([...running.keys()].some((k) => k.startsWith(`${project}/`))) throw new StudioError('A prepare or render of this project is running. Wait for it to finish.', 409);
       if (directorHas(project)) throw new StudioError('The Director is working on this project. Wait for it to finish.', 409);
       if (generateHas(project)) throw new StudioError('A Gemini generation for this project is running. Wait for it to finish.', 409);
+      if (voiceCloudHas(project)) throw new StudioError('A cloud voice run for this project is going. Wait for it to finish.', 409);
       return send(res, 200, deleteProject(project, String(body.confirm || '')));
     }
     if (m === 'GET' && parts.length === 2) {
@@ -836,12 +861,15 @@ ensureMusic().catch((err) => console.error('Built-in music could not be generate
 server.listen(port, host, () => {
   console.log(`Motion Studio UI: http://${host}:${port}  (local only)`);
   console.log('Director: click Run Director in the UI (Claude Code headless on your seat, or the API provider picked in the panel), or type /studio run in Claude Code');
+  if (nodeProblem()) console.warn(`Warning: ${nodeProblem()}.`);
 });
 
 /* ---------- read-only review link (opt-in: npm run ui:review) ---------- */
 if (process.argv.includes('--review')) startReview();
 
 function startReview() {
+  // The review link is the one piece other machines reach, so it waits for a Node with the security fixes.
+  if (nodeProblem()) { console.error(`Review link not started: ${nodeProblem()}.`); return; }
   let lan;
   try { lan = lanInterface(cfg.server.reviewHost || ''); } catch (err) { console.error(`Review link not started: ${err.message}`); return; }
   const ip = lan.address;

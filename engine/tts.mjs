@@ -5,7 +5,8 @@ import { spawn } from 'node:child_process';
 import { ROOT, StudioError, round, readJson, writeJson, keyFreeEnv } from './core.mjs';
 import { ffmpeg, killTree, mediaTimeoutMs } from './media.mjs';
 import { wordsOf, stressAt } from './script.mjs';
-import { resolvePace, sceneGaps } from './timing.mjs';
+import { resolvePace, sceneGaps, sceneHold } from './timing.mjs';
+import { cloudTake } from './cloudvoice.mjs';
 import { kokoroStatus, kokoroSpeak, kokoroVoices, writeWav, voicedSpan, voicedPauses, SAMPLE_RATE as KOKORO_RATE } from './tts/kokoro.mjs';
 
 const VOICE_RE = /^[A-Za-z0-9 _()-]{1,60}$/;
@@ -353,7 +354,7 @@ export function stressFilter(spans) {
  */
 export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed = null, snap = null, tight = false, take = null) {
   const silent = { seconds: 0, words: [] };
-  let provider = 'take', voice = take?.asset, speak = async (sc) => take.lines[sc.id] || silent;
+  let provider = 'take', voice = take?.asset, speak = async (sc) => take.lines[sc.id] || silent, cloudUse = null;
   if (!take) {
     provider = ttsProvider(brand).name;
     voice = brand.voice?.voice || (provider === 'kokoro' ? 'af_heart' : 'Microsoft Zira Desktop');
@@ -372,6 +373,18 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
       }
       return provider === 'kokoro' ? speakKokoro(cache, text, v, speed, innerBoundaries(groups)) : speakLine(cache, text, v, rate);
     };
+    // A brand with a cloud voice uses the lines a person made with Make cloud voice; a line not made (or changed
+    // since) keeps the local voice and is named in timing.cloud.stale. A cast speaker keeps its local voice.
+    if (brand.voice?.cloud) {
+      const saved = cloudTake(jobDirPath, brand.voice.cloud), local = speak;
+      cloudUse = { used: [], stale: [] };
+      speak = async (sc, text, groups) => {
+        const l = sc.speaker ? null : saved.get(text);
+        if (l) { cloudUse.used.push(sc.id); return l; }
+        if (!sc.speaker) cloudUse.stale.push(sc.id);
+        return local(sc, text, groups);
+      };
+    }
   }
 
   const scenes = [];
@@ -392,7 +405,9 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     // The clip may start before the cut: its leading silence overlaps the previous scene's tail, or is cut off at 0.
     const at = span ? t + lead - span.start : t + lead;
     const spoken = span ? at - t + span.end : lead + line.seconds;
-    const raw = fixed?.[sc.id] ?? Math.max(minScene, spoken + tail);
+    // `hold`: quiet after the line (or the clip that fixes the scene), before the next scene's gap.
+    const hold = sceneHold(sc);
+    const raw = (fixed?.[sc.id] ?? Math.max(minScene, spoken + tail)) + hold;
     const dur = snap && fixed?.[sc.id] === undefined ? snap(t + raw) - t : raw;
     const tokens = wordsOf(text);
     let said = line.words.length ? line.words : tokens.map((w, i, a) => ({ w, at: (line.seconds * i) / a.length }));
@@ -408,7 +423,7 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
       const next = said[i + 1]?.at ?? (span ? span.end : line.seconds);
       words.push({ w: x.w, start: round(Math.max(t, at + x.at)), end: round(at + Math.max(x.at + 0.05, next - 0.03)), scene: sc.id });
     });
-    scenes.push({ id: sc.id, start: round(t), end: round(t + dur) });
+    scenes.push({ id: sc.id, start: round(t), end: round(t + dur), ...(hold ? { hold } : {}) });
     t += dur;
   }
   const duration = round(t);
@@ -425,5 +440,5 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
     await ffmpeg(args, { timeoutMs: mediaTimeoutMs(duration) });
   }
   const lang = script.lang || brand.voice?.lang || 'en';
-  return { source: take ? 'take' : 'tts', provider, voice, lang, duration, scenes, words, ...(take ? { take: take.summary } : {}) };
+  return { source: take ? 'take' : 'tts', provider, voice, lang, duration, scenes, words, ...(take ? { take: take.summary } : {}), ...(cloudUse ? { cloud: cloudUse } : {}) };
 }

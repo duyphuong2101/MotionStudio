@@ -2,8 +2,8 @@
 // (fetch would carry the key header to the next host) and no key in any text it returns.
 import { StudioError } from '../engine/core.mjs';
 
-// Google (AIza…), OpenAI and Anthropic (sk-…, sk-ant-…) and xAI (xai-…) key shapes; configured keys are removed by value too.
-const KEY_RES = [/AIza[0-9A-Za-z_-]{20,}/g, /sk-ant-[A-Za-z0-9_-]{16,}/g, /sk-[A-Za-z0-9_-]{16,}/g, /xai-[A-Za-z0-9_-]{16,}/g];
+// Google (AIza…), OpenAI and Anthropic (sk-…, sk-ant-…), xAI (xai-…) and ElevenLabs (sk_…) key shapes; configured keys are removed by value too.
+const KEY_RES = [/AIza[0-9A-Za-z_-]{20,}/g, /sk-ant-[A-Za-z0-9_-]{16,}/g, /sk-[A-Za-z0-9_-]{16,}/g, /xai-[A-Za-z0-9_-]{16,}/g, /sk_[A-Za-z0-9]{24,}/g];
 
 /** `text` without the given key value(s) (a string or a list; values under 4 characters are ignored) or anything shaped like a key. */
 export function redact(text, keys) {

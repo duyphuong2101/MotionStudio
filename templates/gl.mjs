@@ -6,7 +6,7 @@ import { BACKDROPS, WIPES } from '../engine/brand.mjs';
 
 // Soft layers draw at a fraction of the frame and are scaled up: a gradient loses nothing and SwiftShader draws
 // a quarter of the pixels. Lit shapes keep the full size so their edges stay sharp. engine/banner.mjs draws at the same fractions.
-export const SCALE ={ mesh: 0.5, aurora: 0.5, flow: 0.75, shapes: 1, liquid: 0.5 };
+export const SCALE = { mesh: 0.5, aurora: 0.5, flow: 0.75, shapes: 1, liquid: 0.5, iris: 0.5, burn: 0.5, glitch: 0.5, flash: 0.5 };
 
 /** The WebGL layers a page draws, or null: none on a transparent overlay, and a wipe only where there is a cut. */
 export function glLayers(brand, transparent, sceneCount) {
@@ -36,8 +36,9 @@ export const cutWindows = (cuts, before, after) => cuts.map((c, k) => [c,
   ms(Math.min(before, k ? (c - cuts[k - 1]) / 2 : before)),
   ms(Math.min(after, k + 1 < cuts.length ? (cuts[k + 1] - c) / 2 : after))]);
 
-// The liquid band covers the frame by the cut and is gone this long after it (seconds), cuts far enough apart.
-const WIPE_IN = 0.5, WIPE_OUT = 0.5;
+// Each wipe covers the frame by the cut and is gone this long after it, as [before, after] seconds, cuts far
+// enough apart. A glitch snaps and a flash blinks, so theirs are short.
+export const WIPE_WINDOW = { liquid: [0.5, 0.5], iris: [0.45, 0.45], burn: [0.6, 0.5], glitch: [0.3, 0.3], flash: [0.2, 0.35] };
 
 /**
  * Page data: the colours each shader reads (bg, primary2, secondary, primary), how strongly a backdrop tints and,
@@ -45,7 +46,7 @@ const WIPE_IN = 0.5, WIPE_OUT = 0.5;
  */
 export const glData = (L, c, cuts = []) => ({
   ...L, colors: [c.bg, c.primary2, c.secondary, c.primary], strength: lum(c.bg) > 150 ? 0.55 : 0.75,
-  ...(L.wipe ? { cuts: cutWindows(cuts, WIPE_IN, WIPE_OUT) } : {}),
+  ...(L.wipe ? { cuts: cutWindows(cuts, ...WIPE_WINDOW[L.wipe]) } : {}),
 });
 
 const NOISE = `
@@ -54,6 +55,10 @@ float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}`;
 
 const HEAD = `precision highp float;uniform vec2 R;uniform float T,S;uniform vec3 C0,C1,C2,C3;${NOISE}`;
+// A wipe reads P0 (covering, 0 to 1 by the cut) and P1 (uncovering, from the cut), K the cut's index, and BH/BT how
+// far each edge travels in a quarter frame; on(p) is 1 only while that half moves. Output is premultiplied.
+const WIPE_HEAD = `precision highp float;uniform vec2 R;uniform vec3 C1,C2,C3;uniform float P0,P1,K,BH,BT;${NOISE}
+float on(float p){return step(.001,p)*(1.-step(.999,p));}`;
 
 // Fragment shaders. C0 is the brand background, C1 primary2, C2 the accent, C3 primary; S is the tint strength.
 const FRAG = {
@@ -89,6 +94,41 @@ float x=u.x+(fbm(vec2(u.y*2.5+K*3.1,K*1.7))-.5)*.22+(u.y-.5)*.12,head=mix(-.2,1.
 float body=(1.-smoothstep(head-bh,head+bh,x))*smoothstep(tail-bt,tail+bt,x);
 float edge=max(smoothstep(head-.04,head-.012,x),1.-smoothstep(tail+.012,tail+.04,x));
 vec3 col=mix(C3,C2,edge);gl_FragColor=vec4(col*body,body);}`,
+  // The wipes below follow HyperFrames' shader transitions (github.com/heygen-com/hyperframes, Apache-2.0), redrawn
+  // as brand-colour layers over the cut: a page cannot sample its own DOM, so nothing here reads the scenes.
+  // A primary disc closes on the middle of the frame and a hole opens from it, an accent ring on each moving edge.
+  iris: `${WIPE_HEAD}
+void main(){vec2 u=gl_FragCoord.xy/R;float ar=R.x/R.y,d=length(vec2((u.x-.5)*ar,u.y-.5)),M=.5*sqrt(ar*ar+1.)+.06;
+float rc=mix(M,-.06,P0),ro=mix(-.06,M,P1),wc=.006+.8*BH,wo=.006+.8*BT;
+float body=smoothstep(rc-wc,rc+wc,d)*smoothstep(ro-wo,ro+wo,d);
+float ring=max(on(P0)*exp(-pow((d-rc)/.025,2.)),on(P1)*exp(-pow((d-ro)/.025,2.)));
+float a=max(body,ring*.85);gl_FragColor=vec4(mix(C3,C2,ring)*a,a);}`,
+  // Ridged noise burns in across the frame and burns away again; the burning edge glows accent to white with sparks.
+  burn: `${WIPE_HEAD}
+float rg(vec2 p){float v=0.,a=.5;mat2 Q=mat2(.8,.6,-.6,.8);for(int i=0;i<5;i++){v+=a*abs(n(p)*2.-1.);p=Q*p*2.02;a*=.5;}return v;}
+void main(){vec2 u=gl_FragCoord.xy/R;if(mod(K,2.)>.5)u.x=1.-u.x;
+float v=mix(rg(vec2(u.x*R.x/R.y,u.y)*2.2+vec2(K*3.7,K*1.3)),u.x,.45),t0=mix(-.08,1.08,P0),t1=mix(-.08,1.08,P1),e0=.01+BH,e1=.01+BT;
+float body=(1.-smoothstep(t0-e0,t0+e0,v))*smoothstep(t1-e1,t1+e1,v);
+float heat=max(on(P0)*smoothstep(.07,0.,abs(v-t0)),on(P1)*smoothstep(.07,0.,abs(v-t1)));
+float spark=step(.94,h(floor(gl_FragCoord.xy/2.)+K))*heat;
+vec3 glow=mix(C2,vec3(1.),smoothstep(.55,1.,heat)*.7);
+float a=clamp(max(body,heat*.9+spark),0.,1.);gl_FragColor=vec4(mix(C3,glow,clamp(heat+spark,0.,1.))*a,a);}`,
+  // Rows of blocks snap across at their own offsets and jitter in steps; near the moving fronts the rows turn into
+  // primary2 and accent stripes with scanlines, and the covered middle stays plain primary.
+  glitch: `${WIPE_HEAD}
+void main(){vec2 u=gl_FragCoord.xy/R;if(mod(K,2.)>.5)u.x=1.-u.x;
+float r1=floor(u.y*7.),r2=floor(u.y*23.),s=.6*h(vec2(r1,K))+.4*h(vec2(r2,K+7.));
+float jit=.16*P0*(1.-P0)*(h(vec2(r2,floor(P0*10.)+K))-.5);
+float head=P0*1.7-s*.7+jit,tail=P1*1.7-s*.7,e0=.002+BH,e1=.002+BT;
+float body=(1.-smoothstep(head-e0,head+e0,u.x))*smoothstep(tail-e1,tail+e1,u.x);
+float c=h(vec2(r2,K+3.)),zone=max(on(P0)*(1.-smoothstep(0.,.22,head-u.x)),on(P1)*(1.-smoothstep(0.,.22,u.x-tail)));
+vec3 stripe=c<.5?C3:(c<.8?C1:C2),col=mix(C3,stripe,zone)*(1.-.12*zone*step(.5,fract(gl_FragCoord.y*.5)));
+gl_FragColor=vec4(col*body,body);}`,
+  // White blooms out from the middle with an accent fringe, fills the frame at the cut and fades off it.
+  flash: `${WIPE_HEAD}
+void main(){vec2 u=gl_FragCoord.xy/R;float ar=R.x/R.y,d=length(vec2((u.x-.5)*ar,u.y-.5));
+float a0=clamp(P0*2.-d*.9,0.,1.),fringe=on(P0)*a0*(1.-a0)*4.,a=a0*(1.-P1);
+gl_FragColor=vec4(mix(vec3(1.),C2,fringe*.6+P1*.2)*a,a);}`,
 };
 
 // Lit flat-shaded solids for the shapes backdrop; fog fades the far ones into the background.
@@ -156,7 +196,9 @@ const GL = (() => {
       const k = G.cuts.findIndex(([c, a, b]) => t > c - a && t < c + b);
       if (k >= 0) {
         const [c, a, b] = G.cuts[k], xh = (t - c + a) / a, xt = (t - c) / b;
-        wipe((u) => { gl.uniform1f(u.P0, ease(xh)); gl.uniform1f(u.P1, ease(xt)); gl.uniform1f(u.BH, smear(xh, a)); gl.uniform1f(u.BT, smear(xt, b)); gl.uniform1f(u.K, k); });
+        // A wipe that does not read a uniform has none (the compiler drops it).
+        const set = (u, n, v) => { if (u[n]) gl.uniform1f(u[n], v); };
+        wipe((u) => { set(u, 'P0', ease(xh)); set(u, 'P1', ease(xt)); set(u, 'BH', smear(xh, a)); set(u, 'BT', smear(xt, b)); set(u, 'K', k); });
       }
       gl.finish();
     });

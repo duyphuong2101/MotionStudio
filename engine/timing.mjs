@@ -1,5 +1,8 @@
 import { round } from './core.mjs';
-import { wordsOf } from './script.mjs';
+import { wordsOf, MAX_HOLD } from './script.mjs';
+
+/** A scene's `hold`: quiet seconds after its sound ends, before the next scene's gap (0 when absent or blank). */
+export const sceneHold = (sc) => round(Math.min(MAX_HOLD, Math.max(0, Number(sc?.hold) || 0)), 3);
 
 /** The pace entry for one scene: an extra template's own table in a mixed script (`byKind`), else the template's. */
 export function resolvePace(paceCfg, sc) {
@@ -36,13 +39,14 @@ export function estimateTiming(script, cfg, lang = 'en', paceCfg = null, fixed =
     const minScene = pace ? Math.max(pace.minScene, shots * pace.perShot) : cfg.minScene;
     const { lead, tail } = sceneGaps(cfg, pace, last, tight);
     // With a beat grid, a scene grows to end on the next beat (fixed footage lengths stay as they are).
-    const raw = fixed?.[sc.id] ?? Math.max(minScene, lead + speak + tail);
+    const hold = sceneHold(sc);
+    const raw = (fixed?.[sc.id] ?? Math.max(minScene, lead + speak + tail)) + hold;
     const dur = snap && fixed?.[sc.id] === undefined ? snap(t + raw) - t : raw;
     ws.forEach((w, i) => {
       const start = t + lead + i / wps;
       words.push({ w, start: round(start), end: round(start + 1 / wps - 0.04), scene: sc.id });
     });
-    scenes.push({ id: sc.id, start: round(t), end: round(t + dur) });
+    scenes.push({ id: sc.id, start: round(t), end: round(t + dur), ...(hold ? { hold } : {}) });
     t += dur;
   });
   return { source: 'estimated', lang, wordsPerSecond: wps, duration: round(t), scenes, words };

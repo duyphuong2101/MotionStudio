@@ -5,6 +5,7 @@ import { paletteCss } from './shared.mjs';
 import { SUBTITLE_STYLES, SUBTITLE_FONTS, REVEALS, brandEase, motionProfile } from '../engine/brand.mjs';
 import { marksToHtml, stripMarks } from '../engine/marks.mjs';
 import { glLayers, glBackdropHtml, glWipeHtml, glCss, glData, glJs, cutWindows } from './gl.mjs';
+import { blendOf, blendData, blendHtml, BLEND_CSS, blendCut, blendJs } from './blend.mjs';
 import { hasModels, MODEL_HEAD, MODEL_WAIT, MODEL_JS } from './model3d.mjs';
 import { hasLotties, LOTTIE_WAIT, LOTTIE_JS } from './lottie.mjs';
 
@@ -692,8 +693,11 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
   body = mk.html;
   const marks = mk.count > 0, shines = !!brand.shine && /class="btn[" ]/.test(body);
   const leaks = !!brand.leaks && !transparent && scenes.length > 1;
+  // brand.blend mixes both scenes over every cut (templates/blend.mjs) in place of the profile's cut. validateBrand
+  // refuses a wipe with it, so only a look can add one: the person's blend wins and the look's wipe is dropped.
+  const blend = blendOf(brand, transparent, scenes.length);
   // A WebGL backdrop replaces the floating particles; see templates/gl.mjs.
-  const GLL = glLayers(brand, transparent, scenes.length);
+  const GLL = glLayers(blend ? { ...brand, wipe: null } : brand, transparent, scenes.length);
   if (GLL?.backdrop) particles = false;
   // A 3D model scene loads three.js as a module; build() waits for every model (templates/model3d.mjs).
   const models = hasModels(body);
@@ -702,9 +706,9 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
   // A profile without particles draws film grain and a vignette (bg 'grain'; brand.film: false keeps the frame clean) or nothing.
   if (M.bg !== 'particles') particles = false;
   const film = M.bg === 'grain' && !transparent && brand.film !== false;
-  // The editorial panel sweeps over every cut, unless a brand wipe already does.
-  const panel = M.cut === 'panel' && !transparent && !GLL?.wipe && scenes.length > 1;
-  const veil = M.cut === 'blur' && !transparent && !GLL?.wipe && scenes.length > 1;
+  // The editorial panel sweeps over every cut, unless a brand wipe or blend already covers the cut.
+  const panel = M.cut === 'panel' && !transparent && !GLL?.wipe && !blend && scenes.length > 1;
+  const veil = M.cut === 'blur' && !transparent && !GLL?.wipe && !blend && scenes.length > 1;
   const carry = !!M.carrier && brand.carry === true && !transparent && scenes.length > 1;
   // Parallax layer drift; a renderer whose scenes are one drawn surface (ui-story's app window) passes layers: false.
   const drift = !!M.layers && layers;
@@ -751,7 +755,7 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
     if (caps) return caps[s.id].map(([a, b], k) => `<div class="subt${dark.has(s.id) ? ' subdark' : ''}" id="sub-${s.id}-${k}" data-lint><div class="sw">${P?.style === 'pill' ? '<i class="pl"></i>' : ''}${ws.slice(a, b + 1).map((w, i) => span(w, a + i)).join(' ')}</div></div>`).join('');
     return ws.length ? `<div class="subt${dark.has(s.id) ? ' subdark' : ''}" id="sub-${s.id}" data-lint><div class="sw">${ws.map(span).join(' ')}</div></div>` : '';
   }).join('') : '';
-  const data = { duration: timing.duration, W, H, U: g.U, land: g.land, port: g.port, scenes: sceneData, words: timing.words, stills, ink: c.ink, particle: rgb(c.primary2), ...(S ? { subs: { lit: S.lit, darkLit: S.darkLit } } : {}), ...(caps ? { caps } : {}), ...(GLL ? { gl: glData(GLL, c, cuts) } : {}), ...(leaks ? { leaks: cutWindows(cuts, LEAK_BEFORE, LEAK_AFTER) } : {}), ...(panel ? { cutPanel: cutWindows(cuts, PANEL_BEFORE, PANEL_AFTER).map((w, k) => [...w, scenes[k + 1].dark ? 1 : 0]) } : {}), ...(reveal ? { reveal } : {}), ...(ease ? { ease } : {}), ...(confetti ? { confetti: [c.secondary, c.primary, c.primary2] } : {}), ...extra };
+  const data = { duration: timing.duration, W, H, U: g.U, land: g.land, port: g.port, scenes: sceneData, words: timing.words, stills, ink: c.ink, particle: rgb(c.primary2), ...(S ? { subs: { lit: S.lit, darkLit: S.darkLit } } : {}), ...(caps ? { caps } : {}), ...(GLL ? { gl: glData(GLL, c, cuts) } : {}), ...(leaks ? { leaks: cutWindows(cuts, LEAK_BEFORE, LEAK_AFTER) } : {}), ...(panel ? { cutPanel: cutWindows(cuts, PANEL_BEFORE, PANEL_AFTER).map((w, k) => [...w, scenes[k + 1].dark ? 1 : 0]) } : {}), ...(reveal ? { reveal } : {}), ...(ease ? { ease } : {}), ...(confetti ? { confetti: [c.secondary, c.primary, c.primary2] } : {}), ...(blend ? { blend: blendData(blend, cuts) } : {}), ...extra };
   // Pages with <video data-clip data-start data-end> (footage inside a motion scene) seek each clip with the page clock.
   // Written only when such a clip exists, so every other page stays byte for byte the same.
   const clipJs = /<video[^>]* data-clip/.test(body) ? `
@@ -823,12 +827,12 @@ ${css}${transparent ? '\nhtml,body,#stage{background:transparent!important}#bgc{
 #leak{position:absolute;inset:0;z-index:20;pointer-events:none;opacity:0;overflow:hidden}
 #leak i{position:absolute;left:50%;top:50%;width:${px(1500)};height:${px(1500)};margin:${px(-750)} 0 0 ${px(-750)};border-radius:50%}
 #leak i:first-child{background:radial-gradient(circle,rgba(255,170,90,.62) 0%,rgba(255,122,60,.3) 34%,rgba(255,96,64,0) 68%)}
-#leak i:last-child{background:radial-gradient(circle,rgba(${rgb(c.secondary)},.48) 0%,rgba(${rgb(c.secondary)},.18) 38%,rgba(${rgb(c.secondary)},0) 66%)}` : ''}${GLL ? glCss(GLL, W, H) : ''}
+#leak i:last-child{background:radial-gradient(circle,rgba(${rgb(c.secondary)},.48) 0%,rgba(${rgb(c.secondary)},.18) 38%,rgba(${rgb(c.secondary)},0) 66%)}` : ''}${GLL ? glCss(GLL, W, H) : ''}${blend ? BLEND_CSS : ''}
 </style>
 </head>
 <body>
 <div id="stage">
-  <canvas id="bgc" width="${W}" height="${H}"></canvas>${GLL ? glBackdropHtml(GLL, W, H) : ''}
+  <canvas id="bgc" width="${W}" height="${H}"></canvas>${GLL ? glBackdropHtml(GLL, W, H) : ''}${blend ? blendHtml(blend, g.U) : ''}
   ${body}${leaks ? '\n  <div id="leak" aria-hidden="true"><i></i><i></i></div>' : ''}${panel ? '\n  <div id="cutpanel" class="cp" aria-hidden="true"></div>' : ''}${veil ? '\n  <div id="cutveil" aria-hidden="true"></div>' : ''}${carry ? '\n  <div id="carrier" aria-hidden="true"></div>' : ''}${GLL ? glWipeHtml(GLL, W, H) : ''}${film ? `\n  <div id="vig"></div><canvas id="grain" width="${Math.round(W / 2)}" height="${Math.round(H / 2)}"></canvas>` : ''}
   ${subHtml}${bug ? '\n  ' + bug : ''}
 </div>
@@ -851,7 +855,7 @@ ${reveal ? revealHelpers(helpersFor(M)) : helpersFor(M)}
 // A character count tween, not GSAP's TextPlugin: TextPlugin sets innerHTML, so any "<" in brief, script
 // or brand text (a code sample, a size like Vec<String>) is parsed as markup instead of shown as typed.
 const typeText = (el, at, dur) => { if (!el) return; const text = el.dataset.text; el.textContent = ''; const c = { n: 0 }; tl.fromTo(c, { n: 0 }, { n: text.length, duration: dur, ease: 'none', immediateRender: false, onUpdate: () => { el.textContent = text.slice(0, Math.round(c.n)); } }, at); };
-const draw = (els, at, dur = 1, o = {}) => { if (!els || (els.length === 0)) return; tl.fromTo(els, { drawSVG: '0%' }, { drawSVG: '100%', duration: dur, stagger: o.stagger ?? 0, ease: o.ease || 'power2.inOut', immediateRender: false }, at); };${marks || shines || confetti ? SHOWN_JS : ''}${marks ? MARK_JS : ''}${shines ? SHINE_JS : ''}${confetti ? CONFETTI_JS : ''}${leaks ? LEAK_JS : ''}${panel ? PANEL_JS : ''}${veil ? VEIL_JS : ''}${carry ? CARRY_JS : ''}${drift ? LAYER_JS : ''}${bug ? SURFACE_JS : ''}${GLL ? glJs(GLL) : ''}
+const draw = (els, at, dur = 1, o = {}) => { if (!els || (els.length === 0)) return; tl.fromTo(els, { drawSVG: '0%' }, { drawSVG: '100%', duration: dur, stagger: o.stagger ?? 0, ease: o.ease || 'power2.inOut', immediateRender: false }, at); };${marks || shines || confetti ? SHOWN_JS : ''}${marks ? MARK_JS : ''}${shines ? SHINE_JS : ''}${confetti ? CONFETTI_JS : ''}${leaks ? LEAK_JS : ''}${panel ? PANEL_JS : ''}${veil ? VEIL_JS : ''}${carry ? CARRY_JS : ''}${drift ? LAYER_JS : ''}${bug ? SURFACE_JS : ''}${GLL ? glJs(GLL) : ''}${blend ? blendJs(blend) : ''}
 
 ${js}
 
@@ -896,11 +900,11 @@ for (const m of ['to', 'from', 'fromTo', 'set']) {
   tl[m] = (...a) => { if (typeof a[at] === 'number' && a[at] < 0) a[at] = 0; return orig.apply(tl, a); };
 }
 
-function build() {${carry ? '\n  carryCuts();' : ''}
+function build() {${blend ? '\n  blendWrap();' : ''}${carry ? '\n  carryCuts();' : ''}
   D.scenes.forEach((sc, i) => {
     const s = sc.start, e = sc.end, last = i === D.scenes.length - 1, first = i === 0;
     const g = $('g-' + sc.id);
-${CUTS[M.cut](M)}${M.layers ? CAMERA(M, particles) : ''}
+${blend ? blendCut(M) : CUTS[M.cut](M)}${M.layers ? CAMERA(M, particles) : ''}
 ${caps ? `    // One caption line at a time: each slides in as its first word is spoken and is gone when the next starts.
     // An entrance always ends before its line is hidden, so a running tween never paints a line back.
     (D.caps[sc.id] || []).forEach(([a], k, lines) => {
@@ -959,7 +963,7 @@ ${bug ? `    // Corner logo: the dark-surface logo on a dark scene, the light-su
     if (g) shine(g, s, e);` : ''}${confetti ? `
     if (g) confetti(g, s, e);` : ''}${drift ? `
     if (g) layerDrift(g, s, e);` : ''}
-    if (g) preset(g, s);
+    if (g) preset(g, ${blend ? 's - blendPre(i)' : 's'});
   });${leaks ? '\n  lightLeaks();' : ''}${panel ? '\n  panelCuts();' : ''}${veil ? '\n  veilCuts();' : ''}
   tl.set({}, {}, D.duration);
 }
@@ -982,8 +986,8 @@ function drawBg(t) {
 }
 let afterSeek = null;${clipJs}${models ? MODEL_WAIT : ''}${lotties ? LOTTIE_WAIT : ''}${film ? GRAIN_JS : ''}
 // GSAP skips a seek to the time it already sits at, so the first frame (t = 0, where the timeline starts) is forced.
-window.seek = (t) => { t = Math.min(Math.max(+t || 0, 0), D.duration); if (t === 0) tl.render(0, false, true); else tl.seek(t, false);${particles ? ' drawBg(t);' : ''}${film ? ' drawGrain(t);' : ''}${GLL ? ' GL.draw(t);' : ''}${models ? ' if (window.__drawModels) window.__drawModels(t);' : ''}${lotties ? ' if (window.__drawLotties) window.__drawLotties(t);' : ''} ${clipJs ? 'const r = afterSeek ? afterSeek(t) : t; return Promise.resolve(r).then(() => seekClips(t)).then(() => r);' : 'return afterSeek ? afterSeek(t) : t;'} };
-window.__studio = { duration: D.duration, width: D.W, height: D.H, scenes: ${studioScenes}, stills: D.stills };
+window.seek = (t) => { t = Math.min(Math.max(+t || 0, 0), D.duration); if (t === 0) tl.render(0, false, true); else tl.seek(t, false);${particles ? ' drawBg(t);' : ''}${film ? ' drawGrain(t);' : ''}${GLL ? ' GL.draw(t);' : ''}${blend ? ' drawBlend(t);' : ''}${models ? ' if (window.__drawModels) window.__drawModels(t);' : ''}${lotties ? ' if (window.__drawLotties) window.__drawLotties(t);' : ''} ${clipJs ? 'const r = afterSeek ? afterSeek(t) : t; return Promise.resolve(r).then(() => seekClips(t)).then(() => r);' : 'return afterSeek ? afterSeek(t) : t;'} };
+window.__studio = { duration: D.duration, width: D.W, height: D.H, scenes: ${studioScenes}, stills: D.stills${blend ? ', blends: D.blend.cuts.map(([c, a, b]) => [c - a, c + b])' : ''} };
 const imgs = [...document.images].map((im) => (im.decode ? im.decode().catch(() => {}) : null));
 Promise.all([document.fonts.ready, ...imgs${clipJs ? ', ...clipsLoaded' : ''}${models ? ', modelsLoaded' : ''}${lotties ? ', lottiesLoaded' : ''}]).then(async () => { build(); if (window.__prepare) await window.__prepare(); await window.seek(0); window.__ready = true; });
 </script>${models ? MODEL_JS : ''}${lotties ? LOTTIE_JS : ''}

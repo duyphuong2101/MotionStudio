@@ -11,6 +11,8 @@ import { reviewOf, pacingTable, FLAG_TEXT } from './review.mjs';
 import { gitEvidence, aliasForPath, csvEvidence, readCsvFile } from './evidence.mjs';
 import { writeBanner, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES } from './banner.mjs';
 import { makePackGlb, DEPTH_RANGE } from './pack-glb.mjs';
+import { nodeProblem } from './runtime.mjs';
+import { importRemotion } from './remotion.mjs';
 
 const USAGE = `Motion Studio engine
 
@@ -49,6 +51,10 @@ const USAGE = `Motion Studio engine
   node engine/cli.mjs pack-glb <project> --front <pack.png> [--back <back.png>] [--name <pack.glb>] [--depth ${DEPTH_RANGE[0]}-${DEPTH_RANGE[1]}]
         [--replace]   a soft 3D pack (rounded pillow, print round the rim) from its pictures, saved as a brand asset for a
         model scene or a product-demo hero; transparent or black margins are trimmed (a pack shot on white keeps its margin, cut it first)
+  node engine/cli.mjs import-remotion <project> <dir> [--job <id>] [--template <id>] [--composition <id>] [--by name]
+        read a Remotion project's files as text (nothing in it is run) and write a queued brief: format and length from the
+        composition, its texts as fact lines naming their files, its scenes with their seconds in the notes, and the
+        public/ files it references saved as brand assets (default template explainer, first composition)
 `;
 
 /** `banner` flags, in the shape writeBanner takes (it validates them). */
@@ -141,6 +147,7 @@ const DIRECTOR_QUEUE =(st) => st.status === 'queued' || (st.status === 'dirty' &
 async function main(argv) {
   const args = [...argv];
   const cmd = args.shift();
+  if (nodeProblem()) console.error(`Warning: ${nodeProblem()}.`);
   const by = flag(args, 'by', process.env.USERNAME || process.env.USER || 'cli');
   const projectFilter = flag(args, 'project', undefined);
   const lang = flag(args, 'lang', '');
@@ -148,6 +155,7 @@ async function main(argv) {
   const queuedOnly = args.includes('--queued');
   const bench = cmd === 'bench' ? benchOptions(flag(args, 'seconds'), flag(args, 'workers')) : null;
   const banner = cmd === 'banner' ? bannerArgs(args) : null;
+  const remotion = cmd === 'import-remotion' ? { job: flag(args, 'job'), template: flag(args, 'template'), composition: flag(args, 'composition') } : null;
   const [project, id, extra] = args.filter((a) => !a.startsWith('--'));
 
   switch (cmd) {
@@ -259,6 +267,17 @@ async function main(argv) {
     case 'pack-glb': {
       const r = await makePackGlb(project, { front: flag(args, 'front'), back: flag(args, 'back'), name: flag(args, 'name'), depth: flag(args, 'depth', 0.3), replace: args.includes('--replace') });
       console.log(`${r.name}: ${r.bytes} bytes, pack ${r.crop.w}x${r.crop.h} at ${r.crop.x},${r.crop.y}, aspect ${r.aspect}`);
+      return;
+    }
+    case 'import-remotion': {
+      const { brief: b, read, assets, facts } = importRemotion(project, id, { ...remotion, by });
+      console.log(`${b.project}/${b.id}: queued brief, ${b.template} ${b.format}, ${b.duration} s`);
+      console.log(`  read ${read.files} file(s), ${Math.round(read.bytes / 1024)} KB${read.capped ? ' (cap reached: some files were not read)' : ''}; ${read.compositions.length} composition(s), ${read.scenes.length} scene(s)`);
+      for (const s of read.skipped) console.log(`  skipped ${s}`);
+      console.log(`  ${facts.lines} fact line(s)${facts.dropped || read.textsCapped ? ', more text found than the brief holds' : ''}`);
+      for (const a of assets.saved) console.log(`  asset ${a.name}${a.existing ? ' (already in the brand)' : ''} from ${a.ref}`);
+      for (const a of assets.skipped) console.log(`  not imported ${a.ref} (${a.from}): ${a.reason}`);
+      console.log('Run Director (or /studio run) picks it up.');
       return;
     }
     case 'reset-dirty': {
