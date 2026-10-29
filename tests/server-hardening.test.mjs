@@ -155,6 +155,16 @@ test('bodies and URLs that are not what a route expects answer 400 or 413, never
   assert.match(csp, /connect-src 'self'/, 'the composition page can fetch its own job assets (model3d\'s .glb)');
   assert.match(csp, /form-action 'none'/);
   assert.match(csp, /frame-src 'none'/);
+  // The UI page refuses to be framed by another site.
+  const ui = await request(PORT, '/');
+  assert.equal(ui.headers['x-frame-options'], 'DENY');
+  assert.match(ui.headers['content-security-policy'] || '', /frame-ancestors 'none'/);
+  // "bytes=-4" is the last 4 bytes of the file, not the first five.
+  fs.writeFileSync(path.join(dir, 'voice.wav'), 'RIFF0123456789');
+  const tail = await request(PORT, `/files/${P}/x/voice.wav`, { headers: { Range: 'bytes=-4' } });
+  assert.deepEqual([tail.status, tail.headers['content-range'], tail.text], [206, 'bytes 10-13/14', '6789']);
+  const head = await request(PORT, `/files/${P}/x/voice.wav`, { headers: { Range: 'bytes=0-3' } });
+  assert.deepEqual([head.status, head.text], [206, 'RIFF']);
   const vendor = await request(PORT, `/files/${P}/x/vendor/gsap.min.js`);
   assert.equal(vendor.status, 200);
   assert.ok(!vendor.headers['content-security-policy'], 'the composition\'s own script file is not sandboxed or CSP-limited itself');

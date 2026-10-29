@@ -3,6 +3,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { pipeline } from 'node:stream';
 import {
   ROOT, DIRS, StudioError, assertId, within, readJson, writeJson, exists, loadStudioConfig,
 } from '../engine/core.mjs';
@@ -119,11 +120,19 @@ function runEngine(action, project, id) {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   const log = fs.createWriteStream(logFile, { flags: 'w' });
   let bytes = 0;
+  // A log that cannot be written (locked, disk full) stops logging; an 'error' with no listener would end the server.
+  log.on('error', () => { bytes = Infinity; });
   const child = engineChild([action, project, id, '--by', USER]);
   const capped = (d) => { if (bytes < cfg.engine.maxLogBytes) { bytes += d.length; log.write(d); } };
   child.stdout.on('data', capped);
   child.stderr.on('data', capped);
+  child.on('error', (e) => capped(Buffer.from(`\nCould not start the engine: ${e.message}\n`)));
   const fail = action.startsWith('sequence') ? setSequenceStatus : setStatus;
+  const isBusy = () => (action.startsWith('sequence') ? action === 'sequence' && getSequenceStatus(project, id).status === 'rendering'
+    : ['preparing', 'rendering'].includes(getStatus(project, id).status));
+  // Busy before this child started means another process (a CLI in a terminal) holds the job: never touch that.
+  let busyBefore = true;
+  try { busyBefore = isBusy(); } catch { /* no status yet */ }
   const stop = (error, event) => {
     killTree(child);
     // A preview that stops leaves the sequence status alone; only its preview slot records the error.
@@ -133,7 +142,17 @@ function runEngine(action, project, id) {
   const timer = setTimeout(() => stop(`${action} timed out after ${cfg.engine.runTimeoutMinutes} min`, `${action} timed out`), cfg.engine.runTimeoutMinutes * 60000);
   hold(key, { action, startedAt: Date.now() }, child, { kind: action.startsWith('sequence') ? 'sequence' : 'job', action, project, id });
   let closed = false;
-  const done = new Promise((resolve) => child.on('close', () => { closed = true; clearTimeout(timer); release(key); log.end(); resolve(); }));
+  const done = new Promise((resolve) => child.on('close', (code) => {
+    closed = true; clearTimeout(timer); release(key); log.end();
+    // The engine sets error itself on a failure it catches. One it cannot catch (a crash, an unhandled rejection)
+    // would otherwise leave the job busy, refused everywhere until the server restarts.
+    if (code !== 0 && !busyBefore) {
+      try {
+        if (isBusy()) stop(`${action} stopped unexpectedly (exit code ${code}). See engine.log, then run it again.`, `${action} crashed`);
+      } catch { /* a job deleted meanwhile has no status to fix */ }
+    }
+    resolve();
+  }));
   // `kill(reason)` is for the API Director, which stops a prepare it started when its run is cancelled.
   return { started: action, done, kill: (reason) => { if (!closed) stop(reason, `${action} stopped`); } };
 }
@@ -149,10 +168,12 @@ function runAssetTask(action, project, asset, extra, logFile, minutes) {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   const log = fs.createWriteStream(logFile, { flags: 'w' });
   let bytes = 0;
+  log.on('error', () => { bytes = Infinity; });
   const child = engineChild([action, project, asset, ...extra]);
   const capped = (d) => { if (bytes < cfg.engine.maxLogBytes) { bytes += d.length; log.write(d); } };
   child.stdout.on('data', capped);
   child.stderr.on('data', capped);
+  child.on('error', (e) => capped(Buffer.from(`\nCould not start the engine: ${e.message}\n`)));
   const timer = setTimeout(() => { killTree(child); capped(Buffer.from(`\nError: ${action} timed out after ${minutes} min\n`)); }, minutes * 60000);
   hold(key, { action, asset, startedAt: Date.now() }, child, { kind: 'asset', action, project, asset });
   child.on('close', () => { clearTimeout(timer); release(key); log.end(); });
@@ -290,21 +311,28 @@ const COMPOSITION_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
 };
 
+// A read that fails mid-way (the file deleted by a prepare, a client gone) ends that response, never the server;
+// pipeline also closes the file when the client aborts, which a bare .pipe() does not.
+const sendStream = (src, res) => pipeline(src, res, () => {});
+
 function serveFile(req, res, file, extra = {}) {
-  if (!exists(file) || !fs.statSync(file).isFile()) { res.writeHead(404).end(); return; }
+  let st;
+  try { st = fs.statSync(file); } catch { st = null; }
+  if (!st?.isFile()) { res.writeHead(404).end(); return; }
   const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
-  const size = fs.statSync(file).size;
+  const size = st.size;
   const range = req.headers.range && /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
-  if (range && (type.startsWith('video/') || type.startsWith('audio/'))) {
-    const start = range[1] ? Number(range[1]) : 0;
-    const end = range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+  if (range && (range[1] || range[2]) && (type.startsWith('video/') || type.startsWith('audio/'))) {
+    // "bytes=-500" is a suffix: the last 500 bytes, not bytes 0-500.
+    const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+    const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
     if (start > end || start >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end(); return; }
     res.writeHead(206, { 'Content-Type': type, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Cache-Control': 'no-store', ...extra });
-    fs.createReadStream(file, { start, end }).pipe(res);
+    sendStream(fs.createReadStream(file, { start, end }), res);
     return;
   }
   res.writeHead(200, { 'Content-Type': type, 'Content-Length': size, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', ...extra });
-  fs.createReadStream(file).pipe(res);
+  sendStream(fs.createReadStream(file), res);
 }
 
 function providersPublic() {
@@ -751,7 +779,10 @@ const server = http.createServer(async (req, res) => {
       const [, , project, name] = url.pathname.split('/');
       return serveFile(req, res, within(path.join(profileDir(project), 'assets'), decodeURIComponent(name || '')), ASSET_HEADERS);
     }
-    if (url.pathname === '/' || url.pathname === '/index.html') return serveFile(req, res, path.join(DIRS.ui, 'index.html'));
+    // Never inside another site's frame: a hidden frame could steer clicks onto Run Director, Approve or Delete.
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      return serveFile(req, res, path.join(DIRS.ui, 'index.html'), { 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" });
+    }
     if (/^\/ui\/[a-z0-9-]+\.(js|css)$/.test(url.pathname)) return serveFile(req, res, path.join(DIRS.ui, path.basename(url.pathname)));
     if (url.pathname === '/favicon.ico') { res.writeHead(204).end(); return; }
     res.writeHead(404).end();
