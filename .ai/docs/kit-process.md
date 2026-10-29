@@ -67,7 +67,7 @@ Approval is UI-only for every agent: `node engine/cli.mjs approve` refuses (`tes
 
 | Agent | Always-on rules | `/studio` | Skill copy | Asks before render/sequence |
 |---|---|---|---|---|
-| Claude Code | `CLAUDE.md` | skill `studio` | `.claude/skills/studio/` (the source) | seat allowlist (`director.allowedTools`) refuses them |
+| Claude Code | `CLAUDE.md` | skill `studio` | `.claude/skills/studio/` (the source) | Run Director: the seat allowlist (`director.allowedTools`, project and local settings not loaded) refuses them; a typed `/studio run` runs under your own permission settings |
 | Cursor | `AGENTS.md`, `.cursor/rules/` | `.cursor/commands/studio.md` | `.cursor/skills/studio/` | `.cursor/hooks/ask-before-render.js` |
 | GitHub Copilot | `.github/copilot-instructions.md` | `.github/prompts/studio.prompt.md` | `.agents/skills/studio/` | `.vscode/settings.json` → `chat.tools.terminal.autoApprove` |
 | Google Antigravity | `.agents/rules/motion-studio.md` (+ `AGENTS.md` on versions that read it) | `.agents/workflows/studio.md` | `.agents/skills/studio/` | none in the repo (optional: the terminal deny list in Antigravity's settings) |
@@ -75,7 +75,7 @@ Approval is UI-only for every agent: `node engine/cli.mjs approve` refuses (`tes
 
 A plain request needs no command file: `AGENTS.md` says it means "read `.agents/skills/studio/SKILL.md` and follow it", with actor `<tool>-agent` (e.g. `codex-agent`). The skill's three generated blocks (shared, full script, quick mode) come from `server/worker/director-*.md` through `node .ai/scripts/sync-director-prompt.js`.
 
-Quick mode takes no extra setup in any agent. When `cli context` for the job has a `quick` block, the skill's run loop writes `outline.draft.json` and runs `commit <project> <job> outline` instead of writing a script. The engine expands the outline and repairs it mechanically. It answers with the repairs and warnings, and an over-limit field comes back as an error that names the cut. The agent writes only the job's draft files (source, script or outline) and runs only the CLI commands the skill lists. The seat allowlist already covers both (`Edit(out/**)`, `Bash(node engine/cli.mjs commit *)`).
+Quick mode takes no extra setup in any agent. When `cli context` for the job has a `quick` block, the skill's run loop writes `outline.draft.json` and runs `commit <project> <job> outline` instead of writing a script. The engine expands the outline and repairs it mechanically. It answers with the repairs and warnings, and an over-limit field comes back as an error that names the cut. The agent writes only the job's draft files (source, script or outline) and runs only the CLI commands the skill lists. The seat allowlist already covers both (`Edit(out/*/*/outline.draft.json)` beside the source and script draft rules, and `Bash(node engine/cli.mjs commit *)`); it allows no other Edit under `out/`.
 
 Outside the seat the Director runs on that tool's own model and account; the caps are the ones the skill states (`director.maxJobsPerRun` through `list --queued`, two fix rounds, one run at a time). `tests/worker-prompt.test.mjs` fails when a skill copy or a rules block drifts.
 
