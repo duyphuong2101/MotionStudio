@@ -18,7 +18,9 @@ const THREE_FILES = {
 };
 
 // lottie-web's SVG player for a page with a Lottie scene (templates/lottie.mjs): the one file the page loads.
-const LOTTIE_FILE = require.resolve('lottie-web/build/player/lottie_svg.min.js');
+// The "light" build drops the After Effects expression engine (an eval() over field `x` on every layer/shape,
+// plus Math.random()): a page is deterministic only if nothing in it can run arbitrary script or vary per seek.
+const LOTTIE_FILE = require.resolve('lottie-web/build/player/lottie_light.min.js');
 
 export function copyLottie(dir) {
   fs.mkdirSync(path.join(dir, 'vendor'), { recursive: true });

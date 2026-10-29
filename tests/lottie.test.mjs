@@ -38,6 +38,20 @@ test('a .json upload must be a Lottie animation and is listed with the brand ass
   assert.throws(() => saveAsset(project, 'config.json', Buffer.from('{"keyEnv":"X"}')), /not a Lottie animation/);
   assert.deepEqual(saveAsset(project, 'spin.json', sampleLottie()), { name: 'spin.json', bytes: sampleLottie().length });
   assert.deepEqual(listAssets(project), ['spin.json']);
+
+  // An expression runs through eval() in a full lottie-web build, and an outside picture is fetched at render:
+  // both are refused. Keyframe easing's x (an array) and an embedded data: picture are fine.
+  const base = JSON.parse(sampleLottie().toString());
+  const withExpr = structuredClone(base);
+  withExpr.layers[0].ks.o = { a: 0, k: 100, x: "fetch('/api/director/run')" };
+  assert.throws(() => saveAsset(project, 'expr.json', Buffer.from(JSON.stringify(withExpr))), /expressions/);
+  const linked = { ...base, assets: [{ id: 'img_0', w: 10, h: 10, u: 'images/', p: 'img_0.png', e: 0 }] };
+  assert.throws(() => saveAsset(project, 'linked.json', Buffer.from(JSON.stringify(linked))), /outside the file/);
+  const remote = { ...base, assets: [{ id: 'img_0', w: 10, h: 10, u: '', p: 'https://example.com/a.png', e: 1 }] };
+  assert.throws(() => saveAsset(project, 'remote.json', Buffer.from(JSON.stringify(remote))), /outside the file/);
+  assert.deepEqual(listAssets(project), ['spin.json'], 'refused files are never written');
+  const embedded = { ...base, assets: [{ id: 'img_0', w: 1, h: 1, u: '', p: 'data:image/png;base64,iVBORw0KGgo=', e: 1 }] };
+  assert.equal(saveAsset(project, 'embedded.json', Buffer.from(JSON.stringify(embedded))).name, 'embedded.json');
 });
 
 test('the explainer anim kind checks its file and draws a seeked Lottie box with the player', () => {

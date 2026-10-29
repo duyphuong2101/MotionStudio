@@ -1,5 +1,6 @@
 // A Lottie animation as a brand asset (a .json export from After Effects' Bodymovin or LottieFiles): the upload check,
 // and a small sample animation written from code for the Templates tab and the tests, so neither needs a file.
+import { StudioError } from './core.mjs';
 
 const MAX_LOTTIE_BYTES = 8 * 1024 * 1024;
 
@@ -10,6 +11,25 @@ export function isLottie(buf) {
   try { j = JSON.parse(buf.toString('utf8')); } catch { return false; }
   return !!j && typeof j === 'object' && !Array.isArray(j) && typeof j.v === 'string' && Number.isFinite(j.fr) && j.fr > 0
     && Number.isFinite(j.op) && j.op > (j.ip || 0) && Array.isArray(j.layers) && j.layers.length > 0;
+}
+
+// lottie-web runs an After Effects expression with eval(): the source is a string `x` on a property object (one
+// that carries `k`). Keyframe easing also uses `x`, but as an array of numbers inside `i`/`o`, never a string.
+const hasExpression = (node) => {
+  if (Array.isArray(node)) return node.some(hasExpression);
+  if (!node || typeof node !== 'object') return false;
+  if (typeof node.x === 'string' && node.x.trim() && Object.hasOwn(node, 'k')) return true;
+  return Object.values(node).some(hasExpression);
+};
+
+/** Refuses a Lottie file that would run script (an expression) or load a picture from outside the file. */
+export function assertSafeLottie(name, buf) {
+  const j = JSON.parse(buf.toString('utf8'));
+  if (hasExpression(j.layers) || hasExpression(j.assets)) {
+    throw new StudioError(`${name} uses After Effects expressions. Bake them to keyframes before export (Bodymovin: Settings > Expressions off, or "Convert expression to keyframes" in After Effects).`, 400);
+  }
+  const external = (j.assets || []).find((a) => a && typeof a.p === 'string' && !(a.e === 1 && /^data:/i.test(a.p)));
+  if (external) throw new StudioError(`${name} links the picture ${String(external.p).slice(0, 60)} outside the file. Export with images embedded (Bodymovin: Assets > Include in json).`, 400);
 }
 
 /** Seconds a Lottie file plays, from its in and out points and frame rate. */
