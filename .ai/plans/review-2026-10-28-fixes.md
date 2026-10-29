@@ -1,6 +1,6 @@
 # review-2026-10-28-fixes — fix every finding from the full-repo review
 
-**Status:** in-review (code done; three items wait on the user, see "Waiting on the user")
+**Status:** done (every finding fixed, or decided with the user; see "Decided with the user")
 **Author:** senior-dev (this session)
 **Branch:** master
 **Created:** 2026-10-29
@@ -19,7 +19,7 @@ This is a bug-fix sweep, not a new feature: each item already had a root cause a
 - [x] fc9dfd6 Lottie light player (no expression eval); uploads with expressions or outside pictures refused.
 - [x] 7de6bc7 Typed and swapped text never through TextPlugin's innerHTML (kit `typeText`, ui-story `swapText`).
 - [x] adcb3c7 Voice-take cuts seek on the input side (scene 2 on were silent).
-- [ ] P0-8 interactive-session gaps — **waiting on the user** (protected files). `/deploy-check` narrowed in the working tree, not committed yet.
+- [x] 1db8127 P0-8: `Bash(node -e *)` asks; the hooks refuse a secret read through an interpreter and ask before render/approve/sequence; `/deploy-check` narrowed; the NEVER sentence says what holds (user-approved).
 
 ### P1
 - [x] 115ccdd `dirty_from` read whatever the status.
@@ -36,7 +36,7 @@ This is a bug-fix sweep, not a new feature: each item already had a root cause a
 - [x] 3bb0951 Change-aware runner sees spawned entries, shared template modules, listTemplates, kit files read by tests, moved imports; server-evidence port.
 - [x] 3f46224 A server start does not reset another live server's API-run jobs.
 - [x] cdb77ae Chrome tests fail on a broken page; run.mjs prints skips.
-- [ ] P1-E7 look vs a brand's explicit "off" — **waiting on the user** (product decision, see below).
+- [x] P1-E7 look vs a brand's "None": kept as it is, by the user's decision (see below).
 
 ### P2
 - [x] 165bf35 Cross-site `/api` GETs refused; one Director run across servers; runEngine one run per job; video uploads one at a time, no second copy; fetch_page blocklist; worker-run loops bounded.
@@ -46,7 +46,7 @@ This is a bug-fix sweep, not a new feature: each item already had a root cause a
 - [x] 96783e4 product-tour `sameModel`; lifestyle dark frames (centre shade, photo cta); exact font/image file patterns.
 - [x] ce62e63 UI: preview stops with its job; bounded ready waits; polls keep the focus; one note post at a time, IME-safe; Shots list and sub-tab roles.
 - [x] 73a40d9 Docs: CLAUDE.md seat rules, kit-process, file-index.
-- [ ] P2-D1 `security-lint.js` repo patterns — **waiting on the user** (protected hook file).
+- [x] 2106e0d P2-D1: security-lint checks this repo's NEVER rules; shell:true scan matches parentheses (user-approved).
 
 ### Looked at and left as is (with the reason)
 - talking-head's video seek resolves on a 1.5 s timeout: renders use pre-cut frames; rejecting would fail a prepare under load, a worse failure than a stale still.
@@ -55,10 +55,9 @@ This is a bug-fix sweep, not a new feature: each item already had a root cause a
 - Seat run counts into RUNS_FILE and checks `files.runs`: the same file in production; only an injected test `files` differs.
 - A seat-run caps test with a fake claude.exe: not added (needs an injectable spawn); the caps logic is unchanged.
 
-## Waiting on the user
-1. P0-8: `.claude/settings.json` (`Bash(node -e *)` from allow to ask) and `.claude/hooks/block-destructive.js` (`node -e … readFileSync('.env')`, `npm run studio -- render|approve|sequence`); then the conventions NEVER line about "no coding agent can pass the review from a shell" can stay true. Both files are self-protected; editing them needs the user's go-ahead.
-2. P2-D1: `.claude/hooks/security-lint.js` (same protection).
-3. P1-E7: the Brand tab has no "unset" vs "None" for backdrop, wipe, motion, cut sound and music, so a look fills a field set to "None". Fixing it needs a third choice in the UI and a stored "off" value that every template reads; a product decision, not a bug fix.
+## Decided with the user (2026-10-29)
+1. P0-8 and P2-D1: the self-guarded settings and hook files were changed with the user's go-ahead.
+2. P1-E7: kept. The Brand tab's "None" is the same as unset, so a look fills it, matching the 2026-10-28 decision in engine/looks.mjs; a brand that wants nothing added picks the "Brand" look in the Script tab.
 
 ## Verify
 Each commit names its tests. Before closing: `npm test` in full (in progress at the time of writing).
