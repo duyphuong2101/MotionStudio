@@ -518,6 +518,15 @@ function uiStory() {
   let shown = [];
   let panelOpen = false;
   let iconShown = false;
+  let pageNow = '';
+  // A text that changes at \`at\`: \`from\` before it, \`to\` from then on, whichever way the clock moves. A tween's
+  // onUpdate runs on every seek that crosses or lands in it; a zero-length set's callback does not, so a jump and a
+  // play-through would show different text. Never innerHTML: the texts come from the script.
+  const swapText = (el, at, from, to) => {
+    if (!el) return;
+    const c = { n: 0 };
+    tl.fromTo(c, { n: 0 }, { n: 1, duration: 0.01, ease: 'none', immediateRender: false, onUpdate: () => { el.textContent = c.n >= 0.5 ? to : from; } }, at);
+  };
   gsap.set('#bshape', { drawSVG: '0%' });
   gsap.set('#bfill', { opacity: 0 });
   gsap.set('#btick', { drawSVG: '0%', opacity: 0 });
@@ -526,7 +535,12 @@ function uiStory() {
     const val = box.querySelector('.val'), ph = box.querySelector('.phd2');
     tl.to(box, { borderColor: '#2563eb', boxShadow: '0 0 0 3px rgba(37,99,235,.15)', duration: 0.15 }, at);
     if (ph) tl.set(ph, { display: 'none' }, at);
-    tl.to(val, { text: val.dataset.value, duration: dur, ease: 'none' }, at + 0.05);
+    // A character-count tween, not GSAP's TextPlugin: TextPlugin sets innerHTML, so a form value with
+    // "<" in it (a size, a price range) would be parsed as markup instead of shown as typed.
+    const text = val.dataset.value;
+    val.textContent = '';
+    const c = { n: 0 };
+    tl.fromTo(c, { n: 0 }, { n: text.length, duration: dur, ease: 'none', immediateRender: false, onUpdate: () => { val.textContent = text.slice(0, Math.round(c.n)); } }, at + 0.05);
     tl.to(box, { borderColor: '#d5d9e0', boxShadow: '0 0 0 0px rgba(37,99,235,0)', duration: 0.2 }, at + dur + 0.1);
   };
   const showIcon = (path, at) => {
@@ -626,7 +640,8 @@ ${hasShots ? "    if (sc.kind === 'shot') return shotScene(sc, s, e, idx, last);
       });
       navIdx = ni;
     }
-    if (sc.page) add(0.01, (t) => tl.to('#ptitle', { text: sc.page, duration: 0.01 }, t));
+    // swapText, not TextPlugin's text: (which sets innerHTML and would parse a page name like "Orders <2024>" as markup).
+    if (sc.page) { const from = pageNow; pageNow = sc.page; add(0.01, (t) => swapText($('ptitle'), t, from, sc.page)); }
     if (sc.layout && sc.layout !== 'same') {
       const v = $('v-' + sc.id);
       const hide = sc.modal ? [] : shown.slice();
@@ -671,7 +686,8 @@ ${hasShots ? "    if (sc.kind === 'shot') return shotScene(sc, s, e, idx, last);
           const tt = moveCursor(centerOf(btn), t, 0.6);
           tl.to(btn, { scale: 0.94, duration: 0.08, yoyo: true, repeat: 1 }, tt - 0.2);
           const badge = $(sc.id + '-badge');
-          if (badge && v.dataset.nb) tl.to(badge, { text: v.dataset.nb, color: v.dataset.nfg, backgroundColor: v.dataset.nbg, duration: 0.3 }, tt);
+          // color/backgroundColor animate; the text swaps as plain text, not through TextPlugin's innerHTML.
+          if (badge && v.dataset.nb) { tl.to(badge, { color: v.dataset.nfg, backgroundColor: v.dataset.nbg, duration: 0.3 }, tt); swapText(badge, tt, badge.textContent, v.dataset.nb); }
           const toast = $(sc.id + '-toast');
           if (toast) tl.fromTo(toast, { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, immediateRender: false }, tt + 0.15);
         });
@@ -704,7 +720,8 @@ ${hasShots ? "    if (sc.kind === 'shot') return shotScene(sc, s, e, idx, last);
         if (submit) {
           add(1.3, (t) => {
             const tt = moveCursor(centerOf(submit), t, 0.6);
-            tl.to(submit, { scale: 0.95, duration: 0.08, yoyo: true, repeat: 1 }, tt - 0.2).to(submit, { text: submit.dataset.busy, duration: 0.01 }, tt);
+            tl.to(submit, { scale: 0.95, duration: 0.08, yoyo: true, repeat: 1 }, tt - 0.2);
+            swapText(submit, tt, submit.textContent, submit.dataset.busy);
             const toast = $(sc.id + '-toast');
             if (toast) tl.fromTo(toast, { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, immediateRender: false }, tt + 0.25);
           });
@@ -735,10 +752,16 @@ ${hasShots ? "    if (sc.kind === 'shot') return shotScene(sc, s, e, idx, last);
       } else if (tn.type === 'user') {
         const typed = Math.min(1.8, Math.max(0.5, tn.text.length / 26));
         add(typed + 0.35, (t, kk) => {
-          tl.set('#ph', { opacity: 0 }, t).to('#typed', { text: tn.text, duration: typed * kk, ease: 'none' }, t)
-            .set('#typed', { text: '' }, t + typed * kk + 0.2).set('#ph', { opacity: 1 }, t + typed * kk + 0.2)
-            .fromTo(el, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3 }, t + typed * kk + 0.2);
-          scrollTo(el, t + typed * kk + 0.2);
+          const typedEl = $('typed'), dur = typed * kk, text = tn.text;
+          // A character-count tween, not TextPlugin's text: (which sets innerHTML and would parse a
+          // chat message like "cost < $50" as markup instead of showing it as typed).
+          const c = { n: 0 };
+          tl.set('#ph', { opacity: 0 }, t).fromTo(c, { n: 0 }, { n: text.length, duration: dur, ease: 'none', immediateRender: false, onUpdate: () => { typedEl.textContent = text.slice(0, Math.round(c.n)); } }, t)
+            .set('#ph', { opacity: 1 }, t + dur + 0.2)
+            .fromTo(el, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3 }, t + dur + 0.2);
+          // The message is sent: the input empties again.
+          swapText(typedEl, t + dur + 0.2, text, '');
+          scrollTo(el, t + dur + 0.2);
         });
       } else {
         add(0.55, (t) => { tl.set(el, { opacity: 1 }, t).fromTo($(el.id + '-dots').children, { opacity: 0.25 }, { opacity: 1, duration: 0.18, stagger: 0.1, yoyo: true, repeat: 1 }, t); scrollTo($(el.id + '-dots'), t); });
@@ -770,7 +793,8 @@ ${hasShots ? "    if (sc.kind === 'shot') return shotScene(sc, s, e, idx, last);
             add(1.0, (t) => {
               const btn = $(el.id + '-approve');
               const tt = moveCursor(centerOf(btn, true), t, 0.6);
-              tl.to(btn, { scale: 0.94, duration: 0.08, yoyo: true, repeat: 1 }, tt - 0.2).to(btn, { text: 'Approving…', duration: 0.01 }, tt);
+              tl.to(btn, { scale: 0.94, duration: 0.08, yoyo: true, repeat: 1 }, tt - 0.2);
+              swapText(btn, tt, btn.textContent, 'Approving…');
             });
           }
         }

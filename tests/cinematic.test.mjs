@@ -71,18 +71,20 @@ test('brand.motion takes standard or cinematic; only cinematic is stored', () =>
 // sha1 of build() for each template's sample in every format with motion: cinematic, recorded before the motion
 // profile refactor (plan motion-presets, T1), re-recorded on 2026-10-26 for the cut veil (every template) and the
 // diagram highlight tween (explainer). The same brand and timing as PARTS_BASELINE in templates.test.mjs.
+// Re-recorded 2026-10-29: typed text (the kit's typeText, every page) and ui-story's swapped texts no longer go through
+// TextPlugin, which set innerHTML; checked that only those two edits change the pages.
 const CINE_BASELINE = {
   // Explainer re-recorded 2026-10-26 for the model scene's studio lighting, shadow and new spins (MODEL_JS only).
   // Updated 2026-10-27: a model scene takes a camera path, exploded parts, a decal and a brand environment, a tour canvas, and the anim (Lottie) kind joined the sample (only MODEL_JS and the new kind; the pre-kind baselines leave anim out).
   // Updated 2026-10-28: a softer model contact shadow (a wider PCF blur, lighter ground); only MODEL_JS changed.
-  explainer: { '16:9': 'a75cdf5ff9b07a39b7936b1332cad0039443ceea', '1:1': '0464878dec3e16033d7ab495dee4decd99f11bcb', '9:16': '2b44718649f6205d546945548597ac8ed08d7f6d', '4:5': '24c19eca538ae267d24e329d49a017153e4ba56b', '2:3': '5a9df390d92b2fc05a0e4b68036e0559d0ff502b', '21:9': '3236fa7a6ec5f380c9cddb476e28e7eaa3ad6c8e' },
-  'data-story': { '16:9': '13bf0f66c84eef962a92cc935800ccc6f66faff6', '1:1': 'fa48b5c5d3f9fb15e13fd507c2dc09e4ce39743a', '9:16': '1d6f055c098fb2b2ca349f873a91986d983bde36', '4:5': '4011f406bbe8e0adcc9317781f5bb1f49e4204e8', '2:3': '71fcea9aed8bf09d7ec1485e1275be1f772b2df5', '21:9': '47d496c333a80adcb50a1a8594adb191aa97ba92' },
-  testimonial: { '9:16': '9c37f912046d00751aefdac80a9881a89fcc34ef', '1:1': '3424e497f1423edb6813bafb2e5c898b7e80039b', '16:9': '50ba7d60ae8656936d93978fe8ee90b2b6e6e2eb', '4:5': '0e61e29c107b9a7e518620ca894b2e8a877cd76c', '2:3': 'cb920da641071558bb124ba76c9f788821219e09', '21:9': 'f2cf16786093965ddce127d939a93f4d4f51338a' },
-  event: { '9:16': '3bd7f313bcdf509df98e8d0f6ca400f8b300a708', '1:1': '417fa6d6d66247e8aae26c10135ef7cb93a64595', '16:9': '1076b0cd21779ae0f34fc2434c967508c5f8eae5', '4:5': '514e3e30ce5f426f4ae6c87bdf1bce96dd3409fc', '2:3': 'c4148d58fefb831cb7b7dcd93098c7cfbee273e0', '21:9': 'b22f10e906ba30d39165a4912aa5090e0bceb792' },
+  explainer: { '16:9': '5aed368d846b0f60a48097b3dd96c320786534d2', '1:1': '831c1cf6d1b7f4616af9537e8879bae10892ac9c', '9:16': '14b02425c54de25a06b8981f6f1c554c539f7509', '4:5': 'd77f2bb121e8717d234dc3f65608578981bc0f05', '2:3': 'a70e0275f87a719e6d70598aab7b67330c27fa66', '21:9': '5b9bfec1e56ca8ccd9e0e67a93844c85fd0f6d76' },
+  'data-story': { '16:9': '02bfd0558abde63af4b8ae6595ac396b278605bb', '1:1': '6b8c44a3726d43d58de1c099de4491c5d73f3e3a', '9:16': '430c92b9ffad6fa569a9e73dd78300cc0b6aac13', '4:5': 'd82ce7b1052f872e741870adfe16ad7f5c088349', '2:3': 'ee7604a5b96191d2ee3b2ed69fdf96eb5fea079a', '21:9': 'f185951b866796102b6b04c3275f413646478347' },
+  testimonial: { '9:16': '14ab068eb535cd84e62a31249b335aeb175268c2', '1:1': 'da9b5cdd41108772d1a378d6164f7bb6c4036944', '16:9': '2a201072428738db8b90ff15d3754150cfe11f31', '4:5': '844f5bb8747cc218e5704baf8cc6bdbfea82816a', '2:3': 'a5adbbde8dcbbad4e1d21c5cdb8671681afdbe46', '21:9': '3f3c95ca7ceb8a39da10eb0385803a9700634eaa' },
+  event: { '9:16': '590e6697f24b646ffe357cd16465419222f47f4c', '1:1': '1432b74a7379deb1c3a97c07759c5aaab19936c0', '16:9': '3516ed7d84bb37712d80a7baa2caa4a3e7d46569', '4:5': '46b675de13f79978af16ed3729562979b33d35b1', '2:3': '96984a85bb756baf68d3a96a4a5c95f7cde89f40', '21:9': '2a277e800516179a727c555b23b837cc007428dd' },
   // Code-story re-recorded 2026-10-28: a diff line that only changed shows its changed tokens (pairChanges, user decision).
-  'code-story': { '16:9': 'a4883fd252080cf03b77d35bccf7e8be5c2ba4c5', '1:1': '6a16d6e0fb77e764fd8738d8f82130d496d0b2dc', '9:16': '478c04d69e3d97cc867d7fe2e1a9b681027ca9da', '4:5': '8d8e2480f355c6e6a36b2f89919e38fd09b67b63' },
-  'before-after': { '9:16': '1c3565dcc3beaea63f65bcb55f946f8290368e11', '1:1': 'a5f8777c870dee968fd5fd173d44c18a8a6aa990', '16:9': 'c51caa6d73b88a156fb9503bcb11632a5e01974d', '4:5': '2e28e84d313745f695b1bcc583ae886888b9eafe', '2:3': '7f3a57b6b1fe85c4153a2d62d64bc3daf22bf6d7', '21:9': 'c6be03fe63620a436e3fcec918b958e548064df3' },
-  'ui-story': { '16:9': 'e4326a5ecdf57b44b4a7e428258e00db240d109b' },
+  'code-story': { '16:9': '9d981b6a94cfdda0a095dad3a2002570730940d2', '1:1': '61e72a4b01270f3acc1274d80614f67b7352859d', '9:16': 'af51d4f8e11695b770e08ecd1365fdf610a3d289', '4:5': '916f5d52d3c2d55fc7ba239b8f7492cd9698cc7b' },
+  'before-after': { '9:16': '106d07b67562c810e5f351ee6a2d025d41f7a2f3', '1:1': '254b82818cc9d5a4c072deded3ac89f0f08d98ba', '16:9': '2c0b307ba40638b7c119a1fb4ed6318cfccae142', '4:5': '443c294f08ece9c3759e9eb17832307ee6dde07f', '2:3': 'e2ff6595d98db7780f717cdcc6f24252d0e67585', '21:9': 'fbbb51105853c006215965dd21b17fa66de6c433' },
+  'ui-story': { '16:9': '5909644ded83a44e8b2d796e8d9f958180e9e307' },
 };
 const HASH_BRAND = { name: 'Hash Co', logoText: 'Hash', colors: { primary: '#1e293b', primary2: '#4f46e5', secondary: '#f59e0b', bg: '#f8fafc', ink: '#0f172a', muted: '#64748b', onPrimary: '#ffffff' }, fonts: { display: 'Inter', body: 'Inter' }, motion: 'cinematic' };
 const HASH_TIMING = { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, tailOut: 0.4, lastSceneHold: 1.2 };

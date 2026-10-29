@@ -833,7 +833,9 @@ const fmt = (v, f, dec) => f === 'money' ? '$' + v.toLocaleString('en-US', { min
 const words = (id) => D.words.filter((w) => w.scene === id);
 const cue = (sc, frac) => { const ws = words(sc.id); if (!ws.length) return sc.start + 0.3 + frac * Math.max(0, sc.end - sc.start - 1); return ws[Math.min(ws.length - 1, Math.floor(frac * ws.length))].start; };
 ${reveal ? revealHelpers(helpersFor(M)) : helpersFor(M)}
-const typeText = (el, at, dur) => { if (!el) return; el.textContent = ''; tl.to(el, { text: el.dataset.text, duration: dur, ease: 'none' }, at); };
+// A character count tween, not GSAP's TextPlugin: TextPlugin sets innerHTML, so any "<" in brief, script
+// or brand text (a code sample, a size like Vec<String>) is parsed as markup instead of shown as typed.
+const typeText = (el, at, dur) => { if (!el) return; const text = el.dataset.text; el.textContent = ''; const c = { n: 0 }; tl.fromTo(c, { n: 0 }, { n: text.length, duration: dur, ease: 'none', immediateRender: false, onUpdate: () => { el.textContent = text.slice(0, Math.round(c.n)); } }, at); };
 const draw = (els, at, dur = 1, o = {}) => { if (!els || (els.length === 0)) return; tl.fromTo(els, { drawSVG: '0%' }, { drawSVG: '100%', duration: dur, stagger: o.stagger ?? 0, ease: o.ease || 'power2.inOut', immediateRender: false }, at); };${marks || shines || confetti ? SHOWN_JS : ''}${marks ? MARK_JS : ''}${shines ? SHINE_JS : ''}${confetti ? CONFETTI_JS : ''}${leaks ? LEAK_JS : ''}${panel ? PANEL_JS : ''}${veil ? VEIL_JS : ''}${carry ? CARRY_JS : ''}${drift ? LAYER_JS : ''}${bug ? SURFACE_JS : ''}${GLL ? glJs(GLL) : ''}
 
 ${js}
