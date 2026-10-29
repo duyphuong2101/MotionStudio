@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { ROOT, DIRS } from '../engine/core.mjs';
-import { createProject } from '../engine/jobs.mjs';
+import { createProject, jobDir } from '../engine/jobs.mjs';
 import { lanInterface } from '../server/review.mjs';
 import { pinnedFetch } from '../server/worker/fetch-page.mjs';
 
@@ -128,6 +128,21 @@ test('bodies and URLs that are not what a route expects answer 400 or 413, never
     assert.equal(r.status, 400, p);
     assert.equal(JSON.parse(r.text).error, 'Bad %-encoding in the URL', p);
   }
+
+  // An asset prepare copied into the job (the brand logo, an uploaded SVG) must never run or be
+  // sniffed as HTML: it goes out with the same sandbox CSP as /assets/<project>/<name>. The
+  // composition HTML next to it still needs to run script, so that one stays plain.
+  const dir = jobDir(P, 'x');
+  fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'assets', 'logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><html></html>');
+  const asset = await request(PORT, `/files/${P}/x/assets/logo.svg`);
+  assert.equal(asset.status, 200);
+  assert.match(asset.headers['content-security-policy'] || '', /sandbox/);
+  assert.equal(asset.headers['x-content-type-options'], 'nosniff');
+  const html = await request(PORT, `/files/${P}/x/index.html`);
+  assert.equal(html.status, 200);
+  assert.ok(!html.headers['content-security-policy'], 'the composition page itself must stay unsandboxed to run');
 
   const local = JSON.parse((await request(PORT, `/api/projects/${P}`)).text);
   assert.ok('generate' in local, 'the local UI still gets the Gemini state');

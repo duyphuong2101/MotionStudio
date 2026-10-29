@@ -694,12 +694,16 @@ function serveJobFile(req, res, url) {
   const [, , project, id, ...rest] = url.pathname.split('/');
   const rel = decodeURIComponent(rest.join('/'));
   if (!JOB_FILE_RE.test(rel)) { res.writeHead(404).end(); return; }
-  return serveFile(req, res, within(jobDir(project, id), rel));
+  // index.html/vendor/*.js must run script to render the composition, so they go out plain. An asset
+  // prepare copied in (the brand logo, an uploaded SVG, …) never needs to run: the sandbox CSP here
+  // matches the /assets/<project>/<name> route it was copied from.
+  return serveFile(req, res, within(jobDir(project, id), rel), rel.startsWith('assets/') ? ASSET_HEADERS : {});
 }
 
 function servePreviewFile(req, res, url) {
   const [, , project, template, ...rest] = url.pathname.split('/');
-  return serveFile(req, res, previewFile(project, template, decodeURIComponent(rest.join('/'))));
+  const rel = decodeURIComponent(rest.join('/'));
+  return serveFile(req, res, previewFile(project, template, rel), rel.startsWith('assets/') ? ASSET_HEADERS : {});
 }
 
 function serveTransitionPreview(req, res, url) {

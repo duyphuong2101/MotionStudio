@@ -20,6 +20,8 @@ test('asset names are cleaned and only allowed types pass', () => {
 test('unsafe SVG and fake images are refused and never written', () => {
   const tries = [
     ['x.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', /active or external/],
+    // A namespace prefix still resolves to the real <script> element for any XML/SVG parser.
+    ['ns.svg', '<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><s:script>alert(1)</s:script></svg>', /active or external/],
     ['y.svg', '<svg xmlns="http://www.w3.org/2000/svg"><rect onload="alert(1)"/></svg>', /active or external/],
     ['z.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/a.png"/></svg>', /active or external/],
     ['w.svg', '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div>x</div></foreignObject></svg>', /active or external/],

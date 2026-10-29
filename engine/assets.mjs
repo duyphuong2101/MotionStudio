@@ -36,8 +36,10 @@ export function cleanAssetName(raw) {
 }
 
 // SVG can carry script; it is shown inside the UI's origin, so anything active is refused, not stripped.
+// A declared XML namespace prefix (<s:script>, <svg:script>) still resolves to the real <script>
+// element for any XML/SVG parser, so the element name is matched with an optional "prefix:" before it.
 const SVG_BLOCK = [
-  /<script\b/i, /\son[a-z]+\s*=/i, /javascript\s*:/i, /<foreignObject\b/i, /<(iframe|embed|object|audio|video)\b/i,
+  /<([\w-]+:)?script\b/i, /\son[a-z]+\s*=/i, /javascript\s*:/i, /<([\w-]+:)?foreignObject\b/i, /<([\w-]+:)?(iframe|embed|object|audio|video)\b/i,
   /<!ENTITY/i, /\b(xlink:)?href\s*=\s*["']\s*(?!#|data:image\/(png|jpe?g|webp|gif);)/i, /url\(\s*["']?\s*(?!#|data:image\/)/i,
   /<\?xml-stylesheet/i, /@import/i,
 ];
