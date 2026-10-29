@@ -273,6 +273,14 @@ export function takeFilter({ gainDb = 0, len, cleanup = false }) {
   return parts.filter(Boolean).join(',');
 }
 
+/**
+ * ffmpeg arguments for one scene's cut. -ss and -t come before -i (input seeking): the filters then see only the
+ * cut, with its own clock from 0, so the fade out lands at the cut's end. After -i they would see the whole take
+ * from 0, and the fade at `len` would silence every scene that starts later in the take than its own length.
+ */
+export const takeCutArgs = (file, from, len, filter, wav) => ['-y', '-ss', String(from), '-t', String(len), '-i', file, '-vn',
+  '-af', filter, '-ac', '1', '-ar', '48000', '-c:a', 'pcm_s16le', wav];
+
 export async function recordedVoice(project, dir, asset, script, { lang = 'en', opts = {} } = {}) {
   const o = { ...TAKE_DEFAULTS, ...opts };
   if (!VOICE_TAKE_RE.test(asset)) throw new StudioError(`The recorded voice ${asset} must be a .wav, .mp3 or .m4a asset`, 400);
@@ -300,9 +308,7 @@ export async function recordedVoice(project, dir, asset, script, { lang = 'en', 
     const { from, to } = cuts[i];
     const len = round(to - from);
     const wav = within(out, `${sc.id}.wav`);
-    await ffmpeg(['-y', '-i', file, '-ss', String(from), '-t', String(len), '-vn',
-      '-af', takeFilter({ gainDb, len, cleanup: o.cleanup }),
-      '-ac', '1', '-ar', '48000', '-c:a', 'pcm_s16le', wav], { timeoutMs: CUT_TIMEOUT_MS });
+    await ffmpeg(takeCutArgs(file, from, len, takeFilter({ gainDb, len, cleanup: o.cleanup }), wav), { timeoutMs: CUT_TIMEOUT_MS });
     result[sc.id] = { wav, seconds: len, words: sc.words.map((w) => ({ w: w.w, at: round(Math.max(0, w.start - from)) })) };
   }
   return {

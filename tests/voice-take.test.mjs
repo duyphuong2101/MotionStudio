@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DIRS, writeJson, readJson, loadStudioConfig } from '../engine/core.mjs';
 import { validateBrief, saveBrief, updateBrief, getStatus, setStatus, jobFile, createProject, loadTemplate } from '../engine/jobs.mjs';
-import { alignTake, spokenTokens, numberWords, cutPlan, voicedFrames, takeGain, takeFilter, TAKE_DEFAULTS } from '../engine/voicetake.mjs';
+import { alignTake, spokenTokens, numberWords, cutPlan, voicedFrames, takeGain, takeFilter, takeCutArgs, TAKE_DEFAULTS } from '../engine/voicetake.mjs';
 import { validateBrand } from '../engine/brand.mjs';
 import { ffmpeg, ffmpegReport } from '../engine/media.mjs';
 import os from 'node:os';
@@ -165,6 +165,25 @@ test('brand.voice.cleanup: an optional yes/no; off leaves the take chain as it w
   const toneDrop = (await level(tone)) - (await level(tone, takeFilter({ len: 2, cleanup: true })));
   assert.ok(humDrop > 12, `rumble down ${humDrop.toFixed(1)} dB`);
   assert.ok(Math.abs(toneDrop) < 6, `voice-band tone changed ${toneDrop.toFixed(1)} dB`);
+});
+
+test('a scene cut from late in the take keeps its sound: the fade times against the cut, not the whole take', async (t) => {
+  const args = takeCutArgs('take.wav', 5, 2, 'afade=t=out:st=1.990:d=0.01', 'out.wav');
+  assert.ok(args.indexOf('-ss') < args.indexOf('-i') && args.indexOf('-t') < args.indexOf('-i'), 'input seeking');
+
+  // Real ffmpeg: an 8 s steady tone, cut from 5 s for 2 s, with and without cleanup.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-takecut-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const take = path.join(dir, 'take.wav');
+  await ffmpeg(['-y', '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=48000:duration=8', '-ac', '1', take], { timeoutMs: 60000 });
+  const mean = async (f) => Number(/mean_volume: (-?[\d.]+) dB/.exec(await ffmpegReport(['-i', f, '-af', 'volumedetect', '-f', 'null', '-']))[1]);
+  const whole = await mean(take);
+  for (const cleanup of [false, true]) {
+    const out = path.join(dir, `cut-${cleanup}.wav`);
+    await ffmpeg(takeCutArgs(take, 5, 2, takeFilter({ len: 2, cleanup }), out), { timeoutMs: 60000 });
+    const lvl = await mean(out);
+    assert.ok(whole - lvl < 8, `cut at 5 s (cleanup ${cleanup}) is ${lvl.toFixed(1)} dB against ${whole.toFixed(1)} dB for the take`);
+  }
 });
 
 test('voiceTake is an optional audio asset name, and changing only it needs a new storyboard', (t) => {
