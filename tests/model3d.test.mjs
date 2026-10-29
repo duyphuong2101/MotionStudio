@@ -129,7 +129,7 @@ test('a lit model scene draws its shadow and the same frames on every render', {
   for (let run = 0; run < 2; run++) {
     let opened;
     try { opened = await openComposition(path.join(dir, 'index.html'), { channel: cfg.engine.chromeChannel, ...size }); } catch (err) {
-      if (/model|WebGL|three|vendor/i.test(err.message)) throw err;
+      if (/Composition|render script|model|WebGL|three|vendor/i.test(err.message)) throw err;
       t.skip(`Chrome is not available: ${err.message}`); return;
     }
     const { browser, page: pg } = opened;

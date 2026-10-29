@@ -66,7 +66,7 @@ function kitPage(dir, name, scenes, { css = '', fx = '', brand = BRAND } = {}) {
 async function check(t, dir, name, scenes, o = {}) {
   const { file, timing } = kitPage(dir, name, scenes, o);
   let opened;
-  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...SIZE }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return null; }
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...SIZE }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return null; }
   try {
     const r = await playCheck(opened.page, opened.info, { ...PLAY_DEFAULTS, step: STEP, safeArea: cfg.lint.safeArea, oneScene: o.brand?.motion === 'cinematic' });
     return { ...r, timing };

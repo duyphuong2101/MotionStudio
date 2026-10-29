@@ -270,7 +270,7 @@ test('a flash item shows as the voice says its first word; items the voice does 
   const spread = ws[Math.floor(ws.length / 3)].start;
   assert.ok(at('easy') - spread > 0.6, `the test line must put "easy" well after the even beat (${at('easy')} vs ${spread})`);
   let opened;
-  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
   try {
     const vis = (x) => opened.page.evaluate((v) => { window.seek(v); return ['d-f0', 'd-f1', 'd-f2'].map((id) => Math.round(+getComputedStyle(document.getElementById(id)).opacity * 10) / 10); }, x);
     assert.deepEqual(await vis(at('easy') - 0.2), [1, 0, 0], 'before "easy" the first item still shows');
@@ -385,7 +385,7 @@ test('cinematic layouts, themes and flash stay inside the safe area in landscape
       const file = path.join(dir, `${tid}-${format.replace(':', 'x')}.html`);
       fs.writeFileSync(file, await render(tid, scenes, brand, format));
       let opened;
-      try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+      try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
       const { browser, page: pg, info } = opened;
       try {
         for (const st of info.stills) {
@@ -466,7 +466,7 @@ test('the carrier rests under each anchor, moves only over the cut and takes the
   const file = path.join(dir, 'carry.html');
   fs.writeFileSync(file, await render('data-story', scenes, brand));
   let opened;
-  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(loadTemplate('data-story').beats, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(loadTemplate('data-story').beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
   try {
     const r = await opened.page.evaluate(() => {
       const C = document.getElementById('carrier');
@@ -505,7 +505,7 @@ test('with the carrier hidden, a carry page shows the same pixels as the page wi
     const file = path.join(dir, `${name}.html`);
     fs.writeFileSync(file, await render('explainer', scenes, b));
     let opened;
-    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(loadTemplate('explainer').beats, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(loadTemplate('explainer').beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
     try {
       await opened.page.addStyleTag({ content: '#carrier{display:none!important}' });
       const times = await opened.page.evaluate(() => window.__studio.scenes.flatMap((sc) => [sc.start + 0.05, (sc.start + sc.end) / 2, sc.end - 0.05]));
@@ -548,7 +548,7 @@ test('a cinematic cut between two colours turns through a veil in the new colour
   for (const [tid, scenes] of Object.entries(pages)) {
     const file = path.join(dir, `${tid}.html`);
     fs.writeFileSync(file, await render(tid, scenes, brand));
-    try { opened[tid] = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(loadTemplate(tid).beats, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+    try { opened[tid] = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(loadTemplate(tid).beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
   }
   try {
     const cuts = await opened['data-story'].page.evaluate(() => window.__studio.scenes.slice(1).map((sc) => {

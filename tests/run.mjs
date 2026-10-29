@@ -57,7 +57,7 @@ function runFile(file) {
     const done = (code) => {
       clearTimeout(timer);
       const count = (k) => Number((new RegExp(`^# ${k} (\\d+)`, 'm').exec(log) || [])[1] || 0);
-      resolve({ file, ok: code === 0 && !timedOut, seconds: (Date.now() - t0) / 1000, pass: count('pass'), fail: count('fail'), timedOut, log });
+      resolve({ file, ok: code === 0 && !timedOut, seconds: (Date.now() - t0) / 1000, pass: count('pass'), fail: count('fail'), skip: count('skipped'), timedOut, log });
     };
     child.on('close', done);
     child.on('error', (err) => { keep(String(err)); done(1); });
@@ -106,7 +106,7 @@ await new Promise((resolveAll) => {
         running--; if (h) heavyRunning--;
         results.push(r);
         times[f] = Math.round(r.seconds * 10) / 10;
-        console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.seconds.toFixed(1).padStart(7)}s  ${f}  (${r.pass} passed${r.fail ? `, ${r.fail} failed` : ''}${r.timedOut ? ', timed out' : ''})`);
+        console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.seconds.toFixed(1).padStart(7)}s  ${f}  (${r.pass} passed${r.fail ? `, ${r.fail} failed` : ''}${r.skip ? `, ${r.skip} skipped` : ''}${r.timedOut ? ', timed out' : ''})`);
         next();
       });
     }
@@ -130,6 +130,7 @@ if (!noRetry) {
 for (const { first } of loadSensitive) console.log(`\n--- ${first.file}: failed beside other files, passed alone (load-sensitive)\n${failures(first.log).slice(0, 1500)}`);
 const failed = results.filter((r) => !r.ok);
 for (const r of failed) console.log(`\n--- ${r.file}${r.timedOut ? ' (timed out)' : ''}\n${failures(r.log) || r.log.slice(-3000)}`);
-const pass = results.reduce((a, r) => a + r.pass, 0), fail = results.reduce((a, r) => a + r.fail, 0);
-console.log(`\n${results.length} files, ${pass} tests passed, ${fail} failed${failed.length ? `, ${failed.length} file(s) failed` : ''}${loadSensitive.length ? `, ${loadSensitive.length} load-sensitive (passed alone)` : ''} in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+const pass = results.reduce((a, r) => a + r.pass, 0), fail = results.reduce((a, r) => a + r.fail, 0), skip = results.reduce((a, r) => a + r.skip, 0);
+// A skipped Chrome test checked nothing: say so, so a green run with Chrome missing does not read as covered.
+console.log(`\n${results.length} files, ${pass} tests passed, ${fail} failed${skip ? `, ${skip} skipped` : ''}${failed.length ? `, ${failed.length} file(s) failed` : ''}${loadSensitive.length ? `, ${loadSensitive.length} load-sensitive (passed alone)` : ''} in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 process.exit(failed.length ? 1 : 0);

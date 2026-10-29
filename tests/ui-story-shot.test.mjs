@@ -155,7 +155,7 @@ test('a shot scene after a non-ui scene has its screenshot in the window from th
   const file = path.join(dir, 'shot.html');
   fs.writeFileSync(file, await buildMixed({ brief: { format: '16:9' }, brand: BRAND, script, timing, size: sizeFor(c, '16:9') }, c));
   let opened;
-  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(c, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(c, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
   try {
     const s = timing.scenes.find((x) => x.id === 'orders').start;
     // Both the screenshot layer and the first screenshot in it are up as the window comes in.

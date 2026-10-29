@@ -157,7 +157,7 @@ test('in the page, toned numbers are green on light, accent and dark scenes and 
     const file = path.join(dir, `tone-${format.replace(':', 'x')}.html`);
     fs.writeFileSync(file, build({ brief: { format }, brand, script: sc, timing, size, icons: {} }));
     let opened;
-    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
     const { browser, page } = opened;
     try {
       const at = (id) => { const s = timing.scenes.find((x) => x.id === id); return s.end - 0.1; };
@@ -248,7 +248,7 @@ test('in the page, bars reach each period rank, stripes become bars, and nothing
     const file = path.join(dir, `index-${format.replace(':', 'x')}.html`);
     fs.writeFileSync(file, build({ brief: { format }, brand, script, timing, size, icons: {} }));
     let opened;
-    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
     const { browser, page } = opened;
     try {
       const sc = timing.scenes.find((x) => x.id === 'race');

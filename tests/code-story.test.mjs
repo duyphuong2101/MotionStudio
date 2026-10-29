@@ -77,7 +77,7 @@ test('in the page: lines light up, the diff opens, commands type, items tick, an
     const file = path.join(dir, `index-${format.replace(':', 'x')}.html`);
     fs.writeFileSync(file, build({ brief: { format }, brand, script, timing, size, icons: {} }));
     let opened;
-    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+    try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...size }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
     const { browser, page } = opened;
     try {
       const at = (tm, fn) => page.evaluate(([x, src]) => { window.seek(x); return new Function(`return (${src})()`)(); }, [tm, fn.toString()]);

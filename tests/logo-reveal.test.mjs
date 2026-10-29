@@ -33,7 +33,7 @@ test('the burst rays are gone once they pull back, so no dots are left on the ta
   const file = path.join(dir, 'burst.html');
   fs.writeFileSync(file, build({ brief: { format: '16:9' }, brand: BRAND, script, timing, size: sizeFor(beats, '16:9') }));
   let opened;
-  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
   try {
     const s = timing.scenes[0].start;
     const rays = (x) => opened.page.evaluate((v) => { window.seek(v); return [...document.querySelectorAll('.rays path')].map((p) => Number(getComputedStyle(p).opacity)); }, x);
@@ -86,7 +86,7 @@ test('logo-reveal notes: the reveal plays as before, then the logo lifts and the
   const file = path.join(dir, 'notes.html');
   fs.writeFileSync(file, build({ brief: { format: '16:9' }, brand: BRAND, script, timing, size: sizeFor(beats, '16:9') }));
   let opened;
-  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
   try {
     const { start: s, end: e } = timing.scenes[0];
     const voiceEnd = Math.max(...timing.words.filter((w) => w.scene === 'reveal').map((w) => w.end));
@@ -144,7 +144,7 @@ test('logo-reveal notesCue: the roll starts on that word while the voice reads, 
   const file = path.join(dir, 'cue.html');
   fs.writeFileSync(file, build({ brief: { format: '16:9' }, brand: BRAND, script, timing, size: sizeFor(beats, '16:9') }));
   let opened;
-  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { t.skip(`Chrome is not available: ${err.message}`); return; }
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
   try {
     const ws = timing.words.filter((w) => w.scene === 'reveal');
     const made = ws.find((w) => w.w === 'Made').start, voiceEnd = Math.max(...ws.map((w) => w.end));

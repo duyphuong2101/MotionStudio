@@ -76,7 +76,7 @@ test('WebGL layers draw the same frame on every render and the wipe covers the c
   for (let run = 0; run < 2; run++) {
     let opened;
     try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, width: 640, height: 360 }); } catch (err) {
-      if (/WebGL|shader/.test(err.message)) throw err;
+      if (/Composition|render script|WebGL|shader/.test(err.message)) throw err;
       t.skip(`Chrome is not available: ${err.message}`); return;
     }
     const { browser, page: pg } = opened;
@@ -141,7 +141,7 @@ test('a model scene draws its .glb at every seek, the same on every render', { t
   for (let run = 0; run < 2; run++) {
     let opened;
     try { opened = await openComposition(path.join(dir, 'index.html'), { channel: cfg.engine.chromeChannel, ...size }); } catch (err) {
-      if (/model|WebGL|three/i.test(err.message)) throw err;
+      if (/Composition|render script|model|WebGL|three/i.test(err.message)) throw err;
       t.skip(`Chrome is not available: ${err.message}`); return;
     }
     const { browser, page: pg } = opened;
