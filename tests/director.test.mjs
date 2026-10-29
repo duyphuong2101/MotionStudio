@@ -60,10 +60,24 @@ test('WebFetch is offered only for the brand allowed hosts', () => {
   assert.ok(!args.some((a) => a.includes('bad host')));
 });
 
-test('a config that allows render, plain Bash or an extra tool is refused', () => {
+test('the seat runs isolated from project/local settings.json and project MCP servers', () => {
+  const args = directorArgs('/studio run acme/promo', D, { jobs: 1 });
+  assert.deepEqual(between(args, '--setting-sources', '--strict-mcp-config'), ['user']);
+  assert.ok(args.includes('--strict-mcp-config'));
+  assert.deepEqual(between(args, '--mcp-config', '--tools'), ['{"mcpServers":{}}']);
+});
+
+test('a config that allows render, plain Bash, a broad node/npm rule or an extra tool is refused', () => {
   assert.throws(() => directorArgs('x', { ...D, allowedTools: [...D.allowedTools, 'Bash(node engine/cli.mjs render *)'] }, { jobs: 1 }), /render/);
   assert.throws(() => directorArgs('x', { ...D, allowedTools: ['Bash'] }, { jobs: 1 }), /Bash/);
   assert.throws(() => directorArgs('x', { ...D, tools: [...D.tools, 'PowerShell'] }, { jobs: 1 }), /PowerShell/);
+  // A rule this broad would let the seat run `node --test` (or any node/npm command) on a file
+  // it just Edited under out/**, bypassing the named render/approve/sequence denials.
+  assert.throws(() => directorArgs('x', { ...D, allowedTools: [...D.allowedTools, 'Bash(node --test *)'] }, { jobs: 1 }), /node --test/);
+  assert.throws(() => directorArgs('x', { ...D, allowedTools: [...D.allowedTools, 'Bash(node:*)'] }, { jobs: 1 }), /node:/);
+  assert.throws(() => directorArgs('x', { ...D, allowedTools: [...D.allowedTools, 'Bash(npm test*)'] }, { jobs: 1 }), /npm test/);
+  // The one safe node shape still passes.
+  assert.doesNotThrow(() => directorArgs('x', { ...D, allowedTools: [...D.allowedTools, 'Bash(node engine/cli.mjs help *)'] }, { jobs: 1 }));
 });
 
 test('the command names one job or each queued job of the project', () => {

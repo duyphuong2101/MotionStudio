@@ -25,7 +25,13 @@ const TAIL_BYTES = 6000;
 const MAX_LINE = 1024 * 1024;
 const SAFE_TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Bash'];
 const FORBIDDEN_ARGS = /^--(bare|dangerously-skip-permissions|allow-dangerously-skip-permissions)$|bypassPermissions/;
-const UNSAFE_RULE = /^(Bash|PowerShell|Edit|Write|WebFetch|WebSearch)$|engine\/cli\.mjs (render|approve|sequence|reset-dirty)\b/;
+// Every legitimate Bash(node ...) rule is `Bash(node engine/cli.mjs <verb> *)`. Anything shaped like
+// `Bash(node *)`, `Bash(node:*)`, `Bash(node --test *)` or `Bash(npm ...)` would let the seat run
+// arbitrary Node (e.g. `node --test` on a file it just Edited under out/**), bypassing the named
+// render/approve/sequence denials entirely — so only the one safe node shape is let through.
+const SAFE_NODE_RULE = /^Bash\(node engine\/cli\.mjs [a-z-]+ \*\)$/;
+const UNSAFE_RULE = (r) => /^(Bash|PowerShell|Edit|Write|WebFetch|WebSearch)$|engine\/cli\.mjs (render|approve|sequence|reset-dirty)\b/.test(r)
+  || (/^Bash\(\s*(node|npm)(\s|:|\.exe)/.test(r) && !SAFE_NODE_RULE.test(r));
 const HOST_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 // Claude Code's own limit lines (a line start, an optional "API Error:"), never a word inside the Director's prose.
 const LIMIT_RE = /^(?:api error:\s*)?(?:claude(?: ai)? usage limit reached|usage limit reached|(?:5-hour|weekly|session|opus|sonnet) limit reached|you['’]ve hit your (?:usage )?limit|(?:you['’]re )?out of extra usage)|^api error:\s*429\b|"type"\s*:\s*"rate_limit_error"/im;
@@ -138,11 +144,19 @@ export function directorArgs(prompt, d, { jobs, hosts = [], model: picked }) {
   const want = picked ?? d.model;
   const model = assertDirectorModel(want == null || want === 'auto' ? routingOf(d).standard : want, { pinned: true });
   const badTool = d.tools.find((t) => !SAFE_TOOLS.includes(t));
-  const badRule = d.allowedTools.find((r) => UNSAFE_RULE.test(r));
+  const badRule = d.allowedTools.find((r) => UNSAFE_RULE(r));
   if (badTool || badRule) throw new StudioError(`config/studio.json director allows "${badTool || badRule}". Remove it.`, 503);
   const web = hosts.filter((h) => HOST_RE.test(h)).map((h) => `WebFetch(domain:${h})`);
   const args = [
     '-p', prompt,
+    // The seat must run on this allowlist alone: with cwd: ROOT it would otherwise also load
+    // .claude/settings.json and the gitignored settings.local.json (project/local sources), whose
+    // own permission rules (e.g. a broad Bash(node:*) someone added for interactive work) get merged
+    // in and can reopen what --disallowedTools just closed. `user` keeps the person's own
+    // ~/.claude/settings.json; project and local are excluded. strict-mcp-config with an empty
+    // server list stops enableAllProjectMcpServers from handing the run extra tools.
+    '--setting-sources', 'user',
+    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     '--tools', [...d.tools, ...(web.length ? ['WebFetch'] : [])].join(','),
     '--allowedTools', ...d.allowedTools, ...web,
     '--disallowedTools', ...d.disallowedTools,
