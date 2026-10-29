@@ -5,7 +5,7 @@ model: sonnet
 effort: low
 color: green
 maxTurns: 25
-disallowedTools: Bash(git push --force:*), Bash(git reset --hard:*), Bash(rm -rf:*)
+disallowedTools: Agent, Bash(git push --force:*), Bash(git reset --hard:*), Bash(rm -rf:*)
 mcpServers:
   - context7
 skills:

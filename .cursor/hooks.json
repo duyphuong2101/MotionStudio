@@ -22,7 +22,7 @@
     "beforeShellExecution": [
       {
         "command": "node .cursor/hooks/block-destructive.js",
-        "description": "Block rm -rf, git push --force, DROP DATABASE, etc. (Cursor-native payload + permission:deny).",
+        "description": "Block rm -rf, git push --force, DROP DATABASE, etc. Shares the rule set of .claude/hooks/block-destructive.js (Cursor-native payload + permission:deny).",
         "failClosed": true
       },
       {

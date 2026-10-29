@@ -24,13 +24,13 @@ try {
       // on resume/compact, where wiping the file list mid-task loses planTouched.
       if (!data.source || data.source === 'startup') {
         try {
-          fs.rmSync(path.join(process.cwd(), '.claude', '.plan-guard-state.json'), { force: true });
+          fs.rmSync(path.join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', '.plan-guard-state.json'), { force: true });
         } catch (e) {}
       }
 
       // inject-context.js writes one marker per session; drop markers older than 24h.
       try {
-        const injDir = path.join(process.cwd(), '.claude', 'state', 'injected');
+        const injDir = path.join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', 'state', 'injected');
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
         for (const f of fs.readdirSync(injDir)) {
           const p = path.join(injDir, f);

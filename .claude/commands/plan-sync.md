@@ -25,8 +25,8 @@ actual diff on the branch.
 
 2. **Gather the real diff**
    ```bash
-   git diff --stat develop...HEAD
-   git log --oneline develop..HEAD
+   git diff --stat master...HEAD
+   git log --oneline master..HEAD
    ```
    If the branch has no plan-relevant commits yet, say so and stop — nothing
    to sync.

@@ -12,7 +12,7 @@ Rules that matter most:
 - Text into composition HTML through `escapeHtml`; JSON into `<script>` through `jsonForScript`.
 - `spawn` with an argument array, `shell:false`, a timeout and a capped log.
 - Templates are deterministic: everything visible is a function of `seek(t)`.
-- No code path calls Claude or any model, except the two person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key) and `server/generate.mjs` (Gemini assets with the person's own key); the server stays on 127.0.0.1.
+- No code path calls Claude or any model, except the three person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key) and `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key); the server stays on 127.0.0.1.
 
 Self-review before finishing:
 - **Hallucination check:** every new import, function or field you referenced exists — search for it.

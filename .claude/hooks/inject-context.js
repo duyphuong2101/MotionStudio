@@ -31,7 +31,8 @@ process.stdin.on("end", () => {
   if (rawPrompt.length > 50000) process.exit(0);
 
   const prompt = rawPrompt.toLowerCase();
-  const cwd = data.cwd || process.cwd();
+  // Project root, not the shell's cwd: statusline writes .claude/state there.
+  const cwd = process.env.CLAUDE_PROJECT_DIR || data.cwd || process.cwd();
 
   const codingTriggers = [
     /\btạo\s+(template|scene|route|api|trang|page|component|màn\s+hình)\b/,
@@ -173,7 +174,7 @@ function quotaGuardLine(cwd) {
     const flagPath = path.join(cwd, ".claude", "state", "quota-pause.flag");
     if (!fs.existsSync(flagPath)) return null;
     const f = JSON.parse(fs.readFileSync(flagPath, "utf8"));
-    const resetTxt = f.resets_at ? new Date(f.resets_at * 1000).toLocaleTimeString() : "soon";
+    const resetTxt = f.resets_at ? new Date(f.resets_at * 1000).toLocaleString() : "soon";
     if (f.level === "stop") {
       return `[QUOTA GUARD] quota at ${f.pct}% (>=99%). If a loop is running: finish the CURRENT item cleanly (commit only if VERIFY+UNIT_TEST green, else leave a clean state), append a Loop Journal line, then STOP — do NOT start a new item. Quota resets ~${resetTxt}; resume by re-running the loop command after reset.`;
     }

@@ -16,7 +16,8 @@ Run one ticket through the full workflow and **keep healing until it meets its A
 
 **Step 4 — Safety valves (STOP + ask):**
 - Iteration cap: 8 iterations per invocation, then STOP and report — the seat and its quota are company-owned.
-- No-progress: two consecutive iterations end with the SAME gate failing the SAME way and no new AC ticked → thrashing, not healing → STOP.
+- No-progress: the current failure signature already appears in any of the last four Journal iterations with no new AC box and no net-new `## Task breakdown` box ticked in between → thrashing, not healing → STOP.
+- Quota: `.claude/state/quota-pause.flag` at `stop` → finish the current item without spawning, journal `quota-stop`, end the tick (not blocked).
 - AC unreachable without new scope / product decision / missing info → STOP.
 - High-risk (server boundary, secrets, a Claude/model call shipping without review) or irreversible (dependency change, any push, out-of-scope deletion) → STOP.
 - Every valve stop logs `--outcome rejected` with the reason.

@@ -8,8 +8,8 @@ description: Propagate a config change across agents, skills, Cursor/Copilot mir
 When **any** rule, convention, pattern, safety rule, workflow or hook is added or modified, the agents and skills that reference it **MUST** be updated in the same change:
 
 1. **Edit the source of truth** — `.ai/docs/conventions.md` for rules; `common-patterns.md`, `architecture.md`, `file-index.md` for patterns and structure.
-2. **Regenerate mirrors** — `node .claude/scripts/generate-mirrors.js` (marked blocks in `.cursor/rules/project.mdc`, `.claude/skills/project-conventions/SKILL.md`, `AGENTS.md`, `.github/copilot-instructions.md`).
-3. **Update by hand** — `CLAUDE.md` (every security NEVER must appear), `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `.claude/commands/*.md`, `.cursor/agents/*.md`, `.cursor/rules/*.mdc`, `.cursor/commands/*.md`, `.cursor/skills/*/`, `.ai/docs/kit-process.md`.
+2. **Regenerate mirrors** — `node .claude/scripts/generate-mirrors.js` (marked blocks in `.cursor/rules/project.mdc`, `.claude/skills/project-conventions/SKILL.md`, `AGENTS.md`, `.github/copilot-instructions.md`; then `.ai/scripts/sync-agent-hosts.js` rewrites the generated `.agents/skills/` and `.agents/rules/` for Codex, Antigravity and Copilot CLI — never edit those by hand).
+3. **Update by hand** — `CLAUDE.md` (every security NEVER must appear), `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `.claude/commands/*.md`, `.cursor/agents/*.md`, `.cursor/rules/*.mdc`, `.cursor/commands/*.md`, `.cursor/skills/*/`, `.ai/docs/kit-process.md`, `.github/instructions/*.instructions.md` (Copilot twin of each `.claude/rules/*.md`).
 4. **Protected files** (`.claude/settings*.json`, `.claude/hooks/*.js`, `.claude/scripts/*.js`, `.cursor/hooks*`, `.mcp.json`) — prepare the change and hand it to the person; do not work around `protect-files.js`.
 5. **Verify** — `node .claude/scripts/check-propagation.js`, `node .claude/scripts/spec-lint.js`, `bash .ai/scripts/detect-leftovers.sh`.
 

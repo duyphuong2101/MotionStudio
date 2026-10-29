@@ -4,7 +4,7 @@
 // 2. Saves current git diff as context breadcrumb
 // 3. Notifies user via toast
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,7 +15,7 @@ try {
   }
 
   const timestamp = new Date().toISOString();
-  const cwd = process.cwd();
+  const cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
   // 1. Log compaction event
   const logFile = path.join(logDir, 'compactions.log');
@@ -90,10 +90,11 @@ try {
     $xml.LoadXml($template)
     $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Claude Code").Show($toast)
-  `.replace(/\n/g, '; ');
+  `;
 
   try {
-    execSync(`powershell -NoProfile -Command "${ps}"`, {
+    // -EncodedCommand keeps the here-string's line breaks; joining lines with '; ' broke `@"` every time.
+      execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
     });

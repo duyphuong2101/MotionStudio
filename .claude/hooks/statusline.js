@@ -64,12 +64,19 @@ function evaluateQuota(data, baseDir) {
   const flagPath = path.join(baseDir, ".claude", "state", "quota-pause.flag");
   const tierPath = path.join(baseDir, ".claude", "state", "model-tier.json");
 
+  const nowSec = Math.floor(Date.now() / 1000);
   if (pct === null && weekPct === null) {
-    // rate_limits absent (API/Console/Enterprise, or before first turn) — no signal.
+    // rate_limits absent (API/Console/Enterprise, or before first turn) — no signal. A flag whose
+    // reset time has passed is stale either way, so it must not keep a loop stopped.
+    try {
+      const f = JSON.parse(fs.readFileSync(flagPath, "utf8"));
+      if (typeof f.resets_at === "number" && f.resets_at < nowSec) fs.unlinkSync(flagPath);
+    } catch {
+      /* no flag */
+    }
     return { pct: null, level: "none", flagPath };
   }
 
-  const nowSec = Math.floor(Date.now() / 1000);
   const resetsAt = pct !== null && typeof rl.five_hour.resets_at === "number" ? rl.five_hour.resets_at : null;
   const weekResetsAt = weekPct !== null && typeof rl.seven_day.resets_at === "number" ? rl.seven_day.resets_at : null;
   const worst = Math.max(pct ?? 0, weekPct ?? 0);
@@ -99,10 +106,18 @@ function evaluateQuota(data, baseDir) {
 
   try {
     if (level === "stop" || level === "warn") {
+      // Report the window that tripped the level: a weekly stop carries the weekly % and reset.
+      const weekly = (weekPct ?? -1) >= (pct ?? -1);
       fs.mkdirSync(path.dirname(flagPath), { recursive: true });
       fs.writeFileSync(
         flagPath,
-        JSON.stringify({ level, pct, resets_at: resetsAt, written_at: Math.floor(Date.now() / 1000) }),
+        JSON.stringify({
+          level,
+          pct: weekly ? weekPct : pct,
+          window: weekly ? "seven_day" : "five_hour",
+          resets_at: weekly ? weekResetsAt : resetsAt,
+          written_at: nowSec,
+        }),
       );
     } else if (fs.existsSync(flagPath)) {
       fs.unlinkSync(flagPath); // quota recovered (post-reset) — clear so the loop may resume
@@ -161,7 +176,8 @@ process.stdin.on("end", () => {
   const model = data.model?.display_name || "claude";
   const cost = data.cost?.total_cost_usd;
   const style = data.output_style?.name;
-  const quota = evaluateQuota(data, cwd);
+  // State lives at the project root; cwd moves when the session cd's into a subfolder.
+  const quota = evaluateQuota(data, data.workspace?.project_dir || process.env.CLAUDE_PROJECT_DIR || cwd);
 
   const parts = [];
   if (branch) parts.push(`⎇ ${branch}`);

@@ -17,7 +17,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { buildBlocks, condenseBlock, applyToContent, MARKERS, CONDENSED_TARGETS } = require("./generate-mirrors");
+const { buildBlocks, condenseBlock, applyToContent, MARKERS, CONDENSED_TARGETS, AGENT_HOSTS_SYNC } = require("./generate-mirrors");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const errors = [];
@@ -511,6 +511,21 @@ if (canonBlocks) {
     );
     checkGeneratedMirror(rel, isCondensed ? condensedCanonBlocks : canonBlocks);
   }
+}
+
+// ----------------------------------------------------------------
+// 9b2. .agents/ mirror (Codex, Antigravity, Copilot CLI) — generated from
+// .claude/skills + .cursor/rules by sync-agent-hosts.js; any drift is an ERROR.
+// ----------------------------------------------------------------
+if (fs.existsSync(AGENT_HOSTS_SYNC)) {
+  const r = require("child_process").spawnSync(process.execPath, [AGENT_HOSTS_SYNC, ROOT, "--check"], { encoding: "utf8", timeout: 60000 });
+  if (r.status !== 0) {
+    const drift = (r.stdout || "").split("\n").filter((l) => l.startsWith("✗"));
+    if (!drift.length) drift.push(`✗ sync-agent-hosts.js --check failed (exit ${r.status})`);
+    errors.push(...drift.map((l) => `.agents/: ${l.slice(2)} — run node .claude/scripts/generate-mirrors.js`));
+  }
+} else {
+  warnings.push(".ai/scripts/sync-agent-hosts.js missing — .agents/ mirror not checked");
 }
 
 // ----------------------------------------------------------------

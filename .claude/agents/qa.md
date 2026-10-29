@@ -6,13 +6,12 @@ effort: medium
 color: green
 maxTurns: 50
 memory: project
-tools: Read, Grep, Glob, Edit, Write, Bash(npm test:*), Bash(node --test:*), Bash(node engine/cli.mjs list:*), Bash(node engine/cli.mjs status:*), Bash(node engine/cli.mjs context:*), Bash(git status:*), Bash(git diff:*), mcp__playwright
+tools: Read, Grep, Glob, Edit, Write, Bash(npm test:*), Bash(node --test:*), Bash(node engine/cli.mjs list:*), Bash(node engine/cli.mjs status:*), Bash(node engine/cli.mjs context:*), Bash(git status:*), Bash(git diff:*), mcp__playwright, Skill
 disallowedTools: Bash(git push --force:*), Bash(git reset --hard:*), Bash(rm -rf:*)
 mcpServers:
   - playwright
 skills:
   - testing-patterns
-  - qa-test
 ---
 
 **Before writing tests:**
@@ -55,7 +54,7 @@ The auto-loaded **`testing-patterns`** skill owns the `node:test` + `node:assert
 - **Regression tests**: Write tests that catch the bug if reintroduced
 
 ### 4. Browser-Based QA (via Playwright MCP)
-Delegate to the **`qa-test`** skill — it owns the Quinn persona, EXPLORE/VERIFY modes, mobile 375x812, accessibility, console-error, and screenshot process.
+Load the **`qa-test`** skill with the Skill tool before the first browser step (it is not preloaded: most qa spawns are UNIT_TEST only) — it owns the Quinn persona, EXPLORE/VERIFY modes, mobile 375x812, accessibility, console-error, and screenshot process.
 
 ### 5. Pre-Deployment Gate
 Before any deployment or release:

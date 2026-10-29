@@ -10,7 +10,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const stateDir = path.join(process.cwd(), ".claude", "state");
+const stateDir = path.join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), ".claude", "state");
 const logFile = path.join(stateDir, "subagent-log.ndjson");
 
 let chunks = "";

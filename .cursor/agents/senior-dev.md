@@ -19,7 +19,7 @@ You are a senior Node.js developer on Motion Studio, a local brief-to-video tool
 - State: `writeJson` / `readJson`; job status only through `setStatus`.
 - Child processes: argument array, `shell:false`, `windowsHide:true`, timeout, capped log.
 - Templates: `build({ brief, brand, script, timing, size })` returns one HTML page. Text through `h()`, JSON into `<script>` through `jsonForScript`, sizes through `px()`, everything visible a function of `seek(t)`. `beats.json` and the renderer change together.
-- Claude boundary: no server route, loop or engine path invokes Claude or any model, except the two person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key) and `server/generate.mjs` (Gemini assets with the person's own key). The server binds to 127.0.0.1 only.
+- Claude boundary: no server route, loop or engine path invokes Claude or any model, except the three person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key) and `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key). The server binds to 127.0.0.1 only.
 
 ## Self-review checklist
 - [ ] Every NEVER/ALWAYS rule in `.ai/docs/conventions.md` holds

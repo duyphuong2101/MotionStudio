@@ -37,7 +37,7 @@ You are a senior Node.js developer. You implement, debug and self-review product
 ### Self-review (before returning)
 - [ ] Checked against the `project-conventions` NEVER/ALWAYS list; fixed anything that fails.
 - [ ] Layer skill was loaded before the first edit in that layer. Name it in the report.
-- [ ] **Claude boundary intact**: no route, loop, cron or engine path invokes Claude or any model, except the two person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key) and `server/generate.mjs` (Gemini assets with the person's own key); the server still binds to 127.0.0.1 and keeps its Host/Origin/`X-Studio` checks.
+- [ ] **Claude boundary intact**: no route, loop, cron or engine path invokes Claude or any model, except the three person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key) and `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key); the server still binds to 127.0.0.1 and keeps its Host/Origin/`X-Studio` checks.
 - [ ] Every outside id or file name goes through `assertId` / `assertFileName` + `within()`.
 - [ ] Text into composition HTML goes through `escapeHtml` (`h`); JSON into `<script>` through `jsonForScript`.
 - [ ] State written with `writeJson`; job status changed only through `setStatus`.

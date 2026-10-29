@@ -2,7 +2,7 @@
 // Notification hook: Windows toast notification + sound
 // Alerts when Claude needs permission or is waiting for input
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -45,10 +45,11 @@ process.stdin.on('end', () => {
       $xml.LoadXml($template)
       $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Claude Code").Show($toast)
-    `.replace(/\n/g, '; ');
+    `;
 
     try {
-      execSync(`powershell -NoProfile -Command "${ps}"`, {
+      // -EncodedCommand keeps the here-string's line breaks; joining lines with '; ' broke `@"` every time.
+      execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], {
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 5000,
       });

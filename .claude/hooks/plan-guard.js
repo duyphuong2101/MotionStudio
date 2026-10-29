@@ -36,7 +36,7 @@ process.stdin.on("end", () => {
   const raw = (data.tool_input?.file_path || "").replace(/\\/g, "/");
   if (!raw) process.exit(0);
 
-  const stateFile = path.join(process.cwd(), ".claude", ".plan-guard-state.json");
+  const stateFile = path.join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), ".claude", ".plan-guard-state.json");
   let state = { files: [], planTouched: false, nudged: false };
   try {
     state = { ...state, ...JSON.parse(fs.readFileSync(stateFile, "utf8")) };

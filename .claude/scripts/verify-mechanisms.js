@@ -2,7 +2,7 @@
 // verify-mechanisms.js — self-test for the "judgment-layer" mechanisms wired into
 // the kit: spec-first · AI-generated-code review lens · AI failure log · publish gate ·
 // architecture diagram · failure teardown (via AI-failure-log + Loop Journal + retro) ·
-// stakeholder explainer · security guards.
+// stakeholder explainer · agent-hosts mirror · security guards.
 // Complements check-propagation.js (NEVER/ALWAYS drift) and spec-lint.js (frontmatter):
 // those verify the RULE set; this verifies the MECHANISMS are wired + runnable + mirrored.
 //
@@ -41,6 +41,27 @@ function assertReferenced(mech, needle, files) {
     record(mech, `${f} references "${needle.slice(0, 40)}"`, ok,
       c == null ? 'file missing' : (ok ? '' : 'reference absent'));
   }
+}
+
+// On Windows a bare `bash` from cmd.exe is often WSL's System32 stub (exit 1 with no distro installed),
+// so look for a real one: next to `git --exec-path` (<Git>/mingw64/libexec/git-core), the usual Git install
+// folders, then any bash on PATH that is not the System32 / WindowsApps stub. null = none found.
+function gitBash() {
+  if (process.platform !== 'win32') return 'bash';
+  const candidates = [];
+  try {
+    const exec = execFileSync('git', ['--exec-path'], { encoding: 'utf8', timeout: 10000 }).trim();
+    if (/^[A-Za-z]:[\\/]/.test(exec)) candidates.push(path.join(exec, '..', '..', '..', 'bin', 'bash.exe'));
+  } catch {}
+  for (const base of [process.env.ProgramW6432, process.env.ProgramFiles, process.env['ProgramFiles(x86)']]) {
+    if (base) candidates.push(path.join(base, 'Git', 'bin', 'bash.exe'));
+  }
+  if (process.env.LOCALAPPDATA) candidates.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe'));
+  try {
+    const found = execFileSync('where', ['bash'], { encoding: 'utf8', timeout: 10000 }).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    candidates.push(...found.filter((p) => !/[\\/](System32|WindowsApps)[\\/]/i.test(p)));
+  } catch {}
+  return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
 // Run a script and assert exit code (2 = block, 1 = validation reject, 0 = ok).
@@ -171,6 +192,24 @@ function runExpect(mech, name, cmd, args, expectCode, stdin) {
   record(M, 'qa.agent.md gate has AI-generated code lens', !!(qa && /hallucination check/i.test(qa)), '');
 }
 
+// ── 8b. AGENT HOSTS (.agents/ mirror for Codex, Antigravity, Copilot CLI) ────
+{
+  const M = 'agent-hosts';
+  const sync = '.ai/scripts/sync-agent-hosts.js';
+  const exists = fs.existsSync(path.join(ROOT, sync));
+  record(M, 'sync-agent-hosts.js exists', exists, exists ? '' : 'generator missing');
+  if (exists) runExpect(M, '.agents/ in sync (--check)', 'node', [sync, ROOT, '--check'], 0);
+  assertReferenced(M, 'sync-agent-hosts', [
+    '.claude/scripts/generate-mirrors.js',
+    '.claude/scripts/check-propagation.js',
+    'CLAUDE.md',
+    '.claude/skills/update-propagation/SKILL.md',
+    '.ai/docs/kit-process.md',
+  ]);
+  const vs = read('.ai/scripts/apply-vscode-settings.js');
+  record(M, 'Copilot skips the .agents/skills duplicate', !!(vs && vs.includes('chat.agentSkillsLocations')), '');
+}
+
 // ── 9. SECURITY GUARDS (from 2026-07-21 review) ──────────────────────────────
 {
   const M = 'security-guards';
@@ -183,6 +222,14 @@ function runExpect(mech, name, cmd, args, expectCode, stdin) {
   record(M, 'auto-format uses execFileSync (no shell interpolation)', !!(af && af.includes('execFileSync') && !af.includes("execSync(formatter")), '');
   const cdp = read('.claude/scripts/create-draft-pr.js');
   if (cdp) record(M, 'create-draft-pr confines file paths to repo', cdp.includes('confineToRepo'), '');
+  record(M, 'block-destructive fails closed + token analyzer', !!(bd && bd.includes('function analyze') && /catch \(e\) \{[\s\S]{0,400}?process\.exit\(2\)/.test(bd)), '');
+  const cbd = read('.cursor/hooks/block-destructive.js');
+  record(M, 'Cursor block-destructive shares the Claude rule set', !!(cbd && cbd.includes("'.claude', 'hooks', 'block-destructive.js'")), '');
+  const st = read('.claude/settings.json');
+  record(M, 'quota-guard wired on Agent spawns', !!(st && st.includes('quota-guard.js') && fs.existsSync(path.join(ROOT, '.claude/hooks/quota-guard.js'))), '');
+  const bash = gitBash();
+  if (bash) runExpect(M, 'block-destructive harness green', bash, ['.claude/scripts/test-block-destructive.sh'], 0);
+  else record(M, 'block-destructive harness green', false, 'Git Bash not found — install Git for Windows (https://git-scm.com/download/win) and rerun');
 }
 
 // ── REPORT ───────────────────────────────────────────────────────────────────

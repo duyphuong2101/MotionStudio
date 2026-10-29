@@ -9,19 +9,24 @@
 
 const path = require('path');
 
-// Protected file matchers — anchored regex to avoid false positives like
-// ".environment.json", "prevent.config.ts", "fakeappsettings.json".
-const PROTECTED = [
-  /^\.env(\.|$)/i, // .env, .env.local, .env.production
-  /(^|[._-])credentials(\.|$)/i, // credentials.json, .credentials, secrets-credentials.yml
-  /(^|[._-])secrets?(\.|$)/i, // secrets.json, .secret
+// Secret basenames: never read into the model, never edited. Anchored to avoid false positives
+// like ".environment.json", "UserCredentials.cs". .env.example/.sample/.template are docs.
+const SECRET = [
+  /^\.env(\.(?!(example|sample|template)$)[\w-]+)?$/i,
+  /(^|[._-])credentials(\.|$)/i,
+  /(^|[._-])secrets?(\.|$)/i,
+  /\.(pem|key|pfx|p12)$/i,
+  /^id_(rsa|ed25519|ecdsa|dsa)$/i,
+  /^CLAUDE\.local\.md$/i,
+  /^appsettings\.local\.json$/i,
+  /^accounts\.json$/i,
+  /^\.mcp\.json$/i,
+];
+// Edit-only protection (reads are legitimate): prod config, lock files, git internals, and the
+// kit's own guards — parity with .claude/hooks/protect-files.js.
+const EDIT_ONLY = [
   /^appsettings\.(production|preproduction)\.json$/i,
-  /^package-lock\.json$/i,
-  /^yarn\.lock$/i,
-  /^pnpm-lock\.yaml$/i,
-  /\.pem$/i,
-  /\.key$/i,
-  /(^|\/)id_rsa(\.|$)/i,
+  /^(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|cargo\.lock|poetry\.lock|pipfile\.lock|composer\.lock)$/i,
 ];
 
 let input = '';
@@ -44,17 +49,16 @@ process.stdin.on('end', () => {
   // and the safety machinery itself would slip past a basename-only check (e.g. .git/config).
   const PATH_PROTECTED = [
     /(^|\/)\.git(\/|$)/,
-    /(^|\/)\.claude\/hooks\/[^/]*\.js$/,
-    /(^|\/)\.claude\/scripts\/[^/]*\.js$/,
-    /(^|\/)\.claude\/settings\.json$/,
-    /(^|\/)\.cursor\/hooks\/[^/]*\.js$/,
+    /(^|\/)\.claude\/hooks\//,
+    /(^|\/)\.claude\/scripts\//,
+    /(^|\/)\.claude\/settings(\.local)?\.json$/,
+    /(^|\/)\.cursor\/hooks\//,
     /(^|\/)\.cursor\/hooks\.json$/,
   ];
-  const isProtected = PROTECTED.some((m) => m.test(fileName)) || PATH_PROTECTED.some((m) => m.test(filePath));
+  const isSecret = SECRET.some((m) => m.test(fileName));
+  const isEditOnly = EDIT_ONLY.some((m) => m.test(fileName)) || PATH_PROTECTED.some((m) => m.test(filePath));
   const isEdit = data.newContent !== undefined || data.edits !== undefined;
-  // Lock files: block EDITS (package-manager-only) but allow READS (version lookups are legit).
-  const isLockFile = /^(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i.test(fileName);
-  if (isProtected && !(isLockFile && !isEdit)) {
+  if (isSecret || (isEditOnly && isEdit)) {
     if (isEdit) {
       // afterFileEdit: no pre-write block exists in Cursor — flag the write as denied.
       process.stdout.write(JSON.stringify({

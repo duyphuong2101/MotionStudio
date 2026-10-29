@@ -4,7 +4,7 @@ description: "Read-only research agent: fast codebase exploration, file lookup, 
 model: sonnet
 effort: low
 color: cyan
-maxTurns: 20
+maxTurns: 30
 tools: Read, Grep, Glob, WebFetch, Bash(git log:*), Bash(git diff:*), Bash(git status:*), Bash(git show:*), Bash(git blame:*), Bash(git branch --show-current:*), Bash(ls:*), Bash(tree:*)
 mcpServers:
   - context7

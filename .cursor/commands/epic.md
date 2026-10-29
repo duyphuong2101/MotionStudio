@@ -16,6 +16,7 @@ Per unchecked item, top-down:
 Hard stops:
 - Item fails after 2 cycles → mark `- [!] <item> — BLOCKED: <reason>`, run `node .claude/scripts/append-outcome.js --task "<slug>: <item>" --outcome rejected --verify-cycles 2 --plan-file .ai/plans/<slug>.md`, STOP the whole epic (systematic failures repeat)
 - Max 5 items per run → checkpoint for human sampling
+- `.claude/state/quota-pause.flag` at `stop` → finish the current item, end the run (not blocked); at `warn`, do not start a large item
 - Anything irreversible/out-of-pattern (out-of-scope deletion, migration, dependency change, push outside the keyword-gated PUBLISH) → stop and ask
 - All items checked → report DONE with totals
 - PUBLISH: not configured for this project (no remote, no PR tooling).

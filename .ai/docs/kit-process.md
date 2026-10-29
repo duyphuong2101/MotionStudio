@@ -7,7 +7,7 @@ Process and reference detail moved out of `CLAUDE.md` (which loads on every turn
 A rule, convention, pattern, safety rule, workflow or hook change is not done until it is propagated.
 
 1. Edit the source of truth: `.ai/docs/conventions.md` (rules), `.ai/docs/common-patterns.md` (patterns), `.ai/docs/architecture.md` / `file-index.md` (structure).
-2. Regenerate the rule mirrors: `node .claude/scripts/generate-mirrors.js`. It rewrites only the marked NEVER/ALWAYS blocks in `.cursor/rules/project.mdc`, `.claude/skills/project-conventions/SKILL.md`, `AGENTS.md` and `.github/copilot-instructions.md`.
+2. Regenerate the rule mirrors: `node .claude/scripts/generate-mirrors.js`. It rewrites only the marked NEVER/ALWAYS blocks: full text in `.cursor/rules/project.mdc` (a manual `@project` rule) and `.claude/skills/project-conventions/SKILL.md`, the one-line-per-rule form in `AGENTS.md` (Cursor sends it on every request) and `.github/copilot-instructions.md` (Copilot sends it on every chat turn). It then runs `node .ai/scripts/sync-agent-hosts.js`, which writes `.agents/skills/<name>/` from `.claude/skills/` (Codex, Antigravity, Copilot CLI; not `studio`, which `sync-director-prompt.js` owns, and not the Claude-only `agent-teams-workflow`, `qa-test`, `update-propagation`) and `.agents/rules/<name>.md` from `.cursor/rules/*.mdc` for Antigravity (`alwaysApply` → `always_on`, `globs` → `glob`, a description → `model_decision`, else `manual`; `token-optimization`, `workflow`, `workflow-tdd` skipped). Never edit a generated `.agents/` file; `check-propagation.js` fails on drift.
 3. Update by hand what references the change: `CLAUDE.md` (every security NEVER must appear there), `.claude/agents/*.md`, `.cursor/agents/*.md`, `.claude/skills/*/SKILL.md`, `.cursor/rules/*.mdc`, `.claude/commands/*.md`, `.cursor/commands/*.md`, `.agents/rules/motion-studio.md` (Antigravity). A change to the studio skill is made in `.claude/skills/studio/SKILL.md` only, then `node .ai/scripts/sync-director-prompt.js` copies it to `.cursor/skills/studio/` and `.agents/skills/studio/`.
 4. Verify:
    ```bash
@@ -32,6 +32,7 @@ Protected files (`.claude/settings*.json`, `.claude/hooks/*.js`, `.claude/script
 - `/loop-ticket` stops after 8 iterations per invocation; `/epic` after 5 items per run; `/workflow` hard-stops after 2 fix cycles per gate.
 - Agent teams are off (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0`); a team is capped at 3 teammates.
 - One subagent in flight at a time in the workflow commands; the model tier (`.claude/state/model-tier.json`) only steps models down.
+- QUOTA GUARD: `statusline.js` writes `.claude/state/quota-pause.flag` at 90% (`warn`) and 99% (`stop`) of the 5-hour or 7-day window and drops it once the window resets. `quota-guard.js` refuses new `Agent` spawns while it says `stop`, so an unattended `/loop` cannot run past it; `NSC_IGNORE_QUOTA=1` is a person's override for one session.
 
 ## Agents
 
@@ -69,9 +70,11 @@ Approval is UI-only for every agent: `node engine/cli.mjs approve` refuses (`tes
 |---|---|---|---|---|
 | Claude Code | `CLAUDE.md` | skill `studio` | `.claude/skills/studio/` (the source) | Run Director: the seat allowlist (`director.allowedTools`, project and local settings not loaded) refuses them; a typed `/studio run` runs under your own permission settings |
 | Cursor | `AGENTS.md`, `.cursor/rules/` | `.cursor/commands/studio.md` | `.cursor/skills/studio/` | `.cursor/hooks/ask-before-render.js` |
-| GitHub Copilot | `.github/copilot-instructions.md` | `.github/prompts/studio.prompt.md` | `.agents/skills/studio/` | `.vscode/settings.json` → `chat.tools.terminal.autoApprove` |
-| Google Antigravity | `.agents/rules/motion-studio.md` (+ `AGENTS.md` on versions that read it) | `.agents/workflows/studio.md` | `.agents/skills/studio/` | none in the repo (optional: the terminal deny list in Antigravity's settings) |
+| GitHub Copilot | `.github/copilot-instructions.md`, `.github/instructions/` (path-scoped) | `.github/prompts/studio.prompt.md` | `.agents/skills/studio/` | `.vscode/settings.json` → `chat.tools.terminal.autoApprove` |
+| Google Antigravity | `.agents/rules/` (`motion-studio.md` by hand, the rest generated) + `AGENTS.md` | `.agents/workflows/studio.md` | `.agents/skills/studio/` | none in the repo (optional: the terminal deny list in Antigravity's settings) |
 | Any other agent (Codex, Windsurf, Gemini CLI, Zed, …) | `AGENTS.md` | a plain request: "run the Motion Studio director on `<project>/<job>`" | `.agents/skills/studio/` | none in the repo: the skill's "Outside the seat" rules |
+
+Copilot in VS Code reads only `copilot-instructions.md` and `.github/instructions/` per turn: `.vscode/settings.json` turns off its `AGENTS.md`, `CLAUDE.md`, `.claude/rules` and `.agents/skills` pickup (`node .ai/scripts/apply-vscode-settings.js` merges those keys), since `CLAUDE.md` alone is over 30 KB and Copilot already lists `.claude/skills`. A rule in `.claude/rules/` therefore needs its `.github/instructions/<name>.instructions.md` twin.
 
 A plain request needs no command file: `AGENTS.md` says it means "read `.agents/skills/studio/SKILL.md` and follow it", with actor `<tool>-agent` (e.g. `codex-agent`). The skill's three generated blocks (shared, full script, quick mode) come from `server/worker/director-*.md` through `node .ai/scripts/sync-director-prompt.js`.
 
@@ -89,13 +92,14 @@ Outside the seat the Director runs on that tool's own model and account; the cap
 |---|---|---|
 | SessionStart | `session-start.js` | Session housekeeping |
 | UserPromptSubmit | `inject-context.js` | Injects NEVER/ALWAYS from `conventions.md` on coding or security prompts |
-| PreToolUse Edit/Write | `protect-files.js` | Blocks edits to secrets, lock files and the kit's own guards |
-| PreToolUse Bash | `block-destructive.js` | Blocks destructive commands and secret dumps |
+| PreToolUse Edit/Write/MultiEdit/NotebookEdit | `protect-files.js` | Blocks edits to secrets, lock files, `.mcp.json` and the kit's own guards (whole `hooks/` and `scripts/` folders, Windows path aliases too); fails closed |
+| PreToolUse Agent | `quota-guard.js` | Refuses a new subagent while the quota flag says `stop` |
+| PreToolUse Bash/PowerShell | `block-destructive.js` | A token analyzer (flag order, quoting and wrappers such as `bash -c`, `powershell -Command`, `$(...)` cannot hide `rm`/`git`/secret reads/redirects) plus a regex layer; asks before `render`, `approve`, `sequence`; fails closed. `.cursor/hooks/block-destructive.js` requires the same `check()`. Harness: `bash .claude/scripts/test-block-destructive.sh` |
 | PostToolUse Edit/Write | `auto-format.js` | Prettier when configured (no-op here) |
 | PostToolUse Edit/Write | `propagation-reminder.js` | Lists downstreams after a `.ai/docs/` edit |
 | PostToolUse Edit/Write | `security-lint.js` | Flags injection/secret patterns |
 | PostToolUse Edit/Write | `plan-guard.js` | Nudges for a plan file on multi-file work |
-| PostToolUse Task | `update-todo-after-task.js` | Keeps the workflow todo list in step |
+| PostToolUse Agent | `update-todo-after-task.js` | Keeps the workflow todo list in step |
 | Stop | `outcome-guard.js`, `stop-notify.js` | Outcome log reminder, notification |
 | SubagentStop | `subagent-log.js` | Logs subagent runs |
 | PreCompact | `pre-compact.js` | Saves context before compaction |

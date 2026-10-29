@@ -3,15 +3,15 @@
  * Generate the NEVER / ALWAYS rule mirrors from the single source of truth.
  *
  * Source:  .ai/docs/conventions.md  (## NEVER Do  +  ## ALWAYS Do)
- * Targets (FULL block): .cursor/rules/project.mdc
+ * Targets (FULL block): .cursor/rules/project.mdc   (manual `@project` rule — loaded on demand only)
  *                        .claude/skills/project-conventions/SKILL.md
- *                        AGENTS.md   (open agent standard — Copilot coding agent, Codex, Zed, Jules, …;
- *                                     read once per agent run, not per-chat-turn, so full detail is cheap)
- * Target  (CONDENSED):  .github/copilot-instructions.md — Copilot sends this file's full text on
- *                        EVERY chat/agent turn in VS Code/Visual Studio (unlike AGENTS.md, which the
- *                        coding agent reads once). Token cost compounds per-message, so this target
- *                        gets a compact one-line-per-rule form instead of the full canonical text —
- *                        same rules, ~40% fewer tokens. Full detail always lives in AGENTS.md.
+ * Targets (CONDENSED):  AGENTS.md — Cursor applies it to EVERY request (no switch to turn it off);
+ *                        .github/copilot-instructions.md — VS Code Copilot sends it on EVERY chat turn
+ *                        (the kit turns off Copilot's AGENTS.md/CLAUDE.md pickup via .vscode/settings.json).
+ *                        Token cost compounds per message, so these get the compact form — same rules.
+ *                        Full detail always lives in .ai/docs/conventions.md.
+ * Then runs .ai/scripts/sync-agent-hosts.js, which mirrors skills + rules into .agents/
+ * (Codex, Antigravity, Copilot CLI) — a different source, so a separate generator.
  *
  * Each target carries HTML-comment markers wrapping its NEVER and ALWAYS
  * blocks. This script replaces ONLY the text BETWEEN those markers with the
@@ -31,22 +31,21 @@
 
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CONVENTIONS = path.join(ROOT, ".ai/docs/conventions.md");
+const AGENT_HOSTS_SYNC = path.join(ROOT, ".ai/scripts/sync-agent-hosts.js");
 
 const FULL_TARGETS = [
   path.join(ROOT, ".cursor/rules/project.mdc"),
   path.join(ROOT, ".claude/skills/project-conventions/SKILL.md"),
-  path.join(ROOT, "AGENTS.md"),
 ];
-// Condensed targets = files injected on EVERY request/turn, where token cost
-// compounds per-message. copilot-instructions.md (every Copilot chat turn) and
-// project.mdc (Cursor injects on every request, alwaysApply:true) both qualify.
-// AGENTS.md stays FULL — it's read once per coding-agent run, not per turn.
+// Condensed targets = files injected on EVERY request/turn, where token cost compounds:
+// AGENTS.md (Cursor, every request) and copilot-instructions.md (Copilot, every chat turn).
 const CONDENSED_TARGETS = [
   path.join(ROOT, ".github/copilot-instructions.md"),
-  path.join(ROOT, ".cursor/rules/project.mdc"),
+  path.join(ROOT, "AGENTS.md"),
 ];
 const TARGETS = [...FULL_TARGETS, ...CONDENSED_TARGETS];
 
@@ -106,11 +105,11 @@ function buildBlocks(conventionsMd) {
 }
 
 /**
- * Condense a NEVER/ALWAYS block for token-cost-sensitive targets (currently only
- * .github/copilot-instructions.md, sent on every chat turn): collapse each
+ * Condense a NEVER/ALWAYS block for token-cost-sensitive targets (AGENTS.md and
+ * .github/copilot-instructions.md, sent on every request/turn): collapse each
  * top-level bullet's multi-line explanation to one line, and drop the nested
  * sub-numbered list under "SSR-first rendering hierarchy" to a single summary
- * line (full detail stays in the FULL targets — AGENTS.md, project.mdc, etc.).
+ * line (full detail stays in conventions.md and the FULL targets — project.mdc, SKILL.md).
  * Rule TEXT is never altered — only the multi-line -> one-line collapsing.
  */
 function condenseBlock(block) {
@@ -122,7 +121,7 @@ function condenseBlock(block) {
     // with a compact inline summary on the parent bullet, then skip the sub-lines.
     if (/^-\s+\*\*SSR-first rendering hierarchy\*\*/.test(line)) {
       out.push(
-        "- **SSR-first rendering hierarchy** — pick the LEAST client-side option: Pure SSR (preferred) → Hybrid SSR + Vue islands → Full client-side Vue (last resort, Razor skeleton first). Full detail: AGENTS.md.",
+        "- **SSR-first rendering hierarchy** — pick the LEAST client-side option: Pure SSR (preferred) → Hybrid SSR + Vue islands → Full client-side Vue (last resort, Razor skeleton first). Full detail: .ai/docs/conventions.md.",
       );
       // Skip the following indented sub-list lines (they start with 2+ spaces).
       while (i + 1 < lines.length && /^\s{2,}\S/.test(lines[i + 1])) i++;
@@ -203,10 +202,16 @@ function main() {
       ? "✓ Mirrors already in sync (no changes)."
       : `✓ Regenerated ${changed} mirror(s) from conventions.md.`,
   );
+
+  // Runs after the loop: .agents/skills/project-conventions copies the SKILL.md just regenerated.
+  if (fs.existsSync(AGENT_HOSTS_SYNC)) {
+    const r = spawnSync(process.execPath, [AGENT_HOSTS_SYNC, ROOT], { stdio: "inherit", timeout: 60000 });
+    if (r.status !== 0) throw new Error("generate-mirrors: sync-agent-hosts.js failed");
+  }
 }
 
 // Exported for check-propagation.js (strict in-memory comparison).
-module.exports = { buildBlocks, condenseBlock, applyToContent, replaceRegion, MARKERS, FULL_TARGETS, CONDENSED_TARGETS };
+module.exports = { buildBlocks, condenseBlock, applyToContent, replaceRegion, MARKERS, FULL_TARGETS, CONDENSED_TARGETS, AGENT_HOSTS_SYNC };
 
 if (require.main === module) {
   try {

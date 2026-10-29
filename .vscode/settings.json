@@ -1,5 +1,16 @@
 {
   "chat.tools.terminal.autoApprove": {
     "/\\bengine[\\\\/]cli\\.mjs[\"']?\\s+(approve|render|sequence|sequence-preview)\\b/": false
+  },
+  "chat.useAgentsMdFile": false,
+  "chat.useClaudeMdFile": false,
+  "chat.instructionsFilesLocations": {
+    ".github/instructions": true,
+    ".claude/rules": false,
+    "~/.copilot/instructions": true,
+    "~/.claude/rules": false
+  },
+  "chat.agentSkillsLocations": {
+    ".agents/skills": false
   }
 }
