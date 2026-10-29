@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -350,6 +351,11 @@ function providersPublic() {
 
 // The job's background track for the preview (the brand's, or the script's look's when the brand has none): a built-in
 // track or a project asset, at its mix level. A hand-edited bad look is ignored here, so the job still opens to fix it.
+/** A short hash of a job file's bytes; null when it does not exist. */
+function docStamp(file) {
+  try { return crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex').slice(0, 16); } catch { return null; }
+}
+
 function musicFor(project, look) {
   const m = lookBrand(lookProblem(look) ? null : look, loadBrand(project)).music || {};
   if (!m.file) return null;
@@ -375,6 +381,9 @@ function jobDetail(project, id) {
     brief, status, steps: STEPS,
     source: readJson(f('source.json'), null),
     script,
+    // What the Script and Source tabs opened: a save sends it back, so one made on a copy the Director has since
+    // rewritten is refused instead of locking the old content as the person's edits.
+    stamps: { source: docStamp(f('source.json')), script: docStamp(f('script.json')) },
     ...(outline ? { outline } : {}),
     timing: readJson(f('timing.json'), null),
     has: {
@@ -543,6 +552,9 @@ async function api(req, res, url, review = false) {
       const file = jobFile(project, id, `${action}.json`);
       const before = readJson(file, null);
       if (!before) throw new StudioError(`No ${action}.json yet: the director has not written it`, 409);
+      if (body.stamp !== undefined && body.stamp !== docStamp(file)) {
+        throw new StudioError(`The ${action} changed since you opened this tab (the Director or another tab saved it). Copy your edits, reload the job and make them again.`, 409);
+      }
       const after = body.doc;
       let warnings = [];
       if (action === 'source') {

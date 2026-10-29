@@ -155,6 +155,20 @@ test('bodies and URLs that are not what a route expects answer 400 or 413, never
   assert.match(csp, /connect-src 'self'/, 'the composition page can fetch its own job assets (model3d\'s .glb)');
   assert.match(csp, /form-action 'none'/);
   assert.match(csp, /frame-src 'none'/);
+  // A Script/Source save made on a copy that changed since the tab opened is refused; the current stamp saves.
+  fs.writeFileSync(path.join(dir, 'source.json'), JSON.stringify({ name: 'n', bullets: [{ text: 'a', ref: 'r' }] }));
+  fs.mkdirSync(path.join(DIRS.briefs, P), { recursive: true });
+  fs.writeFileSync(path.join(DIRS.briefs, P, 'x.json'), JSON.stringify({ id: 'x', project: P, template: 'explainer', format: '16:9', duration: 30, director: 'seat', message: 'm' }));
+  const put = (stamp) => request(PORT, `/api/jobs/${P}/x/source`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: `http://${HOST}` },
+    body: JSON.stringify({ doc: { name: 'n2', bullets: [{ text: 'a', ref: 'r' }] }, stamp }),
+  });
+  const stale = await put('0000000000000000');
+  assert.equal(stale.status, 409);
+  assert.match(JSON.parse(stale.text).error, /changed since you opened this tab/);
+  const fresh = JSON.parse((await request(PORT, `/api/jobs/${P}/x`)).text).stamps.source;
+  assert.equal((await put(fresh)).status, 200);
+
   // The UI page refuses to be framed by another site.
   const ui = await request(PORT, '/');
   assert.equal(ui.headers['x-frame-options'], 'DENY');

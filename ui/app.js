@@ -135,10 +135,14 @@ async function guarded(key, btn, fn, errBox) {
   applyLocks();
   try { return await run; } finally {
     INFLIGHT.delete(key);
+    const msg = errBox?.textContent, boxId = errBox?.id;
     // Redraw what the lock disabled, so each control gets back its own state (e.g. "the Director is already running").
     if (key === jobKey() && S.detail) renderTop();
     else if (key === seqKey() && S.seqSel && !S.seqForm) renderSeqDetail();
     else if (FORM_BTNS[key]) $$(FORM_BTNS[key]).forEach((b) => { b.disabled = false; });
+    // The redraw writes a fresh, empty error box: the message the action just failed with goes back into it.
+    const box = msg && boxId ? document.getElementById(boxId) : null;
+    if (box && box !== errBox) box.textContent = msg;
   }
 }
 
@@ -644,6 +648,7 @@ async function directorClick(e) {
   if (!b) return;
   const what = b.dataset.dir;
   if (what === 'cancel' && !window.confirm('Stop the Director run? Jobs it was working on go to error.')) return;
+  if (what === 'run' && S.paneDirty && !window.confirm('You have unsaved Script or Source edits. The Director may rewrite that file, and saving them after it would be refused. Run the Director anyway?')) return;
   await busy(b, async () => {
     if (what === 'run') await api('/director/run', { method: 'POST', body: { project: S.project } });
     if (what === 'cancel') await api('/director/cancel', { method: 'POST', body: {} });
@@ -688,7 +693,7 @@ function paneHistory(pane) {
 }
 
 function paneSource(pane) {
-  const src = S.detail.source;
+  const src = S.detail.source, stamp = S.detail.stamps?.source;
   if (!src) { pane.innerHTML = '<p class="muted">The Director has not written source.json yet.</p>'; return; }
   const locks = src.locks || {};
   const lockTag = (k) => (locks[k] ? `<span class="lock">locked by ${esc(locks[k].by)}</span>` : '');
@@ -735,7 +740,7 @@ function paneSource(pane) {
   $('#src-save').addEventListener('click', (e) => guarded(jobKey(), e.currentTarget, async () => {
     const doc = { ...src, name: $('#src-name').value.trim(), bullets };
     delete doc.locks;
-    const r = await api(`/jobs/${jobPath()}/source`, { method: 'PUT', body: { doc, note: $('#src-note').value } });
+    const r = await api(`/jobs/${jobPath()}/source`, { method: 'PUT', body: { doc, note: $('#src-note').value, stamp } });
     S.paneDirty = false;
     toast(!r.changed.length ? 'Nothing changed'
       : r.statusKept ? 'Screenshots saved. No claim changed, so the job status stays as it is.'
@@ -746,7 +751,7 @@ function paneSource(pane) {
 }
 
 function paneScript(pane) {
-  const d = S.detail, sc = d.script;
+  const d = S.detail, sc = d.script, stamp = d.stamps?.script;
   if (!sc) { pane.innerHTML = '<p class="muted">The Director has not written script.json yet.</p>'; return; }
   const tpl = d.template, locks = sc.locks || {};
   const help = d.help || { kinds: {}, fields: {} };
@@ -1092,6 +1097,7 @@ function paneScript(pane) {
   });
   // Upload from a file field: the file goes to the brand assets (the Brand tab's checks and route), then the scene picks it.
   pane.addEventListener('click', (e) => {
+    if (REVIEW) return;
     const b = e.target.closest('button[data-pickup]');
     if (b) $(`#${CSS.escape(b.dataset.pickup)}-file`)?.click();
     const c = e.target.closest('button[data-mclear]');
@@ -1165,7 +1171,7 @@ function paneScript(pane) {
     const doc = { ...sc, scenes };
     delete doc.locks;
     if (look === undefined) delete doc.look; else doc.look = look;
-    const r = await api(`/jobs/${jobPath()}/script`, { method: 'PUT', body: { doc, note: $('#sc-note').value } });
+    const r = await api(`/jobs/${jobPath()}/script`, { method: 'PUT', body: { doc, note: $('#sc-note').value, stamp } });
     S.paneDirty = false;
     S.scriptWarnings = r.warnings || null;
     const drafts = scenes.filter((s) => s.draft).length;
@@ -2513,8 +2519,11 @@ async function renderBrand() {
   const isFont = (a) => assetKind(a) === 'font';
   const GLYPH = { audio: '♪', video: '▶', font: 'Aa', model: '3D', animation: '✦', other: '·' };
   const assetUrl = (a) => `/assets/${P}/${encodeURIComponent(a)}`;
+  // A timer or an await of this tab can end after a project switch drew a new Brand tab with the same element ids:
+  // `$('#br-…')` would then find the new tab and fill it with this project's assets (dropping its logo and music).
+  const alive = () => box.isConnected && project === S.project;
   // Built-in tracks, voices and cut sounds come from /options; fetched again after the assets change.
-  const refreshOptions = () => api('/options').then((o) => { S.options = opts = o; if ($('#br-assets')) drawAssets(); }).catch(() => {});
+  const refreshOptions = () => api('/options').then((o) => { S.options = opts = o; if (alive()) drawAssets(); }).catch(() => {});
   const imgOptions = (sel) => `<option value="">(none)</option>${assets.filter(isImage).map((a) => `<option ${sel === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}`;
   // A brand box set by hand in brand.json (color, bg) stays selectable as "Custom box" so a save keeps it.
   const SUB_LOOKS = [['', 'Template default'], ['classic', 'Classic'], ['highlighter', 'Highlighter'], ['minimal', 'Minimal'], ['pill', 'Pill'], ['pop', 'Pop']];
@@ -2769,7 +2778,7 @@ async function renderBrand() {
   let genWasRunning = false;
   const genMine = () => gen.running?.project === project;
   const drawGen = () => {
-    if (!gen || !$('#br-gen')) return;
+    if (!gen || !alive() || !$('#br-gen')) return;
     const { defaults, available, fetchedAt } = gen.models;
     const kind = $('#gen-kind').value;
     const pick = $('#gen-model').value;
@@ -2806,9 +2815,10 @@ async function renderBrand() {
     if (!gen || !genMine()) return;
     genWasRunning = true;
     genPoll = setTimeout(async () => {
-      if (!$('#br-gen')) return;
+      if (!alive() || !$('#br-gen')) return;
       try {
         const fresh = await api(`/projects/${P}`);
+        if (!alive()) return;
         gen = fresh.generate;
         if (!genMine() && genWasRunning) {
           genWasRunning = false;
@@ -2825,11 +2835,17 @@ async function renderBrand() {
     clearTimeout(poll);
     if (!Object.values(transcripts).some((t) => t.busy)) return;
     poll = setTimeout(async () => {
-      if (!$('#br-assets')) return;
-      try { transcripts = (await api(`/projects/${P}`)).transcripts || {}; drawAssets(); } catch { /* server restarting */ }
+      if (!alive()) return;
+      try {
+        const fresh = await api(`/projects/${P}`);
+        if (!alive()) return;
+        transcripts = fresh.transcripts || {};
+        drawAssets();
+      } catch { /* server restarting */ }
     }, 3000);
   };
   const drawAssets = () => {
+    if (!alive()) return;
     $('#br-assets').innerHTML = assets.map((a) => `<div class="asset">${isImage(a) ? `<img src="${assetUrl(a)}" alt="">` : `<div class="aud" aria-hidden="true">${GLYPH[assetKind(a)]}</div>`}
       <span>${esc(a)}</span>${genTag(a)}${sttHtml(a)}${isVideo(a) ? `<button class="btn sm" type="button" data-shots="${esc(a)}" title="Shots, transcript search and clip cutting">Shots</button>` : ''}<button class="btn sm" type="button" data-adel="${esc(a)}" aria-label="Delete ${esc(a)}">Delete</button></div>`).join('') || '<span class="muted">No files yet.</span>';
     watchTranscripts();
@@ -3024,7 +3040,7 @@ async function renderBrand() {
         if (!assets.includes(data.name)) assets = [...assets, data.name].sort();
         if (gen) delete gen.generated[data.name];
       });
-    if (!$('#br-assets')) return;
+    if (!alive()) return;
     drawAssets();
     if (added) { toast(`Uploaded ${added} file${added === 1 ? '' : 's'}`); refreshOptions(); }
   };
