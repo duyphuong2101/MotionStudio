@@ -222,9 +222,25 @@ test('recoverStale moves a job an API run left in scripting to error, and nothin
   setStatus(P, 'a', { status: 'scripting' }, 'claimed by director', 'director-openai');
   setStatus(P, 'b', { status: 'scripting' }, 'claimed by director', 'claude-seat');
   setStatus(P, 'c', { status: 'awaiting_review' }, 'prepared', 'director-openai');
-  assert.deepEqual(recoverStale(P), [`${P}/a`]);
+  const none = fs.mkdtempSync(path.join(tmp, 'inflight-'));
+  assert.deepEqual(recoverStale(P, { dir: none }), [`${P}/a`]);
   assert.deepEqual(JOBS.map((id) => getStatus(P, id).status), ['error', 'scripting', 'awaiting_review']);
   assert.match(getStatus(P, 'a').error, /The server stopped during a Director run/);
+});
+
+test('recoverStale leaves a job another live server is running an API Director run on', () => {
+  fresh();
+  setStatus(P, 'a', { status: 'scripting' }, 'claimed by director', 'director-openai');
+  setStatus(P, 'b', { status: 'scripting' }, 'claimed by director', 'director-openai');
+  const dir = fs.mkdtempSync(path.join(tmp, 'inflight-'));
+  const other = { pid: 424242, startedAt: 1000, exe: 'node' };
+  writeJson(path.join(dir, `${other.pid}.json`), { server: other, children: { 'director-api': { kind: 'director', action: 'director-api', project: P, jobs: ['a'], ...other } } });
+  const self = { pid: 1, startedAt: 0 };
+  const live = () => new Map([[other.pid, { name: 'node.exe', startedAt: 1000 }]]);
+  assert.deepEqual(recoverStale(P, { dir, self, probe: live }), [`${P}/b`], 'a is held by the live server; b is not');
+  assert.equal(getStatus(P, 'a').status, 'scripting');
+  assert.deepEqual(recoverStale(P, { dir, self, probe: () => null }), [], 'without a process list nothing is reset');
+  assert.deepEqual(recoverStale(P, { dir, self, probe: () => new Map() }), [`${P}/a`], 'once that server is gone, its job is reset');
 });
 
 test('engine children get no key named in config/providers.json', () => {

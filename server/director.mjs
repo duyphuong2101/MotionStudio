@@ -22,6 +22,8 @@ const PROVIDERS_FILE = path.join(DIRS.config, 'providers.json');
 const PROVIDER_PAUSE_RE = /^pause-[a-z0-9-]+\.json$/;
 // The setStatus actor of an API run is `director-<provider>`; the seat's is `claude-seat`.
 const API_BY = 'director-';
+// The in-flight record of an API run (it has no child process of its own).
+const API_ACTION = 'director-api';
 const TASKKILL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
 const TAIL_BYTES = 6000;
 const MAX_LINE = 1024 * 1024;
@@ -392,10 +394,19 @@ export function directorProviders(d, providers, env = process.env, files = FILES
 }
 
 /** On server start: a job an API run left before the storyboard (the loop died with the server) goes to error. */
-export function recoverStale(project = null) {
+export function recoverStale(project = null, { dir = INFLIGHT_DIR, self = SELF, probe = probeProcesses } = {}) {
   const fixed = [];
+  // Another live server (a test's, or a second UI) may be running this job's API Director run right now: its
+  // in-flight record names the jobs. Without a process list nobody can tell, so nothing is reset this start.
+  const docs = (exists(dir) ? fs.readdirSync(dir) : []).filter((f) => INFLIGHT_RE.test(f)).map((f) => readJson(within(dir, f), null)).filter(Boolean);
+  const others = docs.filter((d) => d.server && d.server.pid !== self.pid);
+  const alive = others.length ? probe(others.map((d) => Number(d.server.pid))) : new Map();
+  if (!alive) return fixed;
+  const held = new Set(others.filter((d) => ownsProcess(d.server, alive.get(d.server.pid)))
+    .flatMap((d) => Object.values(d.children || {}).filter((c) => c?.action === API_ACTION).flatMap((c) => (c.jobs || []).map((j) => `${c.project}/${j}`))));
   for (const { brief, status } of listJobs(project)) {
     if (!['scripting', 'scripted'].includes(status.status) || !String(status.history?.at(-1)?.by || '').startsWith(API_BY)) continue;
+    if (held.has(`${brief.project}/${brief.id}`)) continue;
     setStatus(brief.project, brief.id, { status: 'error', error: 'The server stopped during a Director run. Click Run Director again.' }, 'server restarted during a Director run', 'server');
     fixed.push(`${brief.project}/${brief.id}`);
   }
@@ -606,9 +617,12 @@ export function startDirector(d, { project, job, by, engineBusy, runPrepare, pro
   if (jobs.some(engineBusy)) throw new StudioError('A prepare or render of one of these jobs is running. Wait for it to finish.', 409);
   if (backend.kind === 'seat') return startSeatRun(d, { project, by, plan, jobs });
   assertApiConfig(d.api);
+  // The run lives in this process: recorded like a child, so another server starting meanwhile leaves its jobs
+  // alone, and a start after this server stops resets them.
+  trackChild(API_ACTION, { kind: 'director', action: API_ACTION, project, jobs, pid: SELF.pid, exe: exeName(process.execPath), startedAt: SELF.startedAt });
   const run = startApiRun(d, providers, {
     backend, plan, prompt: studioCommand(project, jobs), project, by, runPrepare, fetch, env, files,
-    onEnd: (r) => { if (current === r) current = null; last = r; },
+    onEnd: (r) => { untrackChild(API_ACTION); if (current === r) current = null; last = r; },
   });
   current = run;
   return publicRun(run);
