@@ -1,4 +1,4 @@
-import { page, geometry, h, asset, hasLogoBug, UNDER_BUG, contentArea } from '../kit.mjs';
+import { page, geometry, h, asset, hasLogoBug, UNDER_BUG, contentArea, fitWords } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
 import { markWords, hasMark } from '../../engine/marks.mjs';
 
@@ -34,6 +34,9 @@ export function parts({ brand, script, timing, size }) {
   const g = geometry(size);
   const { px, padX, port, land, U, W, H } = g;
   const A = contentArea(brand, g);
+  // A photo title sits between padX(80) on each side: its longest word must fit there whole.
+  const titleBase = port ? 116 : 96;
+  const fitTitle = (ws) => { const fit = fitWords(ws, titleBase, W / U - 2 * (parseInt(padX(80), 10) / U)); return fit < titleBase ? ` style="font-size:${px(fit)}"` : ''; };
   const side = port ? 80 : 120;
   const scenes = [];
   const blocks = [];
@@ -45,7 +48,7 @@ export function parts({ brand, script, timing, size }) {
       blocks.push(`<div class="sc fill" id="g-${id}"><div class="ph" id="${id}-ph"><img src="${asset(sc.asset)}" alt=""></div>
         <div class="shade ${align}"></div>
         <div class="cap ${align}">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
-          <div class="hd lt" data-lint>${ws.map((w, k) => `<span class="lm"${hasMark(w) ? ' style="overflow:visible"' : ''}><span class="lw" id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
+          <div class="hd lt" data-lint${fitTitle(ws)}>${ws.map((w, k) => `<span class="lm"${hasMark(w) ? ' style="overflow:visible"' : ''}><span class="lw" id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
           ${sc.subtitle ? `<div class="ls" data-lint>${h(sc.subtitle)}</div>` : ''}</div></div>`);
       scenes.push({ id, kind: 'photo', n: ws.length, move: sc.move || 'in' });
     } else if (sc.kind === 'gallery') {

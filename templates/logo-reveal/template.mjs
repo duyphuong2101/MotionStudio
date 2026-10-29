@@ -37,7 +37,7 @@ export function build({ brand, script, timing, size }) {
 #bgc{opacity:${dark ? 0.35 : 1}}
 .panel{position:absolute;inset:0;transform:translateX(-101%)}.p1{background:var(--secondary)}.p2{background:var(--primary2)}
 .fx{position:absolute;left:50%;top:50%;width:${fx};height:${fx};transform:translate(-50%,-50%);overflow:visible}
-.fx circle{fill:none;stroke:var(--secondary);stroke-width:5}#${id}-ring2{stroke-width:2;opacity:.5}
+.fx circle{fill:none;stroke:var(--secondary);stroke-width:5}[id="${id}-ring2"]{stroke-width:2;opacity:.5}
 .rays path{stroke:var(--secondary);stroke-width:7;stroke-linecap:round}
 .mark{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${px(34)};text-align:center}
 .lg{display:flex;justify-content:center}
@@ -63,7 +63,9 @@ const KINDS = {
     const logo = $(sc.id + '-logo');
     const rays = [...document.querySelectorAll('.rays path')];
     gsap.set(rays, { drawSVG: '0% 0%' });
-    gsap.set(['#' + sc.id + '-ring', '#' + sc.id + '-ring2'], { drawSVG: '0%', rotation: -90, transformOrigin: '50% 50%' });
+    // Elements, not "#id" selector strings: a scene id may start with a digit, which a CSS selector cannot.
+    const rings = [$(sc.id + '-ring'), $(sc.id + '-ring2')];
+    gsap.set(rings, { drawSVG: '0%', rotation: -90, transformOrigin: '50% 50%' });
     let at = s + 0.2;
     if (sc.style === 'slide') {
       tl.fromTo($(sc.id + '-p1'), { xPercent: -101 }, { xPercent: 101, duration: 0.9, ease: XIO, immediateRender: false }, s + 0.05)
@@ -80,7 +82,7 @@ const KINDS = {
     } else {
       draw($(sc.id + '-ring'), s + 0.1, 1.1, { ease: XIO });
       draw($(sc.id + '-ring2'), s + 0.3, 1.2, { ease: XIO });
-      tl.to(['#' + sc.id + '-ring', '#' + sc.id + '-ring2'], { rotation: 0, duration: e - s, ease: 'none' }, s);
+      tl.to(rings, { rotation: 0, duration: e - s, ease: 'none' }, s);
       at = s + 0.7;
       tl.fromTo(logo, { clipPath: 'circle(0% at 50% 50%)', scale: 1.08 }, { clipPath: 'circle(75% at 50% 50%)', scale: 1, duration: 0.9, ease: X, immediateRender: false }, at);
     }

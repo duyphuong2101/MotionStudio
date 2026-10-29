@@ -1,4 +1,4 @@
-import { page, geometry, h, asset, num, hasLogoBug } from '../kit.mjs';
+import { page, geometry, h, asset, num, hasLogoBug, fitWords } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
 import { markWords } from '../../engine/marks.mjs';
 import { iconSet } from '../../motion-kit/icons.mjs';
@@ -14,9 +14,11 @@ export function build({ brand, script, timing, size, icons }) {
     const id = sc.id;
     if (sc.kind === 'hook') {
       const ws = markWords(sc.title);
+      // The hook's padding is 90 a side and it grows to 1.06 while it plays: its longest word must still fit.
+      const base = port ? 150 : 128, fit = fitWords(ws, base, (g.W / g.U - 180) / 1.06);
       parts.push(`<div class="sc fill dark" id="g-${id}"><div class="hook">
         ${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
-        <div class="hd hookt" data-lint>${ws.map((w, i) => `<span class="hw" id="${id}-w${i}">${h(w)}</span>`).join(' ')}</div>
+        <div class="hd hookt" data-lint${fit < base ? ` style="font-size:${px(fit)}"` : ''}>${ws.map((w, i) => `<span class="hw" id="${id}-w${i}">${h(w)}</span>`).join(' ')}</div>
         <svg class="uline" viewBox="0 0 600 40" preserveAspectRatio="none" aria-hidden="true"><path id="${id}-ul" d="M5 28 C150 8 300 36 595 14"/></svg></div></div>`);
       scenes.push({ id, kind: 'hook', n: ws.length });
     } else if (sc.kind === 'offer') {

@@ -1,4 +1,4 @@
-import { page, geometry, h, hasLogoBug, contentArea, themeClass, ACCENT_CSS } from '../kit.mjs';
+import { page, geometry, h, hasLogoBug, contentArea, themeClass, ACCENT_CSS, wordEm } from '../kit.mjs';
 import { motionProfile } from '../../engine/brand.mjs';
 import { logoHtml } from '../shared.mjs';
 import { iconSet } from '../../motion-kit/icons.mjs';
@@ -12,9 +12,6 @@ const FLASH_MAX = { land: 170, port: 150 }, FLASH_MIN = { land: 110, port: 88 };
 const wordKey = (w) => String(w).toLowerCase().replace(/[^a-z0-9]/g, '');
 // Rough width of one bold display character, in em, to size a flash line before the page lays it out.
 const CHAR_EM = 0.6;
-// Per-character widths (em) for the one word that must not break: wide, capital and narrow letters.
-const WIDE = /[MWmw@%]/, NARROW = /[ijlI1.,:;!'|]/, SLIM = /[ftr()-]/;
-const wordEm = (w) => [...w].reduce((n, ch) => n + (WIDE.test(ch) ? 0.92 : NARROW.test(ch) ? 0.34 : SLIM.test(ch) ? 0.45 : /\p{Lu}/u.test(ch) ? 0.72 : 0.6), 0);
 
 /**
  * A flash line's font size (1080 units) for `text` on a `width`-unit line: the size that fits the line on one row,

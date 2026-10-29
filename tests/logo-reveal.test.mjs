@@ -162,3 +162,22 @@ test('logo-reveal notesCue: the roll starts on that word while the voice reads, 
     assert.ok(reading.subs.every((o) => o < 0.05), `no caption over the rolling notes: ${reading.subs}`);
   } finally { await opened.browser.close(); }
 });
+
+// A scene id may start with a digit (SCENE_ID_RE allows it); "#1-ring" is not a CSS selector, so the ring tweens and
+// the ring2 rule must not be built from one.
+test('a reveal whose scene id starts with a digit becomes ready, every style', { timeout: 180000 }, async (t) => {
+  const { hasChrome, chromeFolder } = await import('./helpers/chrome-folder.mjs');
+  const cfg = loadStudioConfig();
+  if (!(await hasChrome(cfg.engine.chromeChannel))) { t.skip('Chrome is not available'); return; }
+  const folder = await chromeFolder(t, 'ms-digit-');
+  const { dir: tdir, beats } = loadTemplate('logo-reveal');
+  const { build } = await import(pathToFileURL(path.join(tdir, 'template.mjs')).href);
+  for (const style of ['ring', 'slide', 'burst']) {
+    const script = { lang: 'en', scenes: [{ id: '1-reveal', kind: 'reveal', style, tagline: 'Hello.', vo: 'Hello there.' }] };
+    const timing = estimateTiming(script, cfg.timing, 'en', beats.pace || null);
+    const html = build({ brief: { format: '16:9' }, brand: BRAND, script, timing, size: sizeFor(beats, '16:9') });
+    if (style === 'ring') assert.ok(html.includes('[id="1-reveal-ring2"]{stroke-width:2'), 'the ring2 rule is a selector that holds a digit-first id');
+    const { browser } = await openComposition(folder.write('index.html', html), { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') });
+    await browser.close();
+  }
+});

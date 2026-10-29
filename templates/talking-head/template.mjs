@@ -1,4 +1,4 @@
-import { page, geometry, h, hasLogoBug, asset } from '../kit.mjs';
+import { page, geometry, h, hasLogoBug, asset, fitWords } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
 import { markWords, hasMark } from '../../engine/marks.mjs';
 
@@ -25,8 +25,10 @@ export function build({ brand, script, timing, size }) {
       scenes.push({ id, kind: 'clip', zoom: sc.zoom || 'none', ...(lay === 'full' ? {} : { layout: lay }) });
     } else if (sc.kind === 'card') {
       const ws = markWords(sc.title);
+      // The card's side padding is padX(100): its longest word must fit between them.
+      const base = port ? 120 : 104, fit = fitWords(ws, base, g.W / g.U - 2 * (parseInt(padX(100), 10) / g.U));
       parts.push(`<div class="sc fill dark" id="g-${id}"><div class="card">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
-        <div class="hd ct" data-lint>${ws.map((w, k) => `<span class="cm"${hasMark(w) ? ' style="overflow:visible"' : ''}><span id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
+        <div class="hd ct" data-lint${fit < base ? ` style="font-size:${px(fit)}"` : ''}>${ws.map((w, k) => `<span class="cm"${hasMark(w) ? ' style="overflow:visible"' : ''}><span id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
         ${sc.text ? `<div class="cx" data-lint>${h(sc.text)}</div>` : ''}<div class="bar" id="${id}-bar"></div></div></div>`);
       scenes.push({ id, kind: 'card', n: ws.length });
     } else if (sc.kind === 'cta') {

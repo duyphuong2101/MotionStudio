@@ -3,7 +3,7 @@
 import { escapeHtml as h, jsonForScript, StudioError } from '../engine/core.mjs';
 import { paletteCss } from './shared.mjs';
 import { SUBTITLE_STYLES, SUBTITLE_FONTS, REVEALS, brandEase, motionProfile } from '../engine/brand.mjs';
-import { marksToHtml } from '../engine/marks.mjs';
+import { marksToHtml, stripMarks } from '../engine/marks.mjs';
 import { glLayers, glBackdropHtml, glWipeHtml, glCss, glData, glJs, cutWindows } from './gl.mjs';
 import { hasModels, MODEL_HEAD, MODEL_WAIT, MODEL_JS } from './model3d.mjs';
 import { hasLotties, LOTTIE_WAIT, LOTTIE_JS } from './lottie.mjs';
@@ -108,6 +108,20 @@ export function geometry(size = { width: 1920, height: 1080 }) {
 }
 
 export const asset = (name) => `assets/${encodeURIComponent(name)}`;
+
+// Rough widths (em) of bold display characters, for a word that must not break: wide, capital and narrow letters.
+const WIDE = /[MWmw@%]/, NARROW = /[ijlI1.,:;!'|]/, SLIM = /[ftr()-]/;
+export const wordEm = (w) => [...w].reduce((n, ch) => n + (WIDE.test(ch) ? 0.92 : NARROW.test(ch) ? 0.34 : SLIM.test(ch) ? 0.45 : /\p{Lu}/u.test(ch) ? 0.72 : 0.6), 0);
+
+/**
+ * The font size (1080 units) of a heading animated word by word, each word one unbreakable box: `size`, or smaller
+ * so its longest word fits `width` units. Limits count characters, not word length, so "Sustainability" at 150 would
+ * run past a portrait column.
+ */
+export const fitWords = (words, size, width) => {
+  const em = Math.max(0, ...words.map((w) => wordEm(stripMarks(w))));
+  return em ? Math.min(size, Math.floor(width / em)) : size;
+};
 
 /** Camera that frames `focus` ({x,y,w,h} in image px) in an image-sized view, clamped so no blank edge shows. */
 export function camera(focus, img = { width: 1920, height: 1080 }, maxZoom = 2.4) {
