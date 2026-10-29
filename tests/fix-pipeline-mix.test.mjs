@@ -15,9 +15,9 @@ test('music shorter than the film loops by crossfade, one input per copy after s
   assert.ok(loop.copies > 1);
   assert.deepEqual(inputsOf(args), ['video.mp4', 'voice.wav', 'sfx.wav', ...Array(loop.copies).fill('m.wav')]);
   const g = graphOf(args);
-  assert.ok(g.includes(`${loop.graph};[loop]aresample=48000,apad,atrim=0:30.000,volume=-18dB,`), 'the music chain reads [loop], not one input');
-  assert.ok(g.startsWith('[1:a]aresample=48000,apad,atrim=0:30.000[s1];'), 'speech keeps input 1');
-  assert.ok(g.includes('[2:a]aresample=48000,apad,atrim=0:30.000[e0]'), 'cut sounds keep input 2');
+  assert.ok(g.includes(`${loop.graph};[loop]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:30.000,volume=-14.99dB,`), 'the music chain reads [loop], not one input');
+  assert.ok(g.startsWith('[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:30.000[s1];'), 'speech keeps input 1');
+  assert.ok(g.includes('[2:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:30.000[e0]'), 'cut sounds keep input 2');
   assert.ok(g.includes('[3:a]aresample=48000,atrim=0:8.000[c0]'), 'the first copy is input 3');
 });
 

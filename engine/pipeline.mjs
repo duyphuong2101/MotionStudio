@@ -800,6 +800,12 @@ export async function qaFile(dir, file, receipt, expect) {
 }
 
 const LOUDNORM = 'loudnorm=I=-14:TP=-1.5:LRA=11';
+// The mix is stereo. Speech, footage sound and cut sounds are written mono: each goes to both sides at full level,
+// as a player plays a mono file. Music keeps its own stereo; the mono mix this replaced summed a centred track's two
+// sides (+3 dB), so music is lifted 3 dB to keep the voice-to-music balance and duck depth a brand's gainDb was set by.
+const MONO_TO_STEREO = 'pan=stereo|c0=c0|c1=c0';
+const MUSIC_STEREO = 'aformat=channel_layouts=stereo';
+const MUSIC_LIFT_DB = 3.01;
 // Music dips while anyone speaks: the speech mix [v] is the sidechain.
 const DUCK = 'sidechaincompress=threshold=0.03:ratio=6:attack=20:release=350:makeup=1';
 
@@ -817,21 +823,21 @@ export function mixFilter({ speech = 0, sfx = 0, sfxOffsets = null, music = fals
   let n = 1;
   for (; n <= speech; n++) {
     const delay = offsets ? `adelay=${Math.round(offsets[n - 1] * 1000)}:all=1,` : '';
-    parts.push(`[${n}:a]aresample=48000,${delay}apad,atrim=0:${dur}[s${n}]`);
+    parts.push(`[${n}:a]aresample=48000,${MONO_TO_STEREO},${delay}apad,atrim=0:${dur}[s${n}]`);
   }
   if (speech) parts.push(speech === 1 ? '[s1]anull[v]' : `${Array.from({ length: speech }, (_, i) => `[s${i + 1}]`).join('')}amix=inputs=${speech}:duration=first:normalize=0[v]`);
   for (let k = 0; k < sfx; k++, n++) {
     const delay = sfxOffsets ? `adelay=${Math.round(sfxOffsets[k] * 1000)}:all=1,` : '';
-    parts.push(`[${n}:a]aresample=48000,${delay}apad,atrim=0:${dur}[e${k}]`);
+    parts.push(`[${n}:a]aresample=48000,${MONO_TO_STEREO},${delay}apad,atrim=0:${dur}[e${k}]`);
   }
   if (sfx) parts.push(sfx === 1 ? '[e0]anull[fx]' : `${Array.from({ length: sfx }, (_, k) => `[e${k}]`).join('')}amix=inputs=${sfx}:duration=first:normalize=0[fx]`);
   const fx = sfx ? '[fx]' : '', more = sfx ? 1 : 0;
   if (music) {
-    const gain = Number(gainDb ?? -18);
+    const gain = +(Number(gainDb ?? -18) + MUSIC_LIFT_DB).toFixed(2);
     const fadeAt = Math.max(0, duration - fadeOut).toFixed(3);
     const fin = fadeIn ? `afade=t=in:st=0:d=${fadeIn},` : '';
     if (loopGraph) parts.push(loopGraph);
-    parts.push(`[${loopGraph ? 'loop' : `${n}:a`}]aresample=48000,apad,atrim=0:${dur},volume=${gain}dB,${fin}afade=t=out:st=${fadeAt}:d=${fadeOut}[m]`);
+    parts.push(`[${loopGraph ? 'loop' : `${n}:a`}]aresample=48000,${MUSIC_STEREO},apad,atrim=0:${dur},volume=${gain}dB,${fin}afade=t=out:st=${fadeAt}:d=${fadeOut}[m]`);
   }
   if (speech && music && duck) return `${parts.join(';')};[v]asplit=2[vm][vk];[m][vk]${DUCK}[md];[vm][md]${fx}amix=inputs=${2 + more}:duration=first:normalize=0,${LOUDNORM}[a]`;
   if (speech && music) return `${parts.join(';')};[v][m]${fx}amix=inputs=${2 + more}:duration=first:normalize=0,${LOUDNORM}[a]`;

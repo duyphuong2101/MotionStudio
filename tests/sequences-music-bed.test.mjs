@@ -63,11 +63,11 @@ test('a music bed lays each part speech at its start in the joined film over one
   const args = musicBedPlan({ video: 'joined.mp4', speech, music: 'bed.wav', duration: plan.duration, gainDb: -16, duck: true, out: 'final.part.mp4' });
   const inputs = args.flatMap((a, i) => (a === '-i' ? [args[i + 1]] : []));
   assert.deepEqual(inputs, ['joined.mp4', 'p0/voice.wav', 'p2/voice.wav', 'p2/footage.wav', 'bed.wav'], 'one music input, after the speech');
-  assert.equal(graphOf(args), '[1:a]aresample=48000,adelay=0:all=1,apad,atrim=0:22.200[s1];'
-    + '[2:a]aresample=48000,adelay=14200:all=1,apad,atrim=0:22.200[s2];'
-    + '[3:a]aresample=48000,adelay=14200:all=1,apad,atrim=0:22.200[s3];'
+  assert.equal(graphOf(args), '[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=0:all=1,apad,atrim=0:22.200[s1];'
+    + '[2:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=14200:all=1,apad,atrim=0:22.200[s2];'
+    + '[3:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=14200:all=1,apad,atrim=0:22.200[s3];'
     + '[s1][s2][s3]amix=inputs=3:duration=first:normalize=0[v];'
-    + '[4:a]aresample=48000,apad,atrim=0:22.200,volume=-16dB,afade=t=in:st=0:d=0.5,afade=t=out:st=20.200:d=2[m];'
+    + '[4:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:22.200,volume=-12.99dB,afade=t=in:st=0:d=0.5,afade=t=out:st=20.200:d=2[m];'
     + '[v]asplit=2[vm][vk];[m][vk]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=350:makeup=1[md];'
     + '[vm][md]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[a]');
   assert.deepEqual(args.slice(args.indexOf('-map')), ['-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-t', '22.200', '-movflags', '+faststart', 'final.part.mp4']);
@@ -75,10 +75,10 @@ test('a music bed lays each part speech at its start in the joined film over one
 
 test('a music bed without duck mixes at a constant level; without music it is the placed speech alone', () => {
   const plain = graphOf(musicBedPlan({ video: 'j.mp4', speech: [{ file: 'v.wav', start: 4.5 }], music: 'm.wav', duration: 10, out: 'o.mp4' }));
-  assert.ok(plain.includes('adelay=4500:all=1') && plain.includes('volume=-18dB') && !plain.includes('sidechaincompress'));
+  assert.ok(plain.includes('adelay=4500:all=1') && plain.includes('volume=-14.99dB') && !plain.includes('sidechaincompress'));
   const voiceOnly = musicBedPlan({ video: 'j.mp4', speech: [{ file: 'v.wav', start: 0 }], duration: 10, out: 'o.mp4' });
   assert.equal(voiceOnly.filter((a) => a === '-i').length, 2);
-  assert.equal(graphOf(voiceOnly), '[1:a]aresample=48000,adelay=0:all=1,apad,atrim=0:10.000[s1];[s1]anull[v];[v]loudnorm=I=-14:TP=-1.5:LRA=11[a]');
+  assert.equal(graphOf(voiceOnly), '[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=0:all=1,apad,atrim=0:10.000[s1];[s1]anull[v];[v]loudnorm=I=-14:TP=-1.5:LRA=11[a]');
 });
 
 test('a 120 s track under a 200 s film loops once: cut before its fade-out, crossfaded into a copy past its fade-in', () => {
@@ -86,13 +86,13 @@ test('a 120 s track under a 200 s film loops once: cut before its fade-out, cros
   const args = musicBedPlan({ video: 'j.mp4', speech, music: 'calm-pad.wav', musicSeconds: 120, cycle: 16, duration: 200, duck: true, out: 'o.mp4' });
   const inputs = args.flatMap((a, i) => (a === '-i' ? [args[i + 1]] : []));
   assert.deepEqual(inputs, ['j.mp4', 'a/voice.wav', 'b/voice.wav', 'c/voice.wav', 'calm-pad.wav', 'calm-pad.wav'], 'the track once per copy, after the speech');
-  assert.equal(graphOf(args), '[1:a]aresample=48000,adelay=0:all=1,apad,atrim=0:200.000[s1];'
-    + '[2:a]aresample=48000,adelay=66600:all=1,apad,atrim=0:200.000[s2];'
-    + '[3:a]aresample=48000,adelay=133200:all=1,apad,atrim=0:200.000[s3];'
+  assert.equal(graphOf(args), '[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=0:all=1,apad,atrim=0:200.000[s1];'
+    + '[2:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=66600:all=1,apad,atrim=0:200.000[s2];'
+    + '[3:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=133200:all=1,apad,atrim=0:200.000[s3];'
     + '[s1][s2][s3]amix=inputs=3:duration=first:normalize=0[v];'
     + '[4:a]aresample=48000,atrim=0:116.000[c0];[5:a]aresample=48000,atrim=start=2.000:end=116.000,asetpts=PTS-STARTPTS[c1];'
     + '[c0][c1]acrossfade=d=2[loop];'
-    + '[loop]aresample=48000,apad,atrim=0:200.000,volume=-18dB,afade=t=in:st=0:d=0.5,afade=t=out:st=198.000:d=2[m];'
+    + '[loop]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:200.000,volume=-14.99dB,afade=t=in:st=0:d=0.5,afade=t=out:st=198.000:d=2[m];'
     + '[v]asplit=2[vm][vk];[m][vk]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=350:makeup=1[md];'
     + '[vm][md]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[a]');
 });

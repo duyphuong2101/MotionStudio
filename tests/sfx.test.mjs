@@ -99,14 +99,14 @@ const tail = ['-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a
 test('without sfx.wav the final mix args are the ones every render used before', () => {
   const ducked = finalMixArgs({ ...base, brand: music, speech: ['voice.wav'], music: 'm.wav' });
   assert.deepEqual(ducked.args, ['-y', '-i', 'video.mp4', '-i', 'voice.wav', '-i', 'm.wav', '-filter_complex',
-    `[1:a]aresample=48000,apad,atrim=0:12.340[s1];[s1]anull[v];[2:a]aresample=48000,apad,atrim=0:12.340,volume=-18dB,afade=t=out:st=10.840:d=1.5[m];[v]asplit=2[vm][vk];[m][vk]${DUCK}[md];[vm][md]amix=inputs=2:duration=first:normalize=0,${LOUDNORM}[a]`, ...tail]);
+    `[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[s1];[s1]anull[v];[2:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:12.340,volume=-14.99dB,afade=t=out:st=10.840:d=1.5[m];[v]asplit=2[vm][vk];[m][vk]${DUCK}[md];[vm][md]amix=inputs=2:duration=first:normalize=0,${LOUDNORM}[a]`, ...tail]);
   assert.equal(ducked.label, 'voice+music');
   const two = finalMixArgs({ ...base, brand: {}, speech: ['voice.wav', 'footage.wav'] });
   assert.deepEqual(two.args, ['-y', '-i', 'video.mp4', '-i', 'voice.wav', '-i', 'footage.wav', '-filter_complex',
-    `[1:a]aresample=48000,apad,atrim=0:12.340[s1];[2:a]aresample=48000,apad,atrim=0:12.340[s2];[s1][s2]amix=inputs=2:duration=first:normalize=0[v];[v]${LOUDNORM}[a]`, ...tail]);
+    `[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[s1];[2:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[s2];[s1][s2]amix=inputs=2:duration=first:normalize=0[v];[v]${LOUDNORM}[a]`, ...tail]);
   assert.equal(two.label, 'voice+footage');
   const flat = finalMixArgs({ ...base, brand: { music: { file: 'm.wav', gainDb: -20 } }, music: 'm.wav' });
-  assert.equal(graphOf(flat.args), `[1:a]aresample=48000,apad,atrim=0:12.340,volume=-20dB,afade=t=out:st=10.840:d=1.5[m];[m]${LOUDNORM}[a]`);
+  assert.equal(graphOf(flat.args), `[1:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:12.340,volume=-16.99dB,afade=t=out:st=10.840:d=1.5[m];[m]${LOUDNORM}[a]`);
   assert.equal(flat.label, 'music');
   assert.deepEqual(finalMixArgs({ ...base, brand: {} }), { label: 'silent', args: ['-y', '-i', 'video.mp4', '-f', 'lavfi', '-t', '12.340', '-i', 'anullsrc=r=48000:cl=stereo',
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-t', '12.340', '-movflags', '+faststart', 'final.mp4'] });
@@ -115,13 +115,13 @@ test('without sfx.wav the final mix args are the ones every render used before',
 test('sfx.wav joins the final mix after the duck: it never dips the music and is never the sidechain', () => {
   const { args, label } = finalMixArgs({ ...base, brand: music, speech: ['voice.wav'], sfx: ['sfx.wav'], music: 'm.wav' });
   assert.deepEqual(inputsOf(args), ['video.mp4', 'voice.wav', 'sfx.wav', 'm.wav'], 'cut sounds after the speech, before the music');
-  assert.equal(graphOf(args), '[1:a]aresample=48000,apad,atrim=0:12.340[s1];[s1]anull[v];[2:a]aresample=48000,apad,atrim=0:12.340[e0];[e0]anull[fx];'
-    + `[3:a]aresample=48000,apad,atrim=0:12.340,volume=-18dB,afade=t=out:st=10.840:d=1.5[m];[v]asplit=2[vm][vk];[m][vk]${DUCK}[md];[vm][md][fx]amix=inputs=3:duration=first:normalize=0,${LOUDNORM}[a]`);
+  assert.equal(graphOf(args), '[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[s1];[s1]anull[v];[2:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[e0];[e0]anull[fx];'
+    + `[3:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:12.340,volume=-14.99dB,afade=t=out:st=10.840:d=1.5[m];[v]asplit=2[vm][vk];[m][vk]${DUCK}[md];[vm][md][fx]amix=inputs=3:duration=first:normalize=0,${LOUDNORM}[a]`);
   assert.equal(label, 'voice+sfx+music');
   assert.equal(graphOf(finalMixArgs({ ...base, brand: {}, speech: ['voice.wav'], sfx: ['sfx.wav'] }).args),
-    `[1:a]aresample=48000,apad,atrim=0:12.340[s1];[s1]anull[v];[2:a]aresample=48000,apad,atrim=0:12.340[e0];[e0]anull[fx];[v][fx]amix=inputs=2:duration=first:normalize=0,${LOUDNORM}[a]`);
+    `[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[s1];[s1]anull[v];[2:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[e0];[e0]anull[fx];[v][fx]amix=inputs=2:duration=first:normalize=0,${LOUDNORM}[a]`);
   const alone = finalMixArgs({ ...base, brand: {}, sfx: ['sfx.wav'] });
-  assert.equal(graphOf(alone.args), '[1:a]aresample=48000,apad,atrim=0:12.340[e0];[e0]anull[fx];[fx]anull[a]', 'cut sounds alone are not lifted by loudnorm');
+  assert.equal(graphOf(alone.args), '[1:a]aresample=48000,pan=stereo|c0=c0|c1=c0,apad,atrim=0:12.340[e0];[e0]anull[fx];[fx]anull[a]', 'cut sounds alone are not lifted by loudnorm');
   assert.equal(alone.label, 'sfx');
 });
 
@@ -132,8 +132,8 @@ test('a music bed lays each part sfx.wav and the join sounds at their offsets, b
   const args = musicBedPlan({ video: 'j.mp4', speech, sfx, music: 'calm-pad.wav', musicSeconds: 120, cycle: 16, duration: 200, duck: true, out: 'o.mp4' });
   assert.deepEqual(inputsOf(args), ['j.mp4', 'a/voice.wav', 'b/voice.wav', 'a/sfx.wav', 'b/sfx.wav', 'joins.wav', 'calm-pad.wav', 'calm-pad.wav']);
   const g = graphOf(args);
-  assert.ok(g.includes('[3:a]aresample=48000,adelay=0:all=1,apad,atrim=0:200.000[e0];[4:a]aresample=48000,adelay=66600:all=1,apad,atrim=0:200.000[e1];'
-    + '[5:a]aresample=48000,adelay=0:all=1,apad,atrim=0:200.000[e2];[e0][e1][e2]amix=inputs=3:duration=first:normalize=0[fx]'), g);
+  assert.ok(g.includes('[3:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=0:all=1,apad,atrim=0:200.000[e0];[4:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=66600:all=1,apad,atrim=0:200.000[e1];'
+    + '[5:a]aresample=48000,pan=stereo|c0=c0|c1=c0,adelay=0:all=1,apad,atrim=0:200.000[e2];[e0][e1][e2]amix=inputs=3:duration=first:normalize=0[fx]'), g);
   assert.ok(g.includes('[6:a]aresample=48000,atrim=0:116.000[c0];[7:a]aresample=48000,atrim=start=2.000'), 'the loop reads the music inputs after the cut sounds');
   assert.ok(g.endsWith(`[vm][md][fx]amix=inputs=3:duration=first:normalize=0,${LOUDNORM}[a]`));
   const without = musicBedPlan({ video: 'j.mp4', speech, music: 'calm-pad.wav', musicSeconds: 120, cycle: 16, duration: 200, duck: true, out: 'o.mp4' });
