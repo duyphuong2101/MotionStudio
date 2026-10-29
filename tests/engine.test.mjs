@@ -9,7 +9,7 @@ import {
 } from '../engine/jobs.mjs';
 import { sizeFor } from '../engine/pipeline.mjs';
 import { geometry } from '../templates/kit.mjs';
-import { validateScript, validateSource } from '../engine/script.mjs';
+import { validateScript, validateSource, sourceRefProblems } from '../engine/script.mjs';
 import { estimateTiming } from '../engine/timing.mjs';
 import { validateBrand } from '../engine/brand.mjs';
 import { build } from '../templates/product-demo/template.mjs';
@@ -23,6 +23,26 @@ const script = () => ({
     { id: 'b2', kind: 'benefit', vo: 'Guards on both sides.', kicker: 'Leak guards', text: 'Tall guards', chip: 'Peace of mind', icon: 'shield', source: 'bullets[1]' },
     { id: 'cta', kind: 'cta', vo: 'Try a sample.', title: 'Try a sample', button: 'Get it' },
   ],
+});
+
+test('every scene source points at a real source.json line or a filled brief field', () => {
+  const source = { name: 'n', bullets: [{ text: 'a', ref: 'r' }, { text: 'b', ref: 'r' }], facts: ['x'] };
+  assert.deepEqual(sourceRefProblems(script(), source), []);
+  assert.deepEqual(validateScript(script(), beats, { source }).errors, []);
+  const s = script();
+  s.scenes[1].source = 'bullets[0], bullets[5]';
+  s.scenes[2].source = 'bullets[1],facts[3]';
+  s.scenes[3].source = 'brief.cta';
+  assert.deepEqual(sourceRefProblems(s, source, { cta: '' }), [
+    'b1: source "bullets[5]" is not a line of source.json',
+    'b2: source "facts[3]" is not a line of source.json',
+    'cta: source "brief.cta" is not a line of source.json or a filled brief field',
+  ]);
+  assert.deepEqual(sourceRefProblems(s, source, { cta: 'Book a demo' }).length, 2, 'a filled brief field is a source');
+  assert.ok(validateScript(s, beats, { source, brief: { cta: 'Book a demo' } }).errors.some((e) => /bullets\[5\]/.test(e)));
+  assert.deepEqual(validateScript(s, beats).errors, [], 'without source.json nothing is checked');
+  s.scenes[1].source = 'the website';
+  assert.match(sourceRefProblems(s, source).join(), /"the website"/);
 });
 
 test('ids and paths refuse traversal', () => {

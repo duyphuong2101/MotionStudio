@@ -36,11 +36,33 @@ function draftErrors(s) {
 // A sound clip's scene may keep the last frame this long after the clip ends, so a short bite does not cut away at once.
 export const MAX_HOLD = 3;
 
-export function validateScript(script, beats, { assets = [], icons = ICON_NAMES } = {}) {
+const SOURCE_REF_RE = /^(bullets|facts)\[(\d+)\]$|^brief\.([a-zA-Z]+)$/;
+
+/**
+ * A scene's `source` names where its claim comes from: one or more of `bullets[n]`, `facts[n]` (lines of
+ * source.json) or `brief.<field>` (a filled text field of the brief), comma separated. Returns one message per
+ * ref that points at nothing, so a reordered or shortened source.json cannot leave a claim pointing elsewhere.
+ */
+export function sourceRefProblems(script, source, brief = null) {
+  const out = [];
+  for (const sc of Array.isArray(script?.scenes) ? script.scenes : []) {
+    if (!sc || sc.source === undefined) continue;
+    for (const ref of String(sc.source).split(',').map((r) => r.trim())) {
+      const m = SOURCE_REF_RE.exec(ref);
+      const ok = m && (m[3] ? brief === null || (typeof brief[m[3]] === 'string' && brief[m[3]].trim() !== '')
+        : Array.isArray(source?.[m[1]]) && Boolean(source[m[1]][Number(m[2])]));
+      if (!ok) out.push(`${sc.id}: source "${ref}" is not a line of source.json${m?.[3] ? ' or a filled brief field' : ''}`);
+    }
+  }
+  return out;
+}
+
+export function validateScript(script, beats, { assets = [], icons = ICON_NAMES, source = null, brief = null } = {}) {
   const errors = [];
   const warnings = [];
   const scenes = Array.isArray(script?.scenes) ? script.scenes : null;
   if (!scenes) return { errors: ['script.scenes must be an array'], warnings };
+  if (source) errors.push(...sourceRefProblems(script, source, brief));
   const look = lookProblem(script.look);
   if (look) errors.push(look);
 

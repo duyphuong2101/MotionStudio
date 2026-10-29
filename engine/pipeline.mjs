@@ -11,7 +11,7 @@ import {
 } from './jobs.mjs';
 import { iconsFor, loadBrandIcons } from './icons.mjs';
 import { motionProfile } from './brand.mjs';
-import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, MAX_HOLD } from './script.mjs';
+import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, sourceRefProblems, MAX_HOLD } from './script.mjs';
 import { repairScript } from './repair.mjs';
 import { lookBrand, BRAND_LOOK } from './looks.mjs';
 import { validateOutline, expandOutline } from './quick.mjs';
@@ -133,7 +133,7 @@ export function commit(project, id, kind, by) {
     repairs = fixed.repairs;
     ({ doc, kept } = mergeRespectingLocks(target, existing, fixed.doc));
     try {
-      assertValidScript(doc, beats, { assets: listAssets(project), icons });
+      assertValidScript(doc, beats, { assets: listAssets(project), icons, source: readJson(jobFile(project, id, 'source.json'), null), brief });
       const left = draftScenes(doc).map((s) => s.id);
       if (left.length) throw new StudioError(`Draft scene(s) not filled: ${left.join(', ')}. Fill each one and remove its "draft" key, then commit again.`, 400);
     } catch (err) {
@@ -179,9 +179,11 @@ export async function prepare(project, id, by = 'engine') {
   const problem = brief.voiceTake ? null : voiceProblem(brand.voice);
   if (problem) throw new StudioError(problem, 400);
   const { dir: tplDir, beats } = loadBriefTemplate(brief);
-  readJson(jobFile(project, id, 'source.json'));
+  const source = readJson(jobFile(project, id, 'source.json'));
   const icons = iconsFor(project);
   const { warnings } = assertValidScript(script, beats, { assets: listAssets(project), icons: Object.keys(icons) });
+  // A commit refuses these; here they only warn, so a job whose source.json changed since its script still opens.
+  warnings.push(...sourceRefProblems(script, source, brief));
 
   setStatus(project, id, { status: 'preparing', step: 5, error: null, failed: null, lint: null, outputs: null, approvedBy: null }, 'prepare started', by);
   try {

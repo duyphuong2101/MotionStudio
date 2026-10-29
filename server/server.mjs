@@ -520,7 +520,9 @@ async function api(req, res, url, review = false) {
         if (errs.length) throw new StudioError(errs.join('; '), 400);
       } else {
         const brief = loadBrief(project, id);
-        const r = validateScript(after, loadBriefTemplate(brief).beats, { assets: listAssets(project), icons: Object.keys(iconsFor(project)) });
+        const r = validateScript(after, loadBriefTemplate(brief).beats, {
+          assets: listAssets(project), icons: Object.keys(iconsFor(project)), source: readJson(jobFile(project, id, 'source.json'), null), brief,
+        });
         if (r.errors.length) throw new StudioError(r.errors.join('; '), 400);
         warnings = r.warnings;
       }
