@@ -106,3 +106,38 @@ test('a template change carries nothing when no kind keeps its rules, and remove
   assert.doesNotMatch(getStatus(P, ID).history.at(-1).event, /locks carried/);
   assert.equal(loadBrief(P, ID).template, 'event');
 });
+
+test('a second template change before the Director writes the script rechecks the carried locks and stays at step 3', (t) => {
+  const brief = scripted(t);
+  updateBrief(P, ID, { ...brief, mix: ['data-story'] });
+  assert.ok(fs.existsSync(jobFile(P, ID, 'script.locks.json')));
+  // explainer + data-story → event: no kind keeps its rules, so nothing may stay pinned.
+  updateBrief(P, ID, { ...loadBrief(P, ID), mix: [], template: 'event' });
+  assert.ok(!fs.existsSync(jobFile(P, ID, 'script.locks.json')), 'the carry is rechecked against event, not left as checked for the mix');
+  assert.equal(getStatus(P, ID).dirty_from, 3, 'source.json is kept, so the Director starts at the script again');
+  assert.match(getStatus(P, ID).history.at(-1).event, /carried locks rechecked/);
+});
+
+/* ---------- a Director draft never loses or moves a person's scene edits ---------- */
+const edited = () => ({
+  scenes: [
+    { id: 'open', kind: 'title', vo: 'Hi.', title: 'Hello' },
+    { id: 'point-1', kind: 'step', vo: 'Point one.', title: 'One', source: 'bullets[0]' },
+    { id: 'point-2', kind: 'step', vo: 'My own words for two.', title: 'Two', source: 'bullets[1]' },
+  ],
+  locks: { 'scene:point-2.vo': stamp },
+});
+
+test('a draft that drops a scene a person edited is refused, naming the scene', () => {
+  const draft = { scenes: edited().scenes.filter((s) => s.id !== 'point-2') };
+  assert.throws(() => mergeRespectingLocks('script', edited(), draft), (e) => e.code === 409 && /drops scene\(s\) a person edited: point-2 \(vo\)/.test(e.message));
+  const kept = mergeRespectingLocks('script', { ...edited(), locks: { ...edited().locks, scenes: stamp } }, draft);
+  assert.equal(kept.doc.scenes.find((s) => s.id === 'point-2').vo, 'My own words for two.', 'with the order locked the scene stays anyway');
+});
+
+test('a draft that gives an edited scene another claim is refused; the same claim merges as before', () => {
+  const moved = { scenes: edited().scenes.map((s) => (s.id === 'point-2' ? { ...s, vo: 'Director words.', source: 'bullets[2]' } : s)) };
+  assert.throws(() => mergeRespectingLocks('script', edited(), moved), /point-2: the edits were written for source "bullets\[1\]", the draft gives "bullets\[2\]"/);
+  const same = { scenes: edited().scenes.map((s) => (s.id === 'point-2' ? { ...s, vo: 'Director words.' } : s)) };
+  assert.equal(mergeRespectingLocks('script', edited(), same).doc.scenes[2].vo, 'My own words for two.');
+});

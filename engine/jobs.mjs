@@ -359,8 +359,11 @@ export function updateBrief(project, id, input, { providers, by = 'ui' } = {}) {
   // A script follows its template's rules, so another template or mix needs a new one, and so does a switch between
   // an outline (quick) and a full script. The old script moves aside to script.prev.json; source.json stays. Its
   // locks that still hold under the new rules go to script.locks.json.
-  const newScript = hasScript && changed.some((k) => NEW_SCRIPT.includes(k));
-  const carried = newScript ? archiveScript(project, id, script, stored, next) : [];
+  // Locks carried by an earlier template change wait in script.locks.json until the Director writes the script; a
+  // further change rechecks them against the newest rules, so none can pin a value the new template refuses.
+  const hasCarried = !hasScript && exists(jobFile(project, id, CARRIED_LOCKS));
+  const newScript = (hasScript || hasCarried) && changed.some((k) => NEW_SCRIPT.includes(k));
+  const carried = !newScript ? [] : hasScript ? archiveScript(project, id, script, stored, next) : recarryLocks(project, id, stored, next);
   const brief = { ...next, updatedAt: nowIso() };
   writeJson(briefFile(project, id), brief);
   const started = hasScript || exists(jobFile(project, id, 'source.json'));
@@ -388,6 +391,17 @@ function archiveScript(project, id, script, oldBrief, newBrief) {
     throw new StudioError(`Could not move script.json to ${PREV_SCRIPT} (${err.code || err.message}). Close the file if it is open and try again.`, 409);
   }
   const file = jobFile(project, id, CARRIED_LOCKS);
+  fs.rmSync(file, { force: true });
+  if (!carry) return [];
+  writeJson(file, carry);
+  return Object.keys(carry.locks);
+}
+
+/** Rechecks the carried locks of a job with no script yet against the new brief's rules; returns the keys kept. */
+function recarryLocks(project, id, oldBrief, newBrief) {
+  const file = jobFile(project, id, CARRIED_LOCKS);
+  let carry = null;
+  try { carry = carryLocks(readJson(file, null), loadBriefTemplate(oldBrief).beats, loadBriefTemplate(newBrief).beats); } catch { carry = null; }
   fs.rmSync(file, { force: true });
   if (!carry) return [];
   writeJson(file, carry);
@@ -579,6 +593,30 @@ export function humanEdit(kind, before, after, by, note = '') {
   return { doc, changed };
 }
 
+/**
+ * A Director draft may not lose a person's scene edits: a scene with locked fields must stay in the draft (unless the
+ * order is locked, which keeps every scene anyway), and must keep the claim `source` the edits were written for.
+ * Otherwise an edit would vanish, or land on a scene about another claim (quick mode's point-N ids follow position).
+ */
+function assertLockedScenesKept(existing, drById, locks, orderLocked) {
+  const lockedFields = (id) => Object.keys(locks).filter((k) => k.startsWith(`scene:${id}.`)).map((k) => k.slice(`scene:${id}.`.length));
+  const dropped = [], moved = [];
+  for (const s of existing.scenes || []) {
+    const fields = lockedFields(s.id);
+    if (!fields.length) continue;
+    const d = drById[s.id];
+    if (!d) { if (!orderLocked) dropped.push(`${s.id} (${fields.join(', ')})`); continue; }
+    if (!fields.includes('source') && fields.some((f) => f !== 'kind') && (d.source ?? '') !== (s.source ?? '')) {
+      moved.push(`${s.id}: the edits were written for source "${s.source ?? ''}", the draft gives "${d.source ?? ''}"`);
+    }
+  }
+  const msgs = [
+    dropped.length && `The draft drops scene(s) a person edited: ${dropped.join('; ')}. Keep each one (same id), or ask the person to remove it in the Script tab.`,
+    moved.length && `The draft moves a person's edits to another claim: ${moved.join('; ')}. Keep that scene's source, and put a new claim in a scene of its own.`,
+  ].filter(Boolean);
+  if (msgs.length) throw new StudioError(msgs.join('\n'), 409);
+}
+
 export function mergeRespectingLocks(kind, existing, draft) {
   const locks = existing?.locks || {};
   if (!existing || !Object.keys(locks).length) return { doc: { ...draft, locks }, kept: [] };
@@ -603,6 +641,7 @@ export function mergeRespectingLocks(kind, existing, draft) {
   const carried = existing.carried === true;
   let order = (draft.scenes || []).map((s) => s.id);
   if (locks.scenes) { order = (existing.scenes || []).map((s) => s.id); kept.push('scenes'); }
+  if (!carried) assertLockedScenesKept(existing, drById, locks, Boolean(locks.scenes));
   const scenes = order.map((id) => {
     const base = { ...(drById[id] || exById[id]) };
     for (const f of sceneFieldNames()) {
