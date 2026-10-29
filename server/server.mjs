@@ -307,7 +307,9 @@ const BANNER_HEADERS = {
 // origin split from the API's, which is a larger change than this fix.
 const COMPOSITION_HEADERS = {
   'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    + "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; media-src 'self'; connect-src 'self'; form-action 'none'; frame-src 'none'; base-uri 'none'",
+    // blob: is memory the page made itself: three.js GLTFLoader turns a .glb's embedded textures into blob: URLs and
+    // fetches them (seen in Preview: every pack-glb texture refused without it). It never leaves the page.
+    + "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; form-action 'none'; frame-src 'none'; base-uri 'none'",
   'X-Content-Type-Options': 'nosniff',
 };
 
