@@ -10,7 +10,7 @@ import { analyseFootage, findWords, makeClip } from './footage.mjs';
 import { reviewOf, pacingTable, FLAG_TEXT } from './review.mjs';
 import { gitEvidence, aliasForPath, csvEvidence, readCsvFile } from './evidence.mjs';
 import { writeBanner, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES } from './banner.mjs';
-import { makePackGlb, DEPTH_RANGE } from './pack-glb.mjs';
+import { makePackGlb, DEPTH_RANGE, FINISHES } from './pack-glb.mjs';
 import { nodeProblem } from './runtime.mjs';
 import { importRemotion } from './remotion.mjs';
 
@@ -48,7 +48,7 @@ const USAGE = `Motion Studio engine
   node engine/cli.mjs banner  <project> [--backdrop ${BANNER_BACKDROPS.join('|')}] [--size ${BANNER_SIZES.join('|')}] [--headline "<text>"]
         [--subline "<text>"] [--button "<text>"] [--parallax]   a standalone WebGL hero banner page in the brand colours,
         written to out/<project>/_banner/<backdrop>-<size>.html (no render, no model)
-  node engine/cli.mjs pack-glb <project> --front <pack.png> [--back <back.png>] [--name <pack.glb>] [--depth ${DEPTH_RANGE[0]}-${DEPTH_RANGE[1]}]
+  node engine/cli.mjs pack-glb <project> --front <pack.png> [--back <back.png>] [--name <pack.glb>] [--depth ${DEPTH_RANGE[0]}-${DEPTH_RANGE[1]}] [--finish ${Object.keys(FINISHES).join('|')}]
         [--replace]   a soft 3D pack (rounded pillow, print round the rim) from its pictures, saved as a brand asset for a
         model scene or a product-demo hero; transparent or black margins are trimmed (a pack shot on white keeps its margin, cut it first)
   node engine/cli.mjs import-remotion <project> <dir> [--job <id>] [--template <id>] [--composition <id>] [--by name]
@@ -265,7 +265,7 @@ async function main(argv) {
     case 'evidence': return evidence(args);
     case 'banner': console.log(writeBanner(project, banner)); return;
     case 'pack-glb': {
-      const r = await makePackGlb(project, { front: flag(args, 'front'), back: flag(args, 'back'), name: flag(args, 'name'), depth: flag(args, 'depth', 0.3), replace: args.includes('--replace') });
+      const r = await makePackGlb(project, { front: flag(args, 'front'), back: flag(args, 'back'), name: flag(args, 'name'), depth: flag(args, 'depth', 0.3), finish: flag(args, 'finish', 'satin'), replace: args.includes('--replace') });
       console.log(`${r.name}: ${r.bytes} bytes, pack ${r.crop.w}x${r.crop.h} at ${r.crop.x},${r.crop.y}, aspect ${r.aspect}`);
       return;
     }

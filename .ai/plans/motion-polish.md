@@ -1,6 +1,6 @@
 # motion-polish — slow clips, voice cleanup, GSAP plugins, motion rules
 
-**Status:** in-review
+**Status:** done (first part merged and pushed in be180bb; the 3D look, left uncommitted in the worktree, merged onto master 2026-10-29 with the explainer hashes re-recorded)
 **Author:** tech-lead
 **Branch:** worktree-motion-polish (worktree, from f0ca8b2)
 **Created:** 2026-10-28
@@ -30,7 +30,8 @@ The user asked to apply the best findings from the 20 GitHub repos reviewed on 2
 - [x] `.claude/skills/template-authoring/SKILL.md`: tween, ease, plugin and text-fitting rules.
 - [x] Shots dialog: Speed select and a Slow motion choice (shown under 1×), clip length shown after the speed change.
 - [x] Code-story in-line diff (user decision 2026-10-28: the default): `tokenDiff`, `pairChanges`; a changed line shows its old text, then its removed tokens close and its added tokens open. Cinematic code-story baseline re-recorded.
-- [ ] 3D look, after the model-tour work is on master: pack-glb `--finish matte|satin|gloss` (clearcoat via `KHR_materials_clearcoat`), model scene `bloom` (UnrealBloomPass, alpha-safe in r186) and `focus` (BokehPass with the alpha line dropped from the vendored shader), measured on SwiftShader.
+- [x] 3D look (2026-10-28, on top of the model-tour work): pack-glb `--finish matte|satin|gloss` (satin the default, byte for byte the old pack; gloss a clear coat via `KHR_materials_clearcoat`); model scene and tour title `bloom` (0-1, UnrealBloomPass, threshold 1.1 on pre-tone-mapped light, the two widest blur levels off after a first try veiled the whole canvas) and `focus` (BokehPass, the vendored shader without its alpha = 1 line). Cost per frame on SwiftShader: plain 85 ms, bloom 299, focus 442, both 513; satin pack 151, gloss 199. Explainer pinned hashes re-recorded (MODEL_JS changed).
+- [x] dotLottie measured, not adopted: 40.0 ms/frame against lottie-web's 42.2 on a 40-layer animation, both deterministic after a jump; no gain worth a WASM dependency.
 
 ## Out of scope
 - Auto-fit text, dotLottie, Rive, postprocessing, Rapier, token-level code diffs.

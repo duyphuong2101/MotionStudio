@@ -90,7 +90,8 @@ const PARTS_BASELINE = {
   // Updated 2026-10-28: a softer model contact shadow (a wider PCF blur, lighter ground); only MODEL_JS changed.
   // Updated 2026-10-28: 1:1 only, the standard layout's diagram uses the square node rule (4+ nodes stack) so a
   // 4-node row no longer runs past both edges; NO_FLASH_BASELINE and NO_MODEL_BASELINE 1:1 changed with it.
-  explainer: { '16:9': 'f3d4b21d4ab82ddf93df32e8619e153444267f3a', '1:1': '31b375c1ed036fce92cf34d8d370e4a1bdc57d15', '9:16': '40205ca952a0feea165cd2c1ccfc9d9ad319fa5f', '4:5': '70b2cb4e73c35ed6f3e4f609867575d97132b04e', '2:3': '92d14d43e451061cdc75826e384978b605c6fd3f', '21:9': '6cd3894d7282cb0a3e3d32a1d34e29e16281f0a6' },
+  // Updated 2026-10-29: MODEL_JS calls the opt-in bloom and focus composer; checked that only MODEL_JS changed.
+  explainer: { '16:9': '37aa374f8a7a46731d32b78d91bf972c5036f409', '1:1': '264fc100463fc989e6f2007f774d4fe061fbcf79', '9:16': 'fb9c3900dabcb6ef05c96801f969e51c5c511a2a', '4:5': '521317afc24ddc261be361a67de55553a54ec9ea', '2:3': 'a3074918dee44d42501c1c55b80a43ea8e3947c2', '21:9': '783a9e8a0e961aa82231084c16f2ce6310e1eb4f' },
   // Updated 2026-10-14 for the race and stripes kinds: the earlier scenes' markup is unchanged, only css and js were added.
   // Updated 2026-10-22: the line's end value sits right of its last point (the plot leaves a column for it) instead of
   // the chart's top-right corner.

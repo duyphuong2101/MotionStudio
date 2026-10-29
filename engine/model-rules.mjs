@@ -15,3 +15,5 @@ export const DECAL_SIZE = [0.1, 0.6];
 export const DECAL_SIZE_DEFAULT = 0.28;
 // Studio lighting choices: three's room, a room in the brand colours, or plain lamps.
 export const ENVS = ['studio', 'brand', 'none'];
+// A glow from the model's bright highlights (three's UnrealBloomPass): 0 is off, 1 the strongest.
+export const BLOOM_RANGE = [0, 1];

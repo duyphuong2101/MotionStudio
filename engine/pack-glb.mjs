@@ -16,6 +16,14 @@ export const DEPTH_RANGE = [0.05, 1];
 export const MAX_TEXTURE_BYTES = 8 * 1024 * 1024;
 /** The node names of a pack model: the front, the back and the rim between them. */
 export const PART_NAMES = ['front', 'back', 'rim'];
+// The pack's surface: roughness of the printed faces and of the rim, and for gloss a clear lacquer coat
+// (KHR_materials_clearcoat, read by three's GLTFLoader) that catches the studio light as a sharp highlight.
+// satin is the look every pack had before the choice, and stays the default.
+export const FINISHES = {
+  matte: { face: 0.8, rim: 0.85 },
+  satin: { face: 0.45, rim: 0.6 },
+  gloss: { face: 0.3, rim: 0.4, coat: { clearcoatFactor: 1, clearcoatRoughnessFactor: 0.06 } },
+};
 
 const pad4 = (buf, fill) => (buf.length % 4 ? Buffer.concat([buf, Buffer.alloc(4 - (buf.length % 4), fill)]) : buf);
 
@@ -74,7 +82,9 @@ function pillow(aspect, depth) {
  * front picture's width over its height; `depth` is the pillow's depth as a share of its height. Without `back`
  * the back shows the front picture mirrored. The rim carries the front print stretched round the edge.
  */
-export function packGlb({ front, back = null, aspect = 1, depth = 0.3 }) {
+export function packGlb({ front, back = null, aspect = 1, depth = 0.3, finish = 'satin' }) {
+  if (!Object.hasOwn(FINISHES, finish)) throw new StudioError(`finish takes ${Object.keys(FINISHES).join(', ')}`, 400);
+  const F = FINISHES[finish];
   if (!Buffer.isBuffer(front) || !front.length) throw new StudioError('front picture missing', 400);
   if (!(aspect > 0.2 && aspect < 5)) throw new StudioError('aspect must be between 0.2 and 5', 400);
   if (!(depth >= DEPTH_RANGE[0] && depth <= DEPTH_RANGE[1])) throw new StudioError(`depth takes ${DEPTH_RANGE[0]} to ${DEPTH_RANGE[1]}`, 400);
@@ -96,13 +106,15 @@ export function packGlb({ front, back = null, aspect = 1, depth = 0.3 }) {
   const count = g.pos.length / 3;
   // A picture surface: a soft plastic sheen, opaque (the inset UVs stay inside the print, so no see-through border
   // becomes a hole), two-sided, so a pulled-out face still shows from behind.
-  const tex = (i, rough) => ({ pbrMetallicRoughness: { baseColorTexture: { index: i }, metallicFactor: 0, roughnessFactor: rough }, doubleSided: true });
+  const tex = (i, rough) => ({ pbrMetallicRoughness: { baseColorTexture: { index: i }, metallicFactor: 0, roughnessFactor: rough }, doubleSided: true,
+    ...(F.coat ? { extensions: { KHR_materials_clearcoat: F.coat } } : {}) });
   const gltf = {
     // Three named nodes, so a model scene can explode the front or the back away from the rim.
     asset: { version: '2.0', generator: 'Motion Studio pack-glb' }, scene: 0, scenes: [{ nodes: [0, 1, 2] }],
     nodes: PART_NAMES.map((name, i) => ({ mesh: i, name })),
     meshes: [0, 1, 2].map((i) => ({ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2 }, indices: 3 + i, material: i }] })),
-    materials: [tex(0, 0.45), tex(back ? 1 : 0, 0.45), tex(0, 0.6)],
+    materials: [tex(0, F.face), tex(back ? 1 : 0, F.face), tex(0, F.rim)],
+    ...(F.coat ? { extensionsUsed: ['KHR_materials_clearcoat'] } : {}),
     samplers: [{ magFilter: 9729, minFilter: 9987, wrapS: 33071, wrapT: 33071 }],
     textures: images.map((_, i) => ({ source: i, sampler: 0 })),
     images: images.map((im, i) => ({ bufferView: 6 + i, mimeType: mimeOf(im) })),
@@ -158,7 +170,8 @@ async function trimPicture(src, dst, { w, h, x, y }) {
  * `pack-glb`: trims the brand's front (and back) pack pictures with ffmpeg, builds the box and saves it as
  * `profiles/<project>/assets/<name>`. Returns { name, bytes, crop, aspect }.
  */
-export async function makePackGlb(project, { front, back, name, depth = 0.3, replace = false } = {}) {
+export async function makePackGlb(project, { front, back, name, depth = 0.3, finish = 'satin', replace = false } = {}) {
+  if (!Object.hasOwn(FINISHES, finish)) throw new StudioError(`--finish takes ${Object.keys(FINISHES).join(', ')}`, 400);
   const assets = path.join(profileDir(project), 'assets');
   const pic = (f, what) => {
     assertFileName(f, what);
@@ -183,7 +196,7 @@ export async function makePackGlb(project, { front, back, name, depth = 0.3, rep
     const frontPng = await trimPicture(frontFile, path.join(work, 'front.png'), crop);
     const backPng = backFile ? await trimPicture(backFile, path.join(work, 'back.png'), await detectPackCrop(backFile)) : null;
     const aspect = crop.w / crop.h;
-    const glb = packGlb({ front: frontPng, back: backPng, aspect, depth: d });
+    const glb = packGlb({ front: frontPng, back: backPng, aspect, depth: d, finish });
     const saved = saveAsset(project, out, glb, { replace });
     return { ...saved, crop, aspect: Math.round(aspect * 1000) / 1000 };
   } finally {

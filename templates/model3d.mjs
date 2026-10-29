@@ -3,9 +3,9 @@
 // function of seek(t): the turn, the camera, the exploded parts and the model's own animation clips are set from t,
 // then drawn once.
 import { escapeHtml as h } from '../engine/core.mjs';
-import { VIEW_RANGE, PATH_POSES, EXPLODE_PARTS, GAP_RANGE, GAP_DEFAULT, PART_RE, DECAL_SIZE, DECAL_SIZE_DEFAULT, ENVS } from '../engine/model-rules.mjs';
+import { VIEW_RANGE, PATH_POSES, EXPLODE_PARTS, GAP_RANGE, GAP_DEFAULT, PART_RE, DECAL_SIZE, DECAL_SIZE_DEFAULT, ENVS, BLOOM_RANGE } from '../engine/model-rules.mjs';
 
-export { VIEW_RANGE, PATH_POSES, EXPLODE_PARTS, GAP_RANGE, GAP_DEFAULT, PART_RE, DECAL_SIZE, DECAL_SIZE_DEFAULT, ENVS };
+export { VIEW_RANGE, PATH_POSES, EXPLODE_PARTS, GAP_RANGE, GAP_DEFAULT, PART_RE, DECAL_SIZE, DECAL_SIZE_DEFAULT, ENVS, BLOOM_RANGE };
 export const SPINS = ['turn', 'orbit', 'hero', 'reveal', 'detail'];
 const VIEW_ATTR = { azimuth: 'az', elevation: 'el', zoom: 'zoom' };
 const HEX_RE = /^#[0-9a-f]{6}$/i;
@@ -53,17 +53,24 @@ const decalAttr = (decal) => {
   return ` data-decal="${h(JSON.stringify(out))}"`;
 };
 
+// The look after the draw: a glow from the bright highlights (bloom 0-1) and a shallow depth of field around the
+// model's centre (focus). Written only when asked, so every other canvas stays as it was.
+const lookAttrs = (bloom, focus) => {
+  const b = Math.round(clamp(bloom, BLOOM_RANGE[0], BLOOM_RANGE[1], 0) * 100) / 100;
+  return `${b > 0 ? ` data-bloom="${b}"` : ''}${focus === true ? ' data-focus="on"' : ''}`;
+};
+
 // env "brand" lights the model with a room in the brand colours; the colours ride on the canvas.
 const envAttrs = (env, colors) => (env === 'none' ? ' data-env="none"'
   : env === 'brand' ? ` data-env="brand" data-env-colors="${[colors?.primary, colors?.secondary].map((c) => (HEX_RE.test(c) ? c : '#808080')).join(',')}"` : '');
 
 /**
  * The canvas a template puts where the model shows; the scene's start and end come from the timing. The last
- * argument is the scene: its view, path, explode, decal, shadow and env are written only when they differ from
+ * argument is the scene: its view, path, explode, decal, shadow, env, bloom and focus are written only when they differ from
  * the default look. `colors` (the brand's) feed the brand environment.
  */
-export const modelCanvas = (name, t, spin, { view, path, explode, gap, decal, shadow, env, colors } = {}) =>
-  `<canvas class="m3c" data-gl data-model="${h(`assets/${encodeURIComponent(name)}`)}" data-start="${t.start}" data-end="${t.end}" data-spin="${SPINS.includes(spin) ? spin : 'turn'}"${viewAttrs(view)}${pathAttr(path)}${explodeAttrs(explode, gap)}${decalAttr(decal)}${shadow === false ? ' data-shadow="off"' : ''}${envAttrs(env, colors)}></canvas>`;
+export const modelCanvas = (name, t, spin, { view, path, explode, gap, decal, shadow, env, colors, bloom, focus } = {}) =>
+  `<canvas class="m3c" data-gl data-model="${h(`assets/${encodeURIComponent(name)}`)}" data-start="${t.start}" data-end="${t.end}" data-spin="${SPINS.includes(spin) ? spin : 'turn'}"${viewAttrs(view)}${pathAttr(path)}${explodeAttrs(explode, gap)}${decalAttr(decal)}${shadow === false ? ' data-shadow="off"' : ''}${envAttrs(env, colors)}${lookAttrs(bloom, focus)}></canvas>`;
 
 /**
  * One canvas for a whole tour (templates/product-tour): the model stays on screen from `t.start` to `t.end` while
@@ -71,19 +78,54 @@ export const modelCanvas = (name, t, spin, { view, path, explode, gap, decal, sh
  * `t` the camera moves to its pose over about a second and settles, and its named parts come out (the others go
  * back). A step without a view keeps the previous pose; `offset` [x, y] shifts the model by that share of the
  * frame. At zoom 1 the model stands about two thirds of the frame height, leaving room for the captions.
- * `opts` take the tour's decal, env and brand colours.
+ * `opts` take the tour's decal, env, bloom, focus and brand colours.
  */
-export const tourCanvas = (name, t, steps, { decal, env, colors } = {}) => {
+export const tourCanvas = (name, t, steps, { decal, env, colors, bloom, focus } = {}) => {
   const list = (Array.isArray(steps) ? steps : []).map((s) => {
     const pose = Object.keys(VIEW_RANGE).map((k) => { const v = clampView(s.view, k); return Number.isFinite(v) ? v : null; });
     // Where the model sits in the frame: a shift of up to a third of the width and height, so a caption has room.
     const off = [0, 1].map((k) => Math.round(clamp(s.offset?.[k], -0.34, 0.34, 0) * 1000) / 1000);
     return { t: Number(s.t) || 0, pose, parts: partNames(s.explode), gap: clamp(s.gap, GAP_RANGE[0], GAP_RANGE[1], GAP_DEFAULT), offset: off };
   });
-  return `<canvas class="m3c tour" data-gl data-model="${h(`assets/${encodeURIComponent(name)}`)}" data-start="${t.start}" data-end="${t.end}" data-spin="tour" data-steps="${h(JSON.stringify(list))}"${decalAttr(decal)}${envAttrs(env, colors)}></canvas>`;
+  return `<canvas class="m3c tour" data-gl data-model="${h(`assets/${encodeURIComponent(name)}`)}" data-start="${t.start}" data-end="${t.end}" data-spin="tour" data-steps="${h(JSON.stringify(list))}"${decalAttr(decal)}${envAttrs(env, colors)}${lookAttrs(bloom, focus)}></canvas>`;
 };
 
 export const hasModels = (body) => /<canvas [^>]*data-model=/.test(body);
+/** Whether any model canvas asks for bloom or focus, so the page needs MODEL_POST_JS. */
+export const hasModelLook = (body) => /<canvas [^>]*data-model=[^>]*data-(bloom|focus)=/.test(body);
+
+/**
+ * bloom and focus through three's own passes in one composer, written before MODEL_JS only into a page that uses
+ * them (so every other page, and its offline copy, carries none of it). The target keeps alpha, so the canvas stays
+ * clear where nothing is drawn: the bloom adds its glow to the alpha too, and the vendored BokehShader keeps the
+ * blurred alpha (engine/vendor.mjs drops its alpha = 1 line). Only the brightest highlights glow, close to where they
+ * are: the threshold is on the light before tone mapping (a lit white print is above 1), and the two widest blur
+ * levels are off, since they spread a haze over the whole canvas that stopped hard at its edge.
+ */
+export const MODEL_POST_JS = String.raw`
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from './vendor/EffectComposer.js';
+import { RenderPass } from './vendor/RenderPass.js';
+import { UnrealBloomPass } from './vendor/UnrealBloomPass.js';
+import { BokehPass } from './vendor/BokehPass.js';
+import { OutputPass } from './vendor/OutputPass.js';
+window.__modelPost = ({ renderer, scene, cam, w, hgt, bloom, focus, fit }) => {
+  const post = new EffectComposer(renderer, new THREE.WebGLRenderTarget(w, hgt, { type: THREE.HalfFloatType, samples: 4 }));
+  post.setPixelRatio(1); post.setSize(w, hgt);
+  post.addPass(new RenderPass(scene, cam));
+  const bokeh = focus ? new BokehPass(scene, cam, { focus: fit, aperture: 0.02, maxblur: 0.008 }) : null;
+  if (bokeh) post.addPass(bokeh);
+  if (bloom) {
+    const glow = new UnrealBloomPass(new THREE.Vector2(w, hgt), 0.15 + 0.6 * bloom, 0, 1.1);
+    glow.compositeMaterial.uniforms.bloomFactors.value = [1, 0.6, 0.25, 0, 0];
+    post.addPass(glow);
+  }
+  post.addPass(new OutputPass());
+  // The focus plane sits on the model's centre, wherever the camera has moved to.
+  return { render: () => { if (bokeh) bokeh.uniforms.focus.value = cam.position.length(); post.render(); } };
+};
+</script>`;
 
 export const MODEL_HEAD = '<script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>';
 
@@ -208,6 +250,9 @@ try {
     }
     const cam = new THREE.PerspectiveCamera(30, w / hgt, 0.05, 100);
     const half = deg(15), fit = 1.12 / Math.sin(Math.min(half, Math.atan(Math.tan(half) * (w / hgt))));
+    // bloom and focus: MODEL_POST_JS (written only into a page that uses them) builds the composer.
+    const bloom = Math.min(1, Math.max(0, +ds.bloom || 0)), focus = ds.focus === 'on';
+    const post = (bloom || focus) && window.__modelPost ? await window.__modelPost({ renderer, scene, cam, w, hgt, bloom, focus, fit }) : null;
     const mixer = gltf.animations.length ? new THREE.AnimationMixer(root) : null;
     if (mixer) gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
     const start = +ds.start, end = +ds.end, spin = ds.spin, len = Math.max(0.5, end - start);
@@ -259,7 +304,7 @@ try {
       cam.position.set(Math.sin(az) * Math.cos(el) * d, Math.sin(el) * d, Math.cos(az) * Math.cos(el) * d);
       cam.lookAt(0, 0, 0);
       if (mixer) mixer.setTime(u);
-      renderer.render(scene, cam);
+      if (post) post.render(); else renderer.render(scene, cam);
     };
     // One draw now compiles every shader and allocates the shadow map before the page reports ready. Outside its
     // scene the canvas holds its first or last frame, drawn from the clamped time, so a jump and a play-through agree.

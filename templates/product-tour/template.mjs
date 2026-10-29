@@ -28,7 +28,7 @@ export function parts({ brand, script, timing, size, icons }) {
   // Under the title the model sits low; at a step it moves right of the caption (landscape) or above it (portrait, square).
   const titleOff = [0, port ? 0.1 : 0.14], stepOff = land ? [0.2, 0.02] : port ? [0, -0.14] : [0, -0.12];
   const stops = [{ t: at(first.id).start, view: steps[0]?.view, explode: [], gap: steps[0]?.gap, offset: titleOff }, ...steps.map((s) => ({ t: at(s.id).start, view: s.view, explode: s.explode, gap: s.gap, offset: stepOff }))];
-  const canvas = `<div class="tour-stage">${tourCanvas(model, { start: at(first.id).start, end: at(lastStep.id).end }, stops, { decal: decalOf(first.decal, ICONS, brand), env: first.env, colors: brand.colors })}</div>`;
+  const canvas = `<div class="tour-stage">${tourCanvas(model, { start: at(first.id).start, end: at(lastStep.id).end }, stops, { decal: decalOf(first.decal, ICONS, brand), env: first.env, bloom: first.bloom, focus: first.focus, colors: brand.colors })}</div>`;
   const scenes = [];
   const blocks = [];
   let n = 0;

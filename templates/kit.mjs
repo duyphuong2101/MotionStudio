@@ -6,7 +6,7 @@ import { SUBTITLE_STYLES, SUBTITLE_FONTS, REVEALS, brandEase, motionProfile } fr
 import { marksToHtml, stripMarks } from '../engine/marks.mjs';
 import { glLayers, glBackdropHtml, glWipeHtml, glCss, glData, glJs, cutWindows } from './gl.mjs';
 import { blendOf, blendData, blendHtml, BLEND_CSS, blendCut, blendJs } from './blend.mjs';
-import { hasModels, MODEL_HEAD, MODEL_WAIT, MODEL_JS } from './model3d.mjs';
+import { hasModels, hasModelLook, MODEL_HEAD, MODEL_WAIT, MODEL_JS, MODEL_POST_JS } from './model3d.mjs';
 import { hasLotties, LOTTIE_WAIT, LOTTIE_JS } from './lottie.mjs';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -990,7 +990,7 @@ window.seek = (t) => { t = Math.min(Math.max(+t || 0, 0), D.duration); if (t ===
 window.__studio = { duration: D.duration, width: D.W, height: D.H, scenes: ${studioScenes}, stills: D.stills${blend ? ', blends: D.blend.cuts.map(([c, a, b]) => [c - a, c + b])' : ''} };
 const imgs = [...document.images].map((im) => (im.decode ? im.decode().catch(() => {}) : null));
 Promise.all([document.fonts.ready, ...imgs${clipJs ? ', ...clipsLoaded' : ''}${models ? ', modelsLoaded' : ''}${lotties ? ', lottiesLoaded' : ''}]).then(async () => { build(); if (window.__prepare) await window.__prepare(); await window.seek(0); window.__ready = true; });
-</script>${models ? MODEL_JS : ''}${lotties ? LOTTIE_JS : ''}
+</script>${models && hasModelLook(body) ? MODEL_POST_JS : ''}${models ? MODEL_JS : ''}${lotties ? LOTTIE_JS : ''}
 </body>
 </html>
 `;

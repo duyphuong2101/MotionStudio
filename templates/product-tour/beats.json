@@ -16,7 +16,9 @@
       "title.theme": "dark: a centred title on the brand dark colour, for a cold open; accent: the same on the brand secondary colour.",
       "title.env": "Lighting for the whole tour: studio (default), brand (a room in the brand colours reflects in the model) or none (plain lamps).",
       "title.decal": "Optional sticker for the whole tour: a brand or built-in icon on the model's front face, e.g. {\"icon\": \"shield\", \"at\": [0.85, 0.15], \"size\": 0.28, \"part\": \"front\"}; at as fractions of the face, size 0.1-0.6 of its height, part the node it rides on.",
-      "cta.image": "Optional background photo from the project assets (e.g. the pack or a lifestyle shot), faded under the brand colour on the text side so the button still reads."
+      "cta.image": "Optional background photo from the project assets (e.g. the pack or a lifestyle shot), faded under the brand colour on the text side so the button still reads.",
+      "title.bloom": "Optional glow from the model's bright highlights for the whole tour, 0 to 1 (e.g. 0.4). Leave it out for a plain, sharp look.",
+      "title.focus": "true: through the whole tour the model's centre stays sharp and its nearer and farther edges soften, like a close-up lens. false (default): all sharp."
     }
   },
   "description": "A 3D product tour: one model (a .glb asset, e.g. a pack built with pack-glb) stays on screen for the whole video while the camera glides from step to step with no cut, like a guided walk round the product. Each step changes the caption and can pull named parts of the model out. A title opens over the model rising into view, a call to action closes.",
@@ -91,7 +93,9 @@
         "pace",
         "sfx",
         "env",
-        "decal"
+        "decal",
+        "bloom",
+        "focus"
       ]
     },
     "step": {
@@ -158,6 +162,10 @@
       "studio",
       "brand",
       "none"
+    ],
+    "focus": [
+      true,
+      false
     ]
   },
   "data": {
@@ -193,7 +201,11 @@
           0.1,
           0.6
         ]
-      }
+      },
+      "bloom": [
+        0,
+        1
+      ]
     }
   },
   "defaults": {

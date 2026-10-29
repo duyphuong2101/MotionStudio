@@ -286,6 +286,11 @@ export function validateData(s, kind, d, icons = ICON_NAMES) {
       if (!(finite(s.gap) && s.gap >= lo && s.gap <= hi)) errs.push(`${s.id}: gap must be a number from ${lo} to ${hi}`);
     }
   }
+  // A glow from the model's highlights (data.bloom: its range, engine/model-rules.mjs BLOOM_RANGE).
+  if (d.bloom && s.bloom !== undefined) {
+    const [lo, hi] = d.bloom;
+    if (!(finite(s.bloom) && s.bloom >= lo && s.bloom <= hi)) errs.push(`${s.id}: bloom must be a number from ${lo} to ${hi}`);
+  }
   // A decal: an icon stamped on the model's front face, placed by fractions of it, sized by its height.
   if (d.decal) {
     if (s.decal !== undefined) {
