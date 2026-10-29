@@ -77,7 +77,13 @@
       "Bash(node engine/cli.mjs reset-dirty *)",
       "Bash(node -e *)",
       "Bash(npm *)",
-      "Edit(out/**/status.json)"
+      "Edit(out/**/status.json)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(*.local.json)",
+      "Read(*.local.md)",
+      "Read(*.pem)",
+      "Read(*.key)"
     ]
   },
   "generate": {

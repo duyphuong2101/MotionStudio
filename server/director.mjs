@@ -10,6 +10,8 @@ import { listJobs, loadBrief, loadBrand, getStatus, setStatus } from '../engine/
 import { getSequenceStatus, setSequenceStatus } from '../engine/sequences.mjs';
 import { runsToday, countRun, usage, readPause as readPauseFile, clearPause as clearPauseFile } from './caps.mjs';
 import { startApiRun } from './worker/run.mjs';
+import { redact } from './http.mjs';
+import { keyEnvNames } from './keys.mjs';
 
 export { runDay, runsToday, countRun } from './caps.mjs';
 
@@ -624,9 +626,11 @@ function startSeatRun(d, { project, by, plan, jobs }) {
   let logBytes = 0;
   // A log that cannot be written stops logging instead of crashing the server; the run goes on.
   log.on('error', () => { logBytes = d.maxLogBytes; });
+  // The UI shows this log. Whatever the run read or printed, no key value (by value or by shape) reaches it.
+  const keys = [...keyEnvNames(readJson(PROVIDERS_FILE)), 'GEMINI_API_KEY'].map((n) => process.env[n]).filter(Boolean);
   const write = (s) => {
     if (!s || logBytes >= d.maxLogBytes) return;
-    const line = `${s}\n`;
+    const line = `${redact(s, keys)}\n`;
     logBytes += Buffer.byteLength(line);
     log.write(logBytes < d.maxLogBytes ? line : '[log capped at director.maxLogBytes]\n');
   };

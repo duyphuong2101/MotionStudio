@@ -65,6 +65,11 @@ test('the seat may Edit only the three draft files, never any other file under o
   for (const kind of ['source', 'script', 'outline']) assert.ok(D.allowedTools.includes(`Edit(out/*/*/${kind}.draft.json)`));
 });
 
+test('the seat may not read secret files: .env, *.local.*, keys', () => {
+  const denied = between(directorArgs('x', D, { jobs: 1 }), '--disallowedTools', '--permission-mode');
+  for (const r of ['Read(.env)', 'Read(.env.*)', 'Read(*.local.json)', 'Read(*.local.md)', 'Read(*.pem)', 'Read(*.key)']) assert.ok(denied.includes(r), r);
+});
+
 test('the seat runs isolated from project/local settings.json and project MCP servers', () => {
   const args = directorArgs('/studio run acme/promo', D, { jobs: 1 });
   assert.deepEqual(between(args, '--setting-sources', '--strict-mcp-config'), ['user']);
