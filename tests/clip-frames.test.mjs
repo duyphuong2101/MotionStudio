@@ -6,7 +6,7 @@ import path from 'node:path';
 import { DIRS, writeJson, readJson, loadStudioConfig } from '../engine/core.mjs';
 import { validateBrief, saveBrief, setStatus, jobFile, jobDir, createProject, loadTemplate } from '../engine/jobs.mjs';
 import { prepare, approve, render, sizeFor, benchJob, benchCounts } from '../engine/pipeline.mjs';
-import { ffmpeg, ffmpegReport, openComposition, injectScript } from '../engine/media.mjs';
+import { ffmpeg, ffmpegReport, openComposition, injectScript, BT709_VF, BT709_TAGS } from '../engine/media.mjs';
 import { cutClipFrames, CLIP_FPS } from '../engine/frames.mjs';
 
 test('benchCounts tries each Chrome count once, within the render limits', () => {
@@ -31,6 +31,21 @@ test('cutClipFrames: no clips folder gives no script', async () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Real ffmpeg: a saturated green clip encoded the way the engine encodes (BT.709 TV range) keeps its colour as a
+// cut JPEG frame read as JFIF (BT.601 full range, how Chrome reads it). A grey ramp cannot show a matrix mix-up.
+test('cut clip frames keep the clip colour: BT.709 TV range converted for JPEG', { timeout: 120000 }, async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-clipcolour-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(dir, 'clips'));
+  await ffmpeg(['-y', '-f', 'lavfi', '-i', `color=c=0x22a35a:s=64x64:r=${CLIP_FPS}:d=0.2`, '-vf', BT709_VF, '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-qp', '0', ...BT709_TAGS, path.join(dir, 'clips', 'green.mp4')], { timeoutMs: 60000 });
+  await cutClipFrames(dir, 1);
+  const raw = path.join(dir, 'px.rgb');
+  await ffmpeg(['-y', '-i', path.join(dir, 'frames', 'green', '00001.jpg'), '-vf', 'format=rgb24,crop=1:1:32:32', '-f', 'rawvideo', '-pix_fmt', 'rgb24', raw], { timeoutMs: 60000 });
+  const [r, g, b] = fs.readFileSync(raw);
+  for (const [got, want, ch] of [[r, 0x22, 'r'], [g, 0xa3, 'g'], [b, 0x5a, 'b']]) assert.ok(Math.abs(got - want) <= 7, `${ch}: ${got} for ${want} (rgb ${r},${g},${b})`);
 });
 
 // Real ffmpeg + Chrome: a 1 s clip whose frame k has brightness 8k, so the frame on screen can be read back.

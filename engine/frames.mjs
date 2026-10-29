@@ -13,6 +13,9 @@ export const MAX_WORKERS = 8;
 export const CLIP_FPS = 30;
 export const CLIP_FRAMES_DIR = 'frames';
 const CLIP_RE = /^([a-z0-9-]+)\.mp4$/;
+// Clips are BT.709 TV range; a JPEG is read by Chrome as BT.601 full range (JFIF). Without this the frames come out
+// greener and lighter than the same clip played as <video> (#22a35a measured as #2bb358).
+export const JPEG_FROM_BT709_VF = 'scale=in_color_matrix=bt709:in_range=tv:out_color_matrix=bt601:out_range=pc';
 
 // Injected into a page at render time, after its markup and before its scripts (the page file is never changed).
 // Each clips/<clip>.mp4 <video> becomes an <img class="clipframe"> with the same id, classes and data that answers
@@ -91,7 +94,7 @@ export async function cutClipFrames(dir, seconds, engine) {
     fs.rmSync(out, { recursive: true, force: true });
     fs.mkdirSync(out, { recursive: true });
     const file = path.join(clipsDir, `${id}.mp4`);
-    await ffmpeg(['-y', '-i', file, '-an', '-vf', `fps=${CLIP_FPS}`, '-q:v', '2', '-start_number', '1', path.join(out, '%05d.jpg')],
+    await ffmpeg(['-y', '-i', file, '-an', '-vf', `fps=${CLIP_FPS},${JPEG_FROM_BT709_VF}`, '-q:v', '2', '-start_number', '1', path.join(out, '%05d.jpg')],
       { timeoutMs: mediaTimeoutMs(seconds, engine) });
     const n = fs.readdirSync(out).length;
     if (!n) throw new StudioError(`Clip ${id} has no frames: prepare the job again`);
