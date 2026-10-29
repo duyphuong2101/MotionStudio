@@ -40,7 +40,7 @@ Edit here, then regenerate. Never hand-edit the generated blocks.
 
 - NEVER use `Math.random`, `Date.now`, `setTimeout` or `setInterval` to drive what a template shows → everything visible is a function of `seek(t)`
 - NEVER invent a claim in a script → every on-screen claim traces to `source.json` bullets/facts via `source`
-- NEVER let the director run `render`, `approve` or `sequence` → a person approves and renders in the UI. Approval is UI-only: `node engine/cli.mjs approve` refuses for everyone, and render needs that approval. Every agent asks the person before `render`, `approve` or `sequence` however it is started, and Claude Code also before inline `node -e`: Claude Code (`.claude/settings.json` ask rules, `.claude/hooks/block-destructive.js`), Copilot (`.vscode/settings.json`) and Cursor (`.cursor/hooks/ask-before-render.js`)
+- NEVER let the director run `render`, `approve` or `sequence` → a person approves and renders in the UI. Approval is UI-only: `node engine/cli.mjs approve` refuses for everyone, and render needs that approval. Every agent asks the person before `render`, `approve` or `sequence` however it is started: Claude Code (`.claude/hooks/block-destructive.js`; inline `node -e` runs without a prompt, user decision 2026-10-29), Copilot (`.vscode/settings.json`) and Cursor (`.cursor/hooks/ask-before-render.js`)
 - NEVER add an npm dependency or a framework for something Node's standard library does
 - NEVER show non-English text in product chrome (UI labels, server errors, CLI output, template chrome) → video copy follows `brand.voice.lang`
 **Security (NEVER — the Floor; never override, ask the user instead):**

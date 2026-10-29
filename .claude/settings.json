@@ -47,10 +47,7 @@
       "Bash(del /s:*)",
       "Bash(rmdir /s:*)"
     ],
-    "defaultMode": "default",
-    "ask": [
-      "Bash(node -e *)"
-    ]
+    "defaultMode": "default"
   },
   "hooks": {
     "SessionStart": [
