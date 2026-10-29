@@ -50,7 +50,9 @@ export function parts({ brand, script, timing, size }) {
         <div class="cap ${align}">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
           <div class="hd lt" data-lint${fitTitle(ws)}>${ws.map((w, k) => `<span class="lm"${hasMark(w) ? ' style="overflow:visible"' : ''}><span class="lw" id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
           ${sc.subtitle ? `<div class="ls" data-lint>${h(sc.subtitle)}</div>` : ''}</div></div>`);
-      scenes.push({ id, kind: 'photo', n: ws.length, move: sc.move || 'in' });
+      // A centre shade darkens the whole frame: the corner logo and the subtitles take their dark-surface colours. A top
+      // shade darkens only the top, with the subtitles still over the bare photo, so it stays as it was.
+      scenes.push({ id, kind: 'photo', n: ws.length, move: sc.move || 'in', ...(align === 'center' ? { dark: true } : {}) });
     } else if (sc.kind === 'gallery') {
       // Instant prints on a table: each lands in turn with the voice and develops from a pale flash.
       const photos = (sc.photos || []).slice(0, 4);
@@ -74,7 +76,8 @@ export function parts({ brand, script, timing, size }) {
       blocks.push(`<div class="sc fill ${sc.asset ? '' : 'dark'}" id="g-${id}">${sc.asset ? `<div class="ph" id="${id}-ph"><img src="${asset(sc.asset)}" alt=""></div><div class="shade full"></div>` : ''}
         <div class="cta">${logo ? `<div class="clogo">${logo}</div>` : ''}<div class="hd ctat" data-lint>${h(sc.title)}</div>
         <div class="btn" id="${id}-btn" data-lint>${h(sc.button)}</div>${sc.url ? `<div class="curl" data-lint>${h(sc.url)}</div>` : ''}</div></div>`);
-      scenes.push({ id, kind: 'cta', photo: !!sc.asset, ...(sc.asset ? {} : { dark: true }) });
+      // With a photo the cta is under a full shade; without one it is the dark brand colour: dark either way.
+      scenes.push({ id, kind: 'cta', photo: !!sc.asset, dark: true });
     }
   }
   const hasGallery = scenes.some((s) => s.kind === 'gallery');

@@ -154,6 +154,11 @@ export function validateScript(script, beats, { assets = [], icons = ICON_NAMES,
     if (s.shots !== undefined) errors.push(...validateShots(s, rules, assets));
     if (rules.data?.[kind]) errors.push(...validateData(s, kind, rules.data[kind], icons));
   }
+  // One model for the whole video (product-tour): a step naming another .glb would be silently ignored.
+  if (beats.sameModel) {
+    const first = scenes.find((s) => s.model !== undefined)?.model;
+    for (const s of scenes) if (s.model !== undefined && s.model !== first) errors.push(`${s.id}: model must be ${first}, the one model the whole video shows (or leave it out)`);
+  }
   return { errors, warnings };
 }
 

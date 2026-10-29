@@ -22,7 +22,8 @@ const script = { lang: 'en', scenes: [
 
 test('the product-tour rules match the model renderer', () => {
   assert.deepEqual(beats.data.step.view, VIEW_RANGE);
-  assert.ok(beats.fields.step.required.includes('model') && beats.fields.title.required.includes('model'));
+  // The title names the one model; a step may repeat it (sameModel refuses another) or leave it out.
+  assert.ok(beats.fields.title.required.includes('model') && beats.fields.step.optional.includes('model') && beats.sameModel === true);
   assert.equal(beats.data.step.path, undefined, 'a tour step has one pose; the tour itself is the path');
   assert.ok(PATH_POSES[1] >= 2);
 });
@@ -78,6 +79,14 @@ test('a cta may set a background photo; a page without one has no trace of it', 
   const html = build({ brief: { format: '16:9' }, brand: BRAND, script: withBg, timing, size });
   assert.ok(html.includes('<img class="ctabg" src="assets/pack%20shot.png" alt="">'), 'the photo sits behind the cta, its name escaped');
   assert.ok(html.includes('.ctabg{position:absolute'), 'its css is written');
+});
+
+test('a step may leave its model out; naming another .glb than the title is refused, not ignored', () => {
+  const assets = ['pack.glb', 'other.glb'];
+  const without = { ...script, scenes: script.scenes.map((s) => (s.kind === 'step' ? (({ model, ...rest }) => rest)(s) : s)) };
+  assert.deepEqual(validateScript(without, beats, { assets }).errors, []);
+  const other = { ...script, scenes: script.scenes.map((s, i) => (s.kind === 'step' && i === 1 ? { ...s, model: 'other.glb' } : s)) };
+  assert.match(validateScript(other, beats, { assets }).errors.join(), /model must be pack\.glb, the one model the whole video shows/);
 });
 
 test('a dark or accent title keeps the model in view: the theme is a plate behind the text', () => {

@@ -98,10 +98,10 @@
       "required": [
         "vo",
         "title",
-        "model",
         "source"
       ],
       "optional": [
+        "model",
         "kicker",
         "text",
         "view",
@@ -231,5 +231,6 @@
       "minScene": 5.5,
       "tail": 1
     }
-  }
+  },
+  "sameModel": true
 }

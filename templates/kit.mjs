@@ -11,9 +11,9 @@ import { hasLotties, LOTTIE_WAIT, LOTTIE_JS } from './lottie.mjs';
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const FONT = /^[A-Za-z0-9 ]{1,40}$/;
 const GF = /^[A-Za-z0-9:;@.,+=&]{0,300}$/;
-const FONT_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}.(woff2?|ttf|otf)$/i;
+const FONT_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(woff2?|ttf|otf)$/i;
 const FONT_FORMAT = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' };
-const IMG_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}.(png|jpe?g|webp|svg)$/i;
+const IMG_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(png|jpe?g|webp|svg)$/i;
 // A colour whose luminance (0-255) is above this reads as a light surface.
 const LIGHT_LUM = 150;
 
