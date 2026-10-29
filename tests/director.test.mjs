@@ -60,6 +60,11 @@ test('WebFetch is offered only for the brand allowed hosts', () => {
   assert.ok(!args.some((a) => a.includes('bad host')));
 });
 
+test('the seat may Edit only the three draft files, never any other file under out/**', () => {
+  assert.ok(D.allowedTools.every((r) => !/^Edit\(out\/\*\*/.test(r)), 'a blanket Edit(out/**) would let the seat rewrite an approved job\'s index.html');
+  for (const kind of ['source', 'script', 'outline']) assert.ok(D.allowedTools.includes(`Edit(out/*/*/${kind}.draft.json)`));
+});
+
 test('the seat runs isolated from project/local settings.json and project MCP servers', () => {
   const args = directorArgs('/studio run acme/promo', D, { jobs: 1 });
   assert.deepEqual(between(args, '--setting-sources', '--strict-mcp-config'), ['user']);

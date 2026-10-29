@@ -14,7 +14,7 @@ This is a bug-fix sweep, not a new feature — no "for whom / outcome" or "optio
 
 ### P0 (breaks the security Floor or a whole feature)
 - [x] P0-1 Seat Director isolated from project/local `settings.json` and project MCP servers (`server/director.mjs` `directorArgs`: `--setting-sources user`, `--strict-mcp-config`, `--mcp-config {}`; `UNSAFE_RULE` now also rejects a broad `Bash(node ...)`/`Bash(npm ...)` rule). Test: `tests/director.test.mjs`.
-- [ ] P0-2a `Edit(out/**)` narrowed to `*.draft.json` only (`config/studio.json` director.allowedTools) + preview iframe gets a `sandbox` attribute (`ui/app.js`).
+- [x] P0-2 `Edit(out/**)` narrowed to the three draft-file rules (`config/studio.json`). Iframe `sandbox` was not viable (Preview reads `frame.contentWindow.seek()` directly, which needs same-origin); gave the composition page a CSP instead (`server/server.mjs`), `connect-src 'self'` after confirming `'none'` breaks model3d's .glb fetch under real Chrome CSP enforcement.
 - [x] P0-3 SVG script-element check widened (namespaced `<s:script>`) + `ASSET_HEADERS` sent on `/files/.../assets/*` and `/tpreview` (`engine/assets.mjs`, `server/server.mjs`).
 - [ ] P0-4 Lottie: vendor `lottie_light.min.js` (no expression engine) + reject uploads with an expression (`x`) field or non-embedded image asset (`engine/vendor.mjs`, `engine/lottie.mjs`).
 - [ ] P0-5 GSAP TextPlugin `text:` tweens replaced with a `textContent`-based reveal so brief/script text is never parsed as HTML (`templates/kit.mjs` `typeText`, `templates/promo`, `templates/code-story`, `templates/ui-story`).

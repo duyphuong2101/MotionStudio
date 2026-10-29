@@ -276,6 +276,19 @@ const BANNER_HEADERS = {
   'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; sandbox allow-scripts",
   'X-Content-Type-Options': 'nosniff',
 };
+// A composition page (index.html) runs real script (GSAP, inline tweens) and must stay same-origin: the Preview
+// tab reads frame.contentWindow.seek() directly, which an iframe sandbox attribute would turn into an opaque
+// origin and break. What a sandbox would have stopped is narrowed here instead: connect-src is 'self', not
+// 'none' -- the model3d template's three.js loader fetches its own .glb asset the same way (confirmed: 'none'
+// made that fetch throw under real Chrome CSP enforcement) -- but still same-origin only, and form-action/
+// frame-src are 'none', so an injected script in the composition cannot open a new top-level target or submit
+// a form out of the page. It can still reach this server's own /api on 'self': that gap needs the composition
+// origin split from the API's, which is a larger change than this fix.
+const COMPOSITION_HEADERS = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    + "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; media-src 'self'; connect-src 'self'; form-action 'none'; frame-src 'none'; base-uri 'none'",
+  'X-Content-Type-Options': 'nosniff',
+};
 
 function serveFile(req, res, file, extra = {}) {
   if (!exists(file) || !fs.statSync(file).isFile()) { res.writeHead(404).end(); return; }
@@ -694,16 +707,19 @@ function serveJobFile(req, res, url) {
   const [, , project, id, ...rest] = url.pathname.split('/');
   const rel = decodeURIComponent(rest.join('/'));
   if (!JOB_FILE_RE.test(rel)) { res.writeHead(404).end(); return; }
-  // index.html/vendor/*.js must run script to render the composition, so they go out plain. An asset
-  // prepare copied in (the brand logo, an uploaded SVG, …) never needs to run: the sandbox CSP here
-  // matches the /assets/<project>/<name> route it was copied from.
-  return serveFile(req, res, within(jobDir(project, id), rel), rel.startsWith('assets/') ? ASSET_HEADERS : {});
+  // An asset prepare copied in (the brand logo, an uploaded SVG, …) never needs to run: the sandbox
+  // CSP here matches the /assets/<project>/<name> route it was copied from. The composition page
+  // itself must run script to render, so it gets COMPOSITION_HEADERS (self-only, no network) instead
+  // of the full sandbox. vendor/*.js is the composition's own script and goes out plain.
+  const extra = rel.startsWith('assets/') ? ASSET_HEADERS : /^(index(-\d+x\d+)?|video)\.html$/.test(rel) ? COMPOSITION_HEADERS : {};
+  return serveFile(req, res, within(jobDir(project, id), rel), extra);
 }
 
 function servePreviewFile(req, res, url) {
   const [, , project, template, ...rest] = url.pathname.split('/');
   const rel = decodeURIComponent(rest.join('/'));
-  return serveFile(req, res, previewFile(project, template, rel), rel.startsWith('assets/') ? ASSET_HEADERS : {});
+  const extra = rel.startsWith('assets/') ? ASSET_HEADERS : rel === 'index.html' ? COMPOSITION_HEADERS : {};
+  return serveFile(req, res, previewFile(project, template, rel), extra);
 }
 
 function serveTransitionPreview(req, res, url) {

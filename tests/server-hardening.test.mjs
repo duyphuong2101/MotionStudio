@@ -131,18 +131,33 @@ test('bodies and URLs that are not what a route expects answer 400 or 413, never
 
   // An asset prepare copied into the job (the brand logo, an uploaded SVG) must never run or be
   // sniffed as HTML: it goes out with the same sandbox CSP as /assets/<project>/<name>. The
-  // composition HTML next to it still needs to run script, so that one stays plain.
+  // composition HTML next to it still needs to run script (the Preview tab reads
+  // frame.contentWindow.seek() directly, which a sandboxed iframe would break) and the model3d
+  // template fetches its own .glb same-origin, so it gets a same-origin CSP instead of the full
+  // sandbox: form-action and frame-src are 'none', so an injected script in the composition cannot
+  // open a new top-level target or submit a form out of the page (it can still reach this server's
+  // own /api on connect-src 'self' -- confirmed under real Chrome CSP enforcement that 'none' there
+  // breaks the model3d .glb fetch, so 'self' is what's left without splitting the composition onto
+  // its own origin).
   const dir = jobDir(P, 'x');
   fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'assets', 'logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
-  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><html></html>');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><html><script src="vendor/gsap.min.js"></script></html>');
+  fs.mkdirSync(path.join(dir, 'vendor'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'vendor', 'gsap.min.js'), '/* stub */');
   const asset = await request(PORT, `/files/${P}/x/assets/logo.svg`);
   assert.equal(asset.status, 200);
   assert.match(asset.headers['content-security-policy'] || '', /sandbox/);
   assert.equal(asset.headers['x-content-type-options'], 'nosniff');
   const html = await request(PORT, `/files/${P}/x/index.html`);
   assert.equal(html.status, 200);
-  assert.ok(!html.headers['content-security-policy'], 'the composition page itself must stay unsandboxed to run');
+  const csp = html.headers['content-security-policy'] || '';
+  assert.match(csp, /connect-src 'self'/, 'the composition page can fetch its own job assets (model3d\'s .glb)');
+  assert.match(csp, /form-action 'none'/);
+  assert.match(csp, /frame-src 'none'/);
+  const vendor = await request(PORT, `/files/${P}/x/vendor/gsap.min.js`);
+  assert.equal(vendor.status, 200);
+  assert.ok(!vendor.headers['content-security-policy'], 'the composition\'s own script file is not sandboxed or CSP-limited itself');
 
   const local = JSON.parse((await request(PORT, `/api/projects/${P}`)).text);
   assert.ok('generate' in local, 'the local UI still gets the Gemini state');
