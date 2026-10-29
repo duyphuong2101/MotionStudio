@@ -72,6 +72,9 @@ test('templates that reuse a renderer load it and keep their own rules', () => {
 
 // sha1 of build() for the default scenes in every format, recorded before the parts() refactor (plan mixed-template, T1).
 // Fixed brand and timing config so profile or config edits do not move them; a deliberate look change updates this table.
+// Re-recorded 2026-10-29 with the tables below: typed and swapped text no longer go through TextPlugin (innerHTML), the
+// marks code reads only real marks, SplitText's line class is kitline; with templates/ as before those edits, every
+// hash here matched.
 const PARTS_BASELINE = {
   // Updated 2026-10-15: the sample now holds a video scene. A script without one still builds byte for byte as before.
   // Updated 2026-10-22: scenes no longer overlap at a switch and late elements start hidden (kit build/preset).
@@ -87,13 +90,13 @@ const PARTS_BASELINE = {
   // Updated 2026-10-28: a softer model contact shadow (a wider PCF blur, lighter ground); only MODEL_JS changed.
   // Updated 2026-10-28: 1:1 only, the standard layout's diagram uses the square node rule (4+ nodes stack) so a
   // 4-node row no longer runs past both edges; NO_FLASH_BASELINE and NO_MODEL_BASELINE 1:1 changed with it.
-  explainer: { '16:9': '3b373dff28a62da9e70c91f50b8e0d4420269304', '1:1': '0a35eda4e378e7aee57dfa1b478479f686a5a3d4', '9:16': '62b0dec3f9e04550aa5cbbca84a24a12e7fe479f', '4:5': '2a9521fc9934796310533f9b7febce13f9f745e4', '2:3': '2300eee0516261cd627e44680ba82222f9ae80b6', '21:9': 'f17bf5e18d66b5f32fce2f2710921c8f3921693a' },
+  explainer: { '16:9': 'f3d4b21d4ab82ddf93df32e8619e153444267f3a', '1:1': '31b375c1ed036fce92cf34d8d370e4a1bdc57d15', '9:16': '40205ca952a0feea165cd2c1ccfc9d9ad319fa5f', '4:5': '70b2cb4e73c35ed6f3e4f609867575d97132b04e', '2:3': '92d14d43e451061cdc75826e384978b605c6fd3f', '21:9': '6cd3894d7282cb0a3e3d32a1d34e29e16281f0a6' },
   // Updated 2026-10-14 for the race and stripes kinds: the earlier scenes' markup is unchanged, only css and js were added.
   // Updated 2026-10-22: the line's end value sits right of its last point (the plot leaves a column for it) instead of
   // the chart's top-right corner.
-  'data-story': { '16:9': '1cf59ed886e503c145730d3eddd9fb1366386975', '1:1': '15ef9d463f6d96f1535a4ed3ee84dfe09bc0c9ca', '9:16': 'a35aa3ad38b779e2a34d154beab485e6e6901473', '4:5': 'b73bf50fe4370ca6f9809c4d9b76dec8eb01ccb4', '2:3': 'afe707145cebd8e5a431a81254539fa2fb3f6575', '21:9': 'bd2e675b52346fe089435583be7c999e3d047382' },
-  testimonial: { '9:16': '3b8f4a9f73b32a70cf1314eca8bb9fdac33b6412', '1:1': '6d50d7cc43f12629ba76f0eb8652803dcc9a4c65', '16:9': 'd907416be769d6b220ca24f32c554a55d3386750', '4:5': 'e25ef9af674b6cf988a475644f0b0ecec2720114', '2:3': 'b1a3e6820cd91c3c1fa0234bdf40d48e67a367f6', '21:9': 'f2b0b9ff42c26ba13e35958b7c1f629eb7526da2' },
-  event: { '9:16': 'c72ee5549747374b0aa66fccb08e5e41ef3ad531', '1:1': 'b7bde479e0de11e0dd625c60aa1c65adaa437e00', '16:9': '1ac30371a0b71d81731b9856ac624083a3769cb8', '4:5': 'ad3f67e5ea9fb4d831e6e2a97cf63f7d90d9a957', '2:3': '43bdf699efb2f0f6b55dc415b9ea68de7db09ec9', '21:9': '3b16782ef0f064f4500aa309dff43fe725bca2bf' },
+  'data-story': { '16:9': '76de65d0c96153e94aa2bd3c5095c2f9250e4fa1', '1:1': 'b7d9ee7812c32c06fbe087afe56d1406f81e587a', '9:16': '32b4284f904d4d4e31ed08567613b70fcadc2dfc', '4:5': '9050f92d2aaeacf42e0ae2f7d929e8cd0e364c51', '2:3': 'eec964407774d70e90719cfc03293d2b43ede08a', '21:9': '817fbe3665e54f1b8167adaa49cec1c196f5e8dd' },
+  testimonial: { '9:16': 'cfc7a5f8b76051b7b7d1d35fe0d0b8fe55ab4162', '1:1': '504e3fab94da98cafd1f98fa5d5b333909c61886', '16:9': 'd3bfe1d0eedf29cf27c2b1325a254cefa335fdd4', '4:5': '4a9804586177b555de9613aaec33125b66e7e53d', '2:3': '20a73216b0b514ca8eabf376aa30c194e1ad0fcc', '21:9': '751ffdd4ed086c83f253d87e9a3f3bfdb001b0d1' },
+  event: { '9:16': '73139d151d9e68427bff3ad88a2f56f39912dd20', '1:1': '00382498d5fae6fbc3c287f340ef4132231364b7', '16:9': '4b09d9c64ec53f928c328a0ea0bdba698a580331', '4:5': 'c46e30b5cd7ad8d13d785bdc5c3c8abf942a1d63', '2:3': '9a04ed82a580db1bb2d29a66418a0945742361f9', '21:9': '0d33e7f4489138810d1375ab9d88386129fbf20f' },
 };
 const HASH_BRAND = { name: 'Hash Co', logoText: 'Hash', colors: { primary: '#1e293b', primary2: '#4f46e5', secondary: '#f59e0b', bg: '#f8fafc', ink: '#0f172a', muted: '#64748b', onPrimary: '#ffffff' }, fonts: { display: 'Inter', body: 'Inter' } };
 const HASH_TIMING = { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, tailOut: 0.4, lastSceneHold: 1.2 };
@@ -105,13 +108,13 @@ test('explainer: a script without a video scene builds the same page as before t
   const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   const html = build({ brief: { format: '16:9' }, brand: HASH_BRAND, script, timing, size: sizeFor(beats, '16:9') });
-  assert.equal(crypto.createHash('sha1').update(html).digest('hex'), 'fb76f5d74ac859c0985b74262b4606c6076a33b9');
+  assert.equal(crypto.createHash('sha1').update(html).digest('hex'), '9cd6ed02796d2fc2c6dd28b154c075e5f698e7b1');
 });
 
 // The explainer pages from before the flash kind (PARTS_BASELINE of 2026-10-22): flash css and js are written only
 // when a script holds a flash scene, so every existing explainer page stays the same in every format.
 // Updated 2026-10-23: the sample's clip seek changed (see PARTS_BASELINE).
-const NO_FLASH_BASELINE = { '16:9': 'a58adc032794ad63058fb51a27151b4061860200', '1:1': 'aac2a52242dae17ee3e55039122195345fdd0d3b', '9:16': '5fcf022542c4b91abcc80655edabcce6e2760bf0', '4:5': '52fc32f2c9cec766c7bdd307f6dc04c1d61fed53', '2:3': '7e758f84bedb2d339f3b6c356a8ccbc7c1066d5f', '21:9': 'a15c8681987b978573082bfef30ccae6232acda5' };
+const NO_FLASH_BASELINE = { '16:9': '18ee04ac562e271d91436ef8e44cb25491b74698', '1:1': '9de4480d69555afa0cab5f3094a438007df3387d', '9:16': '3211148ba1900820ef6ddde217c70933e87250bd', '4:5': 'de9c9cb4177c7fd4b834141efc455324226dcd45', '2:3': '8beff823ccdfba1015f6430505b869bac3aa9cf0', '21:9': 'd2299dc5ba371b5a7824585913d9b45ca39920dc' };
 
 test('explainer: a script without a flash scene builds the same page as before the flash kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
@@ -128,7 +131,7 @@ test('explainer: a script without a flash scene builds the same page as before t
 // The explainer pages from before the model kind (PARTS_BASELINE of 2026-10-22): model css, js and three.js are
 // written only when a script holds a model scene, so every existing explainer page stays the same in every format.
 // Updated 2026-10-23: the sample's clip seek changed (see PARTS_BASELINE).
-const NO_MODEL_BASELINE = { '16:9': '27ff4df8e16509a76846be5d6ee128f3f28e6dfc', '1:1': '2d098b35bf3db410a7f6123876394ebdbd314bb8', '9:16': '0724b68ad0539eb0f491f9bddc57adfe8f4d95bd', '4:5': '22c251dc18dab81f3b619ddbf4062fffbda848d8', '2:3': 'e532a86242de0cba32fb7264a8c58dcb010c75c3', '21:9': 'f00b2a4769ead54f5367063f4f784e53cc355d52' };
+const NO_MODEL_BASELINE = { '16:9': '2f24c6ece9b00912f0b6bfe3ec0e9969c579641e', '1:1': '5538a4838ff0a978a8954576e66b73ec2645fc95', '9:16': '4c52977bce79b04dddc861999f99f3cf2d07c428', '4:5': '850f9eeffd011cff573afd1da163e65345c71346', '2:3': 'c06d47305e28c3d723ab72fb883a4e3da397702d', '21:9': '7ab490c3cbeb795e6a865d42ea089115c8b878f8' };
 
 test('explainer: a script without a model scene builds the same page as before the model kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
@@ -159,7 +162,7 @@ for (const [id, hashes] of Object.entries(PARTS_BASELINE)) {
 
 // sha1 of build() for the default scenes without shot scenes, recorded before ui-story had them: shot css, markup and js
 // are written only when a script uses a shot, so every existing ui-story and feature-launch page stays the same.
-const NO_SHOT_BASELINE = { 'ui-story': '657c2e1fec68fa0bd5640be2c5b8436703b8ef1c', 'feature-launch': 'a6a9a06b517c73085239cad9ca3b94be08f6854f' };
+const NO_SHOT_BASELINE = { 'ui-story': '34aee56d8584b1ebbca3e0066825744fc91a878a', 'feature-launch': '920e6a21c17696dd9d7e59fb24bbfb2bc4e7dfeb' };
 
 for (const [id, sha] of Object.entries(NO_SHOT_BASELINE)) {
   test(`${id}: a script without shot scenes builds the same page as before shots existed`, async () => {

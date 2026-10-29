@@ -46,6 +46,18 @@ export const MARK_PATHS = {
 
 const MARK_HTML = /\[\[(circle|underline|strike|mark):([^[\]<>]{1,300})\]\]/g;
 
+// One word, or one whole mark with any punctuation stuck to it: "(", "[[underline:big win]]", "!" stay one token.
+const WORD_OR_MARK = /\S*\[\[(?:circle|underline|strike|mark):[^[\]<>]{1,300}\]\]\S*|\S+/g;
+
+/**
+ * The words of a text a template animates one by one. A mark stays one token, so its words are never split into
+ * separate spans, where marksToHtml could no longer find the whole "[[style:words]]".
+ */
+export const markWords = (text) => String(text ?? '').match(WORD_OR_MARK) || [];
+
+/** True when a markWords token holds a mark (its span must not clip the drawn circle or underline). */
+export const hasMark = (word) => /\[\[(?:circle|underline|strike|mark):/.test(word);
+
 /**
  * Turns marks in composition HTML (already escaped) into spans the kit animates. Inside a tag (an attribute)
  * a mark becomes its plain words. Returns { html, count }.

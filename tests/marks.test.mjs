@@ -77,6 +77,50 @@ test('brand.shine is a yes/no and pill and pop are subtitle presets', () => {
   for (const style of ['pill', 'pop']) assert.equal(validateBrand({ ...base, subtitles: { style } }).subtitles.style, style);
 });
 
+// A field split into one span a word: a mark of two words stays whole, so it is drawn, never shown as "[[underline:big".
+test('a multi-word mark in a word-by-word heading becomes one mark', async () => {
+  const { loadTemplate } = await import('../engine/jobs.mjs');
+  const { sampleScript } = await import('../engine/template-preview.mjs');
+  const { estimateTiming } = await import('../engine/timing.mjs');
+  const { sizeFor } = await import('../engine/pipeline.mjs');
+  const brand = { name: 'B', logoText: 'B', colors: { primary: '#1e293b', primary2: '#4f46e5', secondary: '#f59e0b', bg: '#f8fafc', ink: '#0f172a', muted: '#64748b', onPrimary: '#ffffff' }, fonts: { display: 'Arial', body: 'Arial' } };
+  for (const [id, kind, field] of [['testimonial', 'quote', 'quote'], ['promo', 'hook', 'title'], ['lifestyle', 'photo', 'title'], ['talking-head', 'card', 'title']]) {
+    const { beats } = loadTemplate(id);
+    const script = sampleScript(beats);
+    const sc = script.scenes.find((s) => s.kind === kind);
+    assert.ok(sc, `${id} has a ${kind} sample scene`);
+    sc[field] = 'A [[underline:big win]] today';
+    const timing = estimateTiming(script, { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, tailOut: 0.4, lastSceneHold: 1.2 }, 'en', beats.pace || null);
+    const { build } = await import(`../templates/${id}/template.mjs`);
+    const html = build({ brief: { format: beats.formats[0] }, brand, script, timing, size: sizeFor(beats, beats.formats[0]), icons: {} });
+    assert.ok(!html.includes('[[underline'), `${id}: no raw mark left`);
+    assert.match(html, /class="mk mk-underline"><span class="mkt">big win<\/span>/, `${id}: one mark over both words`);
+  }
+});
+
+// Real Chrome: a template's own ".mk" class (before-after's ticks) once made the kit's marks code throw in build().
+test('before-after with a mark and a split scene builds and becomes ready', { timeout: 120000 }, async (t) => {
+  const { hasChrome, chromeFolder } = await import('./helpers/chrome-folder.mjs');
+  const channel = loadStudioConfig().engine.chromeChannel;
+  if (!(await hasChrome(channel))) { t.skip('Chrome is not available'); return; }
+  const { loadTemplate } = await import('../engine/jobs.mjs');
+  const { sampleScript } = await import('../engine/template-preview.mjs');
+  const { estimateTiming } = await import('../engine/timing.mjs');
+  const { sizeFor } = await import('../engine/pipeline.mjs');
+  const { openComposition } = await import('../engine/media.mjs');
+  const { build } = await import('../templates/before-after/template.mjs');
+  const { beats } = loadTemplate('before-after');
+  const script = sampleScript(beats);
+  script.scenes[0].title = 'Before and [[mark:after]]';
+  const timing = estimateTiming(script, { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, tailOut: 0.4, lastSceneHold: 1.2 }, 'en', beats.pace || null);
+  const size = sizeFor(beats, '16:9');
+  const brand = { name: 'B', logoText: 'B', colors: { primary: '#1e293b', primary2: '#4f46e5', secondary: '#f59e0b', bg: '#f8fafc', ink: '#0f172a', muted: '#64748b', onPrimary: '#ffffff' }, fonts: { display: 'Arial', body: 'Arial' } };
+  const folder = await chromeFolder(t, 'ms-bamarks-');
+  const file = folder.write('index.html', build({ brief: { format: '16:9' }, brand, script, timing, size, icons: {} }));
+  const { browser } = await openComposition(file, { channel, ...size });
+  await browser.close();
+});
+
 // Real Chrome: prepare plays every frame (no lint, played = jumped), marks are scaled to their text and drawn by the
 // end of the scene, the button carries a shine and each subtitle preset builds.
 for (const style of ['pill', 'pop']) {

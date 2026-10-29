@@ -1,5 +1,6 @@
 import { page, geometry, h, hasLogoBug, asset } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
+import { markWords, hasMark } from '../../engine/marks.mjs';
 
 export function build({ brand, script, timing, size }) {
   const g = geometry(size);
@@ -23,9 +24,9 @@ export function build({ brand, script, timing, size }) {
         ${mark ? `<div class="bug">${mark}</div>` : ''}</div>`);
       scenes.push({ id, kind: 'clip', zoom: sc.zoom || 'none', ...(lay === 'full' ? {} : { layout: lay }) });
     } else if (sc.kind === 'card') {
-      const ws = String(sc.title).split(/\s+/).filter(Boolean);
+      const ws = markWords(sc.title);
       parts.push(`<div class="sc fill dark" id="g-${id}"><div class="card">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
-        <div class="hd ct" data-lint>${ws.map((w, k) => `<span class="cm"><span id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
+        <div class="hd ct" data-lint>${ws.map((w, k) => `<span class="cm"${hasMark(w) ? ' style="overflow:visible"' : ''}><span id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
         ${sc.text ? `<div class="cx" data-lint>${h(sc.text)}</div>` : ''}<div class="bar" id="${id}-bar"></div></div></div>`);
       scenes.push({ id, kind: 'card', n: ws.length });
     } else if (sc.kind === 'cta') {

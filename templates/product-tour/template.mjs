@@ -36,7 +36,8 @@ export function parts({ brand, script, timing, size, icons }) {
     const id = sc.id;
     if (sc.kind === 'title') {
       const dk = sc.theme === 'dark', acc = sc.theme === 'accent';
-      blocks.push(`<div class="sc fill${dk || acc ? themeClass(sc) : ''}" id="g-${id}"><div class="ttl">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
+      // A themed title keeps the model visible: the theme colour is a plate behind the text, not the whole frame.
+      blocks.push(`<div class="sc fill${dk || acc ? `${themeClass(sc)} tplate` : ''}" id="g-${id}"><div class="ttl">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
         <div class="hd tt" data-lint>${h(sc.title)}</div>${sc.subtitle ? `<div class="tsub" data-lint>${h(sc.subtitle)}</div>` : ''}
         <div class="tline" id="${id}-tl"></div></div></div>`);
       scenes.push(dk ? { id, kind: 'title', dark: true } : { id, kind: 'title' });
@@ -77,7 +78,9 @@ export function parts({ brand, script, timing, size, icons }) {
 .ctat{font-size:${px(port ? 84 : 88)};max-width:${px(port ? 900 : 1300)}}
 .btn{font-size:${px(port ? 40 : 36)};font-weight:700;background:var(--secondary);color:var(--ink);padding:${px(22)} ${px(54)};border-radius:${px(999)}}
 .curl{font-size:${px(30)};opacity:.75;letter-spacing:.06em}
-${short ? '.tt{font-size:' + px(72) + '}.st{font-size:' + px(52) + '}' : ''}${ACCENT_CSS}${scenesIn.some((s) => s.kind === 'cta' && s.image) ? '\n' + CTA_BG_CSS : ''}`;
+${short ? '.tt{font-size:' + px(72) + '}.st{font-size:' + px(52) + '}' : ''}${ACCENT_CSS}${scenesIn.some((s) => s.kind === 'cta' && s.image) ? '\n' + CTA_BG_CSS : ''}${scenesIn.some((s) => s.kind === 'title' && ['dark', 'accent'].includes(s.theme)) ? `
+.sc.tplate{background:transparent}.tplate .ttl{left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:${px(port ? 940 : 1400)};padding:${px(36)} ${px(56)};border-radius:${px(28)}}
+.dark.tplate .ttl{background:var(--primary)}.dark.tplate .tsub{color:var(--on);opacity:.75}.acc.tplate .ttl{background:var(--secondary)}` : ''}`;
   const js = `
 const KINDS = {
   title(sc, s, e) {

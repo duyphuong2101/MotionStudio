@@ -88,8 +88,8 @@ test('in Chrome: characters and lines reveal, the spring curve, confetti that la
       const first = info.scenes[0];
       const parts = await page.evaluate((cls) => {
         const hd = document.querySelector('#stage .sc .hd');
-        return { pieces: hd.querySelectorAll('.' + cls).length, masks: hd.querySelectorAll('.rl-mask').length, text: hd.textContent.replace(/\s+/g, ' ').trim() };
-      }, reveal === 'chars' ? 'rc' : 'rl');
+        return { pieces: hd.querySelectorAll('.' + cls).length, masks: hd.querySelectorAll('.kitline-mask').length, text: hd.textContent.replace(/\s+/g, ' ').trim() };
+      }, reveal === 'chars' ? 'rc' : 'kitline');
       assert.ok(parts.pieces > (reveal === 'chars' ? 4 : 0), `${reveal}: ${parts.pieces} pieces`);
       if (reveal === 'lines') assert.equal(parts.masks, parts.pieces, 'each line rises out of its own mask');
       assert.ok(parts.text.length > 2, 'the heading text is still there');
@@ -97,7 +97,7 @@ test('in Chrome: characters and lines reveal, the spring curve, confetti that la
       const state = (at) => page.evaluate(async ([x, cls]) => {
         await window.seek(x);
         return [...document.querySelector('#stage .sc .hd').querySelectorAll('.' + cls)].map((p) => [+getComputedStyle(p).opacity, new DOMMatrix(getComputedStyle(p).transform).f]);
-      }, [at, reveal === 'chars' ? 'rc' : 'rl']);
+      }, [at, reveal === 'chars' ? 'rc' : 'kitline']);
       const early = await state(first.start + 0.12), done = await state(info.stills[0].t);
       assert.ok(early.some(([o, y]) => o < 0.5 || Math.abs(y) > 1), `${reveal}: something is still on its way in early`);
       assert.ok(done.every(([o, y]) => o > 0.99 && Math.abs(y) < 0.5), `${reveal}: all in by the still ${JSON.stringify(done.slice(0, 3))}`);

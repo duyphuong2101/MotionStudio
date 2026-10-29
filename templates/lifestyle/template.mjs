@@ -1,5 +1,6 @@
 import { page, geometry, h, asset, hasLogoBug, UNDER_BUG, contentArea } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
+import { markWords, hasMark } from '../../engine/marks.mjs';
 
 // gallery: an instant print is this tall for its width (square photo, wider bottom margin for the caption).
 const PRINT_H = 1.165;
@@ -40,11 +41,11 @@ export function parts({ brand, script, timing, size }) {
     const id = sc.id;
     const align = sc.align || 'bottom';
     if (sc.kind === 'photo') {
-      const ws = String(sc.title).split(/\s+/).filter(Boolean);
+      const ws = markWords(sc.title);
       blocks.push(`<div class="sc fill" id="g-${id}"><div class="ph" id="${id}-ph"><img src="${asset(sc.asset)}" alt=""></div>
         <div class="shade ${align}"></div>
         <div class="cap ${align}">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
-          <div class="hd lt" data-lint>${ws.map((w, k) => `<span class="lm"><span class="lw" id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
+          <div class="hd lt" data-lint>${ws.map((w, k) => `<span class="lm"${hasMark(w) ? ' style="overflow:visible"' : ''}><span class="lw" id="${id}-w${k}">${h(w)}</span></span>`).join(' ')}</div>
           ${sc.subtitle ? `<div class="ls" data-lint>${h(sc.subtitle)}</div>` : ''}</div></div>`);
       scenes.push({ id, kind: 'photo', n: ws.length, move: sc.move || 'in' });
     } else if (sc.kind === 'gallery') {

@@ -79,3 +79,16 @@ test('a cta may set a background photo; a page without one has no trace of it', 
   assert.ok(html.includes('<img class="ctabg" src="assets/pack%20shot.png" alt="">'), 'the photo sits behind the cta, its name escaped');
   assert.ok(html.includes('.ctabg{position:absolute'), 'its css is written');
 });
+
+test('a dark or accent title keeps the model in view: the theme is a plate behind the text', () => {
+  const timing = estimateTiming(script, TIMING, 'en', beats.pace);
+  const size = sizeFor(beats, '16:9');
+  const plain = build({ brief: { format: '16:9' }, brand: BRAND, script, timing, size });
+  assert.doesNotMatch(plain, /tplate/, 'a title without a theme is the page it was');
+  for (const theme of ['dark', 'accent']) {
+    const themed = { ...script, scenes: script.scenes.map((s) => (s.kind === 'title' ? { ...s, theme } : s)) };
+    const html = build({ brief: { format: '16:9' }, brand: BRAND, script: themed, timing, size });
+    assert.match(html, new RegExp(`class="sc fill ${theme === 'dark' ? 'dark' : 'acc'} tplate"`));
+    assert.ok(html.includes('.sc.tplate{background:transparent}'), `${theme}: the frame stays clear over the model`);
+  }
+});

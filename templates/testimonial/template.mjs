@@ -1,5 +1,6 @@
 import { page, geometry, h, asset, num, hasLogoBug } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
+import { markWords } from '../../engine/marks.mjs';
 
 const STAR = 'M50 6 L62 38 L96 39 L69 60 L79 94 L50 74 L21 94 L31 60 L4 39 L38 38 Z';
 const initials = (t) => String(t || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
@@ -18,7 +19,7 @@ export function parts({ brand, script, size }) {
   for (const sc of script.scenes) {
     const id = sc.id;
     if (sc.kind === 'quote') {
-      const ws = String(sc.quote).split(/\s+/).filter(Boolean);
+      const ws = markWords(sc.quote);
       const avatar = sc.asset ? `<img class="av" src="${asset(sc.asset)}" alt="">` : `<div class="av ini">${h(initials(sc.author))}</div>`;
       blocks.push(`<div class="sc fill" id="g-${id}"><div class="quote">
         <svg class="qm" viewBox="0 0 120 90" aria-hidden="true"><path id="${id}-qm" d="M50 10 C25 14 10 32 10 55 C10 72 22 82 36 82 C50 82 58 72 58 60 C58 48 49 40 37 40 C35 40 33 40 31 41 C34 28 42 20 54 17 Z M110 10 C85 14 70 32 70 55 C70 72 82 82 96 82 C110 82 118 72 118 60 C118 48 109 40 97 40 C95 40 93 40 91 41 C94 28 102 20 114 17 Z"/></svg>

@@ -409,7 +409,8 @@ function drawMarks(sc, g, s, e) {
   const ws = words(sc.id), used = new Set();
   g.querySelectorAll('.mk-underline,.mk-strike').forEach(splitMark);
   let chain = -Infinity;
-  g.querySelectorAll('.mk').forEach((m) => {
+  // Only the marks marksToHtml writes: a template's own ".mk" (before-after's ticks once) has no box and broke build().
+  g.querySelectorAll('.mk-mark,.mk-circle,.mk-strike,.mk-underline').forEach((m) => {
     const style = ['mark', 'circle', 'strike', 'underline'].find((x) => m.classList.contains('mk-' + x));
     const key = markKey(m.textContent.trim().split(/\s+/)[0]);
     const hit = key ? ws.findIndex((w, k) => !used.has(k) && markKey(w.w) === key) : -1;
@@ -470,7 +471,7 @@ const revealHd = (el, at) => {
   const text = el.textContent.trim();
   if (el.children.length || el.dataset.count !== undefined || !text || text.length > 120) return false;
   const lines = D.reveal === 'lines';
-  const sp = SplitText.create(el, lines ? { type: 'lines', mask: 'lines', linesClass: 'rl' } : { type: 'words,chars', wordsClass: 'rw', charsClass: 'rc' });
+  const sp = SplitText.create(el, lines ? { type: 'lines', mask: 'lines', linesClass: 'kitline' } : { type: 'words,chars', wordsClass: 'rw', charsClass: 'rc' });
   tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.01, ease: 'none', immediateRender: false }, at);
   if (lines) tl.fromTo(sp.lines, { yPercent: 110 }, { yPercent: 0, duration: 0.75, ease: 'power4.out', stagger: 0.1, immediateRender: false }, at);
   else tl.fromTo(sp.chars, { yPercent: 70, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.5, ease: X, stagger: Math.min(0.03, 0.6 / sp.chars.length), immediateRender: false }, at);
@@ -479,7 +480,7 @@ const revealHd = (el, at) => {
 const fadeUp = (el, at, o = {}) => { if (el && el.classList.contains('hd') && revealHd(el, at)) return; fadeUpBase(el, at, o); };`;
 // A masked line keeps its descenders: the padding is taken back by a negative margin, so the line height stays.
 const REVEAL_CSS = `
-.rl-mask{padding:.06em 0 .16em;margin:-.06em 0 -.16em}`;
+.kitline-mask{padding:.06em 0 .16em;margin:-.06em 0 -.16em}`;
 
 // brand.confetti: a burst of brand-coloured pieces from each call-to-action button as it lands. Each piece flies on
 // Physics2D (position is worked out from the time alone, so any seek lands on the same frame) with its size, speed,

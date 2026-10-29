@@ -16,8 +16,8 @@ export function build({ brand, script, timing, size }) {
   const side = (id, which, d) => {
     const items = (d?.items || []).slice(0, 4);
     const mark = which === 'before'
-      ? '<path class="mk x" d="M6 6 L26 26 M26 6 L6 26"/>'
-      : '<path class="mk v" d="M5 17 L13 25 L28 7"/>';
+      ? '<path class="bamk x" d="M6 6 L26 26 M26 6 L6 26"/>'
+      : '<path class="bamk v" d="M5 17 L13 25 L28 7"/>';
     return `<div class="panel ${which}" id="${id}-${which}">
       ${d?.asset ? `<img class="pimg" src="${asset(d.asset)}" alt="">` : ''}
       <div class="plabel" data-lint>${h(d?.label || (which === 'before' ? 'Before' : 'After'))}</div>
@@ -72,7 +72,7 @@ export function build({ brand, script, timing, size }) {
 .ptitle{position:relative;font-size:${px(port ? 64 : 58)}}
 .items{position:relative;display:flex;flex-direction:column;gap:${px(16)};margin-top:${px(8)}}
 .item{display:flex;align-items:center;gap:${px(18)};font-size:${px(port ? 44 : 40)};font-weight:600}
-.item svg{width:${px(46)};height:${px(46)};flex:none;overflow:visible}.mk{fill:none;stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round}.mk.x{stroke:#dc2626}.mk.v{stroke:var(--secondary)}
+.item svg{width:${px(46)};height:${px(46)};flex:none;overflow:visible}.bamk{fill:none;stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round}.bamk.x{stroke:#dc2626}.bamk.v{stroke:var(--secondary)}
 .divider{position:absolute;${port ? `left:-${px(30)};right:-${px(30)};top:50%;height:${px(8)};margin-top:-${px(4)}` : `top:-${px(30)};bottom:-${px(30)};left:50%;width:${px(8)};margin-left:-${px(4)}`};background:#fff;box-shadow:0 0 ${px(30)} rgba(15,23,42,.25);border-radius:4px;z-index:4}
 .divider b{position:absolute;left:50%;top:50%;width:${px(84)};height:${px(84)};margin:-${px(42)} 0 0 -${px(42)};border-radius:50%;background:#fff;color:var(--primary);display:grid;place-items:center;font-size:${px(40)};box-shadow:0 ${px(10)} ${px(24)} rgba(15,23,42,.25)${port ? ';transform:rotate(90deg)' : ''}}
 .stat{align-items:center;text-align:center}
@@ -103,14 +103,14 @@ const KINDS = {
     fadeUp(g.querySelector('.stitle'), s + 0.05);
     const before = $(sc.id + '-before'), after = $(sc.id + '-after'), div = $(sc.id + '-div');
     fadeUp(before, s + 0.1, { y: 20 });
-    for (let k = 0; k < sc.nb; k++) { const it = $(sc.id + '-before-i' + k); fadeUp(it, s + 0.3 + k * 0.15, { y: 16 }); draw(it.querySelector('.mk'), s + 0.35 + k * 0.15, 0.35); }
+    for (let k = 0; k < sc.nb; k++) { const it = $(sc.id + '-before-i' + k); fadeUp(it, s + 0.3 + k * 0.15, { y: 16 }); draw(it.querySelector('.bamk'), s + 0.35 + k * 0.15, 0.35); }
     const tw = cue(sc, 0.45);
     const clipFrom = D.land || !D.port ? 'inset(0 0 0 100%)' : 'inset(0 0 100% 0)';
     tl.fromTo(after, { clipPath: clipFrom.replace('100%', '100%') }, { clipPath: 'inset(0 0 0 0%)', duration: 0.9, ease: XIO, immediateRender: false }, tw);
     tl.set(after, { clipPath: clipFrom }, 0);
     tl.fromTo(div, { opacity: 0 }, { opacity: 1, duration: 0.3, immediateRender: false }, tw - 0.2);
     tl.to(div.querySelector('b'), { scale: 1.15, duration: 0.25, yoyo: true, repeat: 1 }, tw - 0.1);
-    for (let k = 0; k < sc.na; k++) { const it = $(sc.id + '-after-i' + k); fadeUp(it, tw + 0.6 + k * 0.18, { y: 16 }); draw(it.querySelector('.mk'), tw + 0.65 + k * 0.18, 0.4); }
+    for (let k = 0; k < sc.na; k++) { const it = $(sc.id + '-after-i' + k); fadeUp(it, tw + 0.6 + k * 0.18, { y: 16 }); draw(it.querySelector('.bamk'), tw + 0.65 + k * 0.18, 0.4); }
   },
   stat(sc, s) {
     const g = $('g-' + sc.id);

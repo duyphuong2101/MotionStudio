@@ -174,9 +174,13 @@ try {
     if (ds.decal) {
       // The decal rides on its part (or the model) at the front face, a hair in front of it, so it explodes with the part.
       const dc = JSON.parse(ds.decal), host = (dc.part && root.getObjectByName(dc.part)) || root;
+      // hb is in world units, but the plane lives under host, whose world scale includes the fit to the frame: its
+      // size is divided by that scale, and its lift off the face comes from the same world box, so a model made in
+      // metres or in millimetres gets the decal at dc.size of its height.
       const hb = new THREE.Box3().setFromObject(host), size = hb.getSize(new THREE.Vector3());
-      const hgtD = size.y * dc.size, plane = new THREE.Mesh(new THREE.PlaneGeometry(hgtD, hgtD), new THREE.MeshBasicMaterial({ map: decalTexture(dc), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-      plane.position.copy(host.worldToLocal(new THREE.Vector3(hb.min.x + dc.at[0] * size.x, hb.max.y - dc.at[1] * size.y, hb.max.z + 0.01 * sphere.radius)));
+      const scale = host.getWorldScale(new THREE.Vector3()).y || 1;
+      const hgtD = (size.y * dc.size) / scale, plane = new THREE.Mesh(new THREE.PlaneGeometry(hgtD, hgtD), new THREE.MeshBasicMaterial({ map: decalTexture(dc), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+      plane.position.copy(host.worldToLocal(new THREE.Vector3(hb.min.x + dc.at[0] * size.x, hb.max.y - dc.at[1] * size.y, hb.max.z + 0.005 * Math.max(size.x, size.y, size.z))));
       plane.renderOrder = 2;
       host.add(plane);
     }

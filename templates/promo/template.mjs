@@ -1,5 +1,6 @@
 import { page, geometry, h, asset, num, hasLogoBug } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
+import { markWords } from '../../engine/marks.mjs';
 import { iconSet } from '../../motion-kit/icons.mjs';
 
 export function build({ brand, script, timing, size, icons }) {
@@ -12,7 +13,7 @@ export function build({ brand, script, timing, size, icons }) {
   for (const sc of script.scenes) {
     const id = sc.id;
     if (sc.kind === 'hook') {
-      const ws = String(sc.title).split(/\s+/).filter(Boolean);
+      const ws = markWords(sc.title);
       parts.push(`<div class="sc fill dark" id="g-${id}"><div class="hook">
         ${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}
         <div class="hd hookt" data-lint>${ws.map((w, i) => `<span class="hw" id="${id}-w${i}">${h(w)}</span>`).join(' ')}</div>
