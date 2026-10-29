@@ -148,6 +148,14 @@ function changedDecls(file, m) {
     for (let k = i; k < newLines.length; k++) { inImport.add(k + 1); if (/\bfrom\s*['"]|;\s*$|^import\s*['"]/.test(newLines[k])) break; }
   });
   const trivial = (s) => /^\s*(\/\/.*|\/\*.*|\*.*)?$/.test(s);
+  // An import that now comes from another module (or no longer at all) changes every declaration that used it.
+  const specs = (lines) => new Set(lines.flatMap((s) => [...s.matchAll(/from\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/g)].map((x) => x[1] || x[2])));
+  for (const h of r.stdout.split(/^(?=@@ )/m).slice(1)) {
+    const lines = h.split(/\r?\n/).slice(1);
+    const was = specs(lines.filter((l) => l.startsWith('-')).map((l) => l.slice(1)));
+    const now = specs(lines.filter((l) => l.startsWith('+')).map((l) => l.slice(1)));
+    if ([...was].some((s) => !now.has(s))) outside = true;
+  }
   for (const h of r.stdout.split(/^(?=@@ )/m).slice(1)) {
     const head = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(h);
     if (!head) continue;
@@ -178,6 +186,28 @@ export function changedFiles() {
  * The tests the changed files (repo-relative) can affect, each with one reason: { all, tests: Map<test, reason> }.
  * `byLine: false` treats every declaration of a changed code file as changed (for paths given by hand).
  */
+// A test names a file as one string ('server/server.mjs') or as path.join segments ('server', 'server.mjs').
+const segmentsRe = (f) => new RegExp(f.split('/').map((s) => `['"\`]${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`).join('\\s*,\\s*'));
+const names = (text, f) => text.includes(f) || (f.includes('/') && segmentsRe(f).test(text));
+const EVERY_TEMPLATE = /\b(templatePreview|playCheck|playEveryTemplate|listTemplates)\b/;
+
+/** Template ids whose template.mjs reaches `f` (a shared module under templates/) through imports. */
+function templatesUsing(f, mods) {
+  const ids = new Set();
+  for (const [g, node] of mods) {
+    if (!/^templates\/[^/]+\/template\.mjs$/.test(g)) continue;
+    const seen = new Set(), stack = [node];
+    while (stack.length) {
+      const n = stack.pop();
+      if (seen.has(n.file)) continue;
+      seen.add(n.file);
+      if (n.file === f) { ids.add(g.split('/')[1]); break; }
+      for (const imp of n.imports.values()) if (mods.has(imp.mod)) stack.push(mods.get(imp.mod));
+    }
+  }
+  return ids;
+}
+
 export function impacted(changed, { mods = buildGraph(), byLine = true } = {}) {
   const tests = testFiles(mods);
   const picked = new Map();
@@ -186,7 +216,11 @@ export function impacted(changed, { mods = buildGraph(), byLine = true } = {}) {
   for (const raw of changed) {
     const f = raw.split(path.sep).join('/');
     if (GLOBAL.some((re) => re.test(f))) return { all: `${f} is used by every test`, tests: new Map(tests.map((t) => [t, f])) };
-    if (INERT.some((re) => re.test(f))) continue;
+    // Docs and kit files run no code, but a test may read one as text (the Director prompt and its copies).
+    if (INERT.some((re) => re.test(f))) {
+      for (const t of tests) { const text = mods.get(t).text; if (/\breadFileSync\b/.test(text) && names(text, f)) pick(t, `reads ${f}`); }
+      continue;
+    }
     if (tests.includes(f)) { pick(f, 'changed'); continue; }
     const m = mods.get(f);
     if (m) {
@@ -195,30 +229,36 @@ export function impacted(changed, { mods = buildGraph(), byLine = true } = {}) {
       // A change outside every declaration (imports, top-level code) or a file with none counts as the whole module.
       if (names === null || !m.decls.length) seeds.set(`${f}#*`, f);
     }
-    for (const t of tests) if (mods.get(t).text.includes(f)) pick(t, `reads ${f}`);
+    for (const t of tests) if (names(mods.get(t).text, f)) pick(t, `reads ${f}`);
     // A data file the code reads at run time (a prompt, a stylesheet, an icon list): the modules that name it changed.
     if (!m && !/^templates\//.test(f)) {
       const base = path.basename(f);
       for (const [g, node] of mods) if (!g.startsWith('tests/') && node.text.includes(base)) for (const d of node.decls) if (node.text.split(/\r?\n/).slice(d.start - 1, d.end).join('\n').includes(base)) seeds.set(`${g}#${d.name}`, f);
     }
-    // A template is loaded by path at run time: the tests that name it, or go through every template.
+    // A template is loaded by path at run time: the tests that name it, or go through every template. A shared module
+    // (templates/kit.mjs, gl.mjs, …) counts as a change to every template that reaches it.
     const tpl = /^templates\/([^/]+)\//.exec(f);
-    if (tpl) {
-      const ids = new Set([tpl[1]]);
-      for (const [g, node] of mods) if (/^templates\/[^/]+\/template\.mjs$/.test(g) && node.imports.size && [...node.imports.values()].some((i) => i.mod === f)) ids.add(g.split('/')[1]);
+    const shared = /^templates\/[^/]+\.mjs$/.test(f) ? templatesUsing(f, mods) : null;
+    if (tpl || shared?.size) {
+      const ids = tpl ? new Set([tpl[1]]) : shared;
+      if (tpl) for (const [g, node] of mods) if (/^templates\/[^/]+\/template\.mjs$/.test(g) && node.imports.size && [...node.imports.values()].some((i) => i.mod === f)) ids.add(g.split('/')[1]);
       for (const t of tests) {
         const text = mods.get(t).text;
-        if ([...ids].some((id) => new RegExp(`['"\`/]${id}['"\`/]`).test(text))) pick(t, `renders template ${[...ids].length > 1 ? 'using ' + f : tpl[1]}`);
-        else if (/\b(templatePreview|playCheck|playEveryTemplate)\b/.test(text)) pick(t, `renders every template (${f})`);
+        if ([...ids].some((id) => new RegExp(`['"\`/]${id}['"\`/]`).test(text))) pick(t, `renders template ${[...ids].length > 1 ? 'using ' + f : [...ids][0]}`);
+        else if (EVERY_TEMPLATE.test(text)) pick(t, `renders every template (${f})`);
       }
     }
   }
   if (seeds.size) {
     const out = edges(mods);
+    // A test that starts a code file as a child process (the UI server, the CLI) reaches all of it, which the import
+    // graph cannot see.
+    const code = [...mods.keys()].filter((g) => !g.startsWith('tests/') && /^(server|engine)\//.test(g));
     for (const t of tests) {
       if (picked.has(t)) continue;
       const seen = new Set();
-      const stack = [`${t}#*`];
+      const text = mods.get(t).text;
+      const stack = [`${t}#*`, ...code.filter((g) => /\bspawn|\bexecFile|\bfork\(/.test(text) && names(text, g)).map((g) => `${g}#*`)];
       while (stack.length) {
         const n = stack.pop();
         if (seen.has(n)) continue;

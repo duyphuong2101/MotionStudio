@@ -7,7 +7,8 @@ import { ROOT } from '../engine/core.mjs';
 import { MAX_CSV_BYTES } from '../engine/evidence.mjs';
 import { reviewRoute } from '../server/review.mjs';
 
-const PORT = 4796;
+// Each server test file has its own port: two light files run side by side, and a shared port fails the second.
+const PORT = 4809;
 const HOST = `127.0.0.1:${PORT}`;
 
 function request(p, { method = 'GET', studio = true, json, raw } = {}) {

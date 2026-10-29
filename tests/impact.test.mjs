@@ -29,4 +29,16 @@ test('a template folder picks the tests that name it or render every template', 
 
 test('a data file the code reads picks the tests of the code that names it', () => {
   assert.ok(pick('server/worker/director-quick.md').tests.has('tests/worker-prompt.test.mjs'));
+  assert.ok(pick('.claude/skills/studio/SKILL.md').tests.has('tests/worker-prompt.test.mjs'), 'a kit file a test reads by path.join');
+});
+
+test('the links the import graph cannot see: shared template modules, spawned entry points, listTemplates', () => {
+  const kit = pick('templates/kit.mjs').tests;
+  for (const n of [1, 2, 3]) assert.ok(kit.has(`tests/playcheck-templates-${n}.test.mjs`), 'the every-template sweeps');
+  assert.ok(kit.has('tests/motion-presets.test.mjs'));
+  const server = pick('server/server.mjs').tests;
+  assert.ok(server.has('tests/server-hardening.test.mjs'), 'a test that spawns path.join(ROOT, "server", "server.mjs")');
+  assert.ok(pick('engine/banner.mjs').tests.has('tests/server-banner.test.mjs'), 'reached through the spawned server');
+  const beats = pick('templates/before-after/beats.json').tests;
+  for (const t of ['templates', 'help', 'mix', 'engine']) assert.ok(beats.has(`tests/${t}.test.mjs`), `${t}: loops over listTemplates()`);
 });
