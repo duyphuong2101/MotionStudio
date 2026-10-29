@@ -20,7 +20,6 @@
       "Bash(pwd)",
       "Bash(which *)",
       "Bash(node -v)",
-      "Bash(node -e *)",
       "Bash(findstr *)",
       "Bash(node .claude/scripts/*)",
       "Bash(npm test*)",
@@ -48,7 +47,10 @@
       "Bash(del /s:*)",
       "Bash(rmdir /s:*)"
     ],
-    "defaultMode": "default"
+    "defaultMode": "default",
+    "ask": [
+      "Bash(node -e *)"
+    ]
   },
   "hooks": {
     "SessionStart": [

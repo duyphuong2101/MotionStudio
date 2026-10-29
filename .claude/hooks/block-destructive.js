@@ -72,6 +72,8 @@ const BLOCKED_COMMANDS = [
   // accounts.json holds the QA credential pool; .mcp.json holds MCP server tokens.
   { pattern: /\b(cat|type|less|more|head|tail|strings|xxd|od|base64|sed|awk|nl|grep|rg|Select-String|sls|Get-Content|gc|tar|zip|7z|openssl|curl|wget|iwr|Invoke-WebRequest)\b[^|;&]*(?:\.env(?:\.(?!example|sample|template|log|txt|md|bak|orig)[\w-]+)?(?![\w.-])|CLAUDE\.local\.md|appsettings\.local\.json|accounts\.json|\.mcp\.json|credentials\.|\.pem(?![\w.-])|\.key(?![\w.-])|id_rsa)/i, reason: 'Reading/exfiltrating a secret file (use the Read tool if you genuinely need one value)' },
   { pattern: /\b(cp|copy|mv|move|scp|rsync|Copy-Item|Move-Item)\b[^|;&]*(?:\.env(?:\.(?!example|sample|template|log|txt|md|bak|orig)[\w-]+)?(?![\w.-])|CLAUDE\.local\.md|appsettings\.local\.json|accounts\.json|\.mcp\.json|credentials\.|\.pem(?![\w.-])|\.key(?![\w.-])|id_rsa)/i, reason: 'Copying/moving a secret file (exfiltration risk)' },
+  // A secret read through an interpreter: `node -e "fs.readFileSync('.env')"` prints it as surely as cat does.
+  { pattern: /^(?=[\s\S]*\b(?:node|deno|bun|python[23]?|ruby|perl|php)\b)(?=[\s\S]*\b(?:readFileSync|readFile|createReadStream|openSync|read_text|file_get_contents|File\.read)\b)(?=[\s\S]*['"\x60][^'"\x60\s]*(?:\.env(?:\.(?!example|sample|template)[\w-]+)?|CLAUDE\.local\.md|appsettings\.local\.json|\.pem|\.key|id_rsa)['"\x60])/i, reason: 'Reading a secret file through an interpreter (use the Read tool if you genuinely need one value)' },
   // env/printenv dump every variable — the same harm as `cat .env`, through a different door.
   // Bare `env` / `printenv` only. `env FOO=bar cmd` sets a variable and is fine; a `printenv` that
   // appears inside a quoted regex or a longer word must not match, hence the command-position
@@ -151,6 +153,14 @@ process.stdin.on('end', () => {
         process.stderr.write(`Blocked: ${reason}. Command: "${command}". Ask the user for confirmation before running destructive commands.`);
         process.exit(2);
       }
+    }
+    // Render, approve and join make or publish a video: ask the person, however the command is started (the
+    // Copilot and Cursor gates do the same). Blocked patterns above still win.
+    const ASK_RE = /\b(?:npm\s+run\s+studio\s+--|node\s+(?:\.[\\/])?engine[\\/]cli\.mjs)\s+(render|approve|sequence|sequence-preview)\b/i;
+    const ask = ASK_RE.exec(command);
+    if (ask) {
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: `"${ask[1]}" renders, approves or joins a video: confirm before it runs.` } }));
+      process.exit(0);
     }
     process.exit(0);
   } catch (e) {

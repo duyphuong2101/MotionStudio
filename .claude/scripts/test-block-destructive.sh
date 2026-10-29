@@ -30,10 +30,13 @@ check block 'echo "{}" > .claude/settings.local.json'
 check block 'echo "x" > .claude/hooks/notify.js'
 check block 'del .env'
 check block 'Remove-Item secrets.key'
+# A secret read through an interpreter prints it as surely as cat does (P0-8, 2026-10-29).
+check block 'node -e "require('"'"'fs'"'"').readFileSync('"'"'.env'"'"')"'
 
 echo "=== MUST ALLOW (no false positive) ==="
 check allow 'node -e "require('"'"'fs'"'"').writeFileSync('"'"'UI/src/foo.ts'"'"','"'"'code'"'"')"'
-check allow 'node -e "require('"'"'fs'"'"').readFileSync('"'"'.env'"'"')"'
+# A read is not a write: the write guard above must not fire on one (a secret read is blocked by its own rule).
+check allow 'node -e "require('"'"'fs'"'"').readFileSync('"'"'package.json'"'"')"'
 check allow 'echo "build.env.log written" '
 check allow 'echo "hello" > output.txt'
 check allow 'git commit -m "remove unlinkSync call and Set-Content usage"'

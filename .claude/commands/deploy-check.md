@@ -1,6 +1,6 @@
 ---
 description: "Pre-release validation: install check + tests + engine smoke + a storyboard on a demo job"
-allowed-tools: Bash(npm ls:*), Bash(npm test:*), Bash(node --version:*), Bash(node engine/cli.mjs:*), Read
+allowed-tools: Bash(npm ls:*), Bash(npm test:*), Bash(node --version:*), Bash(node engine/cli.mjs help:*), Bash(node engine/cli.mjs list:*), Bash(node engine/cli.mjs prepare:*), Read
 ---
 
 Motion Studio is a local tool; "deploy" means handing the folder to another person or machine. Run, in order, and stop at the first failure:

@@ -24,6 +24,8 @@ const BLOCKED_COMMANDS = [
   { pattern: /DROP\s+(DATABASE|TABLE|SCHEMA)\s/i, reason: 'Database/table destruction' },
   { pattern: /\bTRUNCATE\s+(?:TABLE\s+)?[a-zA-Z_\[]/i, reason: 'Table truncation (with or without TABLE keyword)' },
   { pattern: /(>|>>)\s*\S*\.env\s*($|[;&|])/i, reason: 'Shell redirect into .env (bypasses protect-files)' },
+  // A secret read through an interpreter: `node -e "fs.readFileSync('.env')"` prints it as surely as cat does.
+  { pattern: /^(?=[\s\S]*\b(?:node|deno|bun|python[23]?|ruby|perl|php)\b)(?=[\s\S]*\b(?:readFileSync|readFile|createReadStream|openSync|read_text|file_get_contents|File\.read)\b)(?=[\s\S]*['"\x60][^'"\x60\s]*(?:\.env(?:\.(?!example|sample|template)[\w-]+)?|CLAUDE\.local\.md|appsettings\.local\.json|\.pem|\.key|id_rsa)['"\x60])/i, reason: 'Reading a secret file through an interpreter (use the Read tool if you genuinely need one value)' },
   { pattern: /\bformat\s+[a-zA-Z]:/i, reason: 'Drive formatting' },
 ];
 
