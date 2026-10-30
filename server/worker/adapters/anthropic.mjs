@@ -8,6 +8,17 @@ export { toolResultMessage };
 const API_VERSION = '2023-06-01';
 const DEFAULT_BASE = 'https://api.anthropic.com';
 
+/** `{ url, init }` for the model list (Settings → Connect): metadata only, the key in the `x-api-key` header. */
+export function modelsRequest({ provider, key }) {
+  return {
+    url: `${String(provider.baseUrl || DEFAULT_BASE).replace(/\/+$/, '')}/v1/models?limit=100`,
+    init: { method: 'GET', headers: { 'x-api-key': key, 'anthropic-version': API_VERSION } },
+  };
+}
+
+/** `[{ id, label }]` from a model list body. */
+export const modelsFrom = (json) => (Array.isArray(json?.data) ? json.data : []).map((m) => ({ id: String(m?.id || ''), label: String(m?.display_name || m?.id || '') }));
+
 /** An image for a tool result, as a base64 source block. */
 export const imagePart = (buf, mime) => ({ type: 'image', source: { type: 'base64', media_type: mime, data: buf.toString('base64') } });
 

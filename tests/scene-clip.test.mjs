@@ -72,5 +72,6 @@ test('a saved clip goes into its scene\'s CLIP line, or a new one under the SCEN
   assert.equal(insertClip(text, 1, 'a.mp4'), text, 'a listed clip is not added twice');
   assert.equal(insertClip(text, 9, 'x.mp4'), null);
   assert.equal(insertClip('SCENE 1 — A (0–4 s)\r\nCLIP:\r\nVOICE: x', 1, 'c.mp4'), 'SCENE 1 — A (0–4 s)\r\nCLIP: c.mp4\r\nVOICE: x', 'CRLF and an empty CLIP line');
-  assert.equal(insertClip('SCENE 1 — A (0–4 s)\nNOTES:\nCLIP: z.mp4', 1, 'c.mp4'), 'SCENE 1 — A (0–4 s)\nCLIP: c.mp4\nNOTES:\nCLIP: z.mp4', 'a section ends the scene');
+  assert.equal(insertClip('SCENE 1 — A (0–4 s)\nACTION:\nCLIP: z.mp4', 1, 'c.mp4'), 'SCENE 1 — A (0–4 s)\nACTION:\nCLIP: z.mp4, c.mp4', 'a bare label (ACTION:) is part of the scene');
+  assert.equal(insertClip('Cảnh 2 – Tìm nguyên nhân\nCreate an 8-second video.\n\nCảnh 3 – Sửa\n', 2, 'linh-2.mp4'), 'Cảnh 2 – Tìm nguyên nhân\nCLIP: linh-2.mp4\nCreate an 8-second video.\n\nCảnh 3 – Sửa\n', 'a Vietnamese scene line');
 });

@@ -5,6 +5,28 @@
     "reviewPort": 4781,
     "reviewHost": ""
   },
+  "settings": {
+    "maxConnectsPerDay": 30,
+    "requestTimeoutSeconds": 20,
+    "maxResponseBytes": 2000000,
+    "maxLogBytes": 200000
+  },
+  "assistant": {
+    "approvalMinutes": 10,
+    "maxOpen": 20,
+    "freeform": true,
+    "models": [
+      "gemini:gemini-3.5-flash-lite",
+      "gemini:gemini-3.5-flash"
+    ],
+    "maxAsksPerDay": 200,
+    "requestTimeoutSeconds": 30,
+    "maxResponseBytes": 200000,
+    "maxContextChars": 6000,
+    "maxReplyChars": 300,
+    "pauseMinutes": 15,
+    "maxLogBytes": 200000
+  },
   "director": {
     "maxJobsPerRun": 5,
     "maxRunsPerDay": 50,

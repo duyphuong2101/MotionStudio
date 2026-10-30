@@ -114,3 +114,13 @@ ON SCREEN: Voltage drops under load
 ## Order
 
 A1 parser, A2 mapper and job writer, A3 CLI, A4 route and UI, A5 tests (done). Then B1 generate.mjs, B2 Brand tab UI with `clipBrief` and `clipRefs`, B3 Generate clip in the scene form, B4 docs and tests, then B0 (the person's first clip) and the cap tuning. `npm test` passes before each part is called done. Commit only when the person asks.
+
+## Part C — prompt-style scripts and the clip reel (user decision 2026-10-30)
+
+The person's own episode scripts (`SCRIPT 1 – LINH.txt`) are Veo-style prompts: a `Cảnh n – Title` line, then `Create an 8-second photorealistic cinematic video, vertical 9:16.` and capital sections (`ACTION:`, `CAMERA:`, `AUDIO:`) with the text on the lines below, `No dialogue. No subtitles.`, no TITLE and no End card. Part A refused them on five counts. Part C reads them as they are and makes a film of clips only.
+
+- Parser (`parseSceneScript`): `Cảnh n`, `Scene n` and `SCENE n` all open a scene; a scene with no `(a–b seconds)` takes its length from an `N-second` phrase in its own lines, laid after the scene before it; a capital label with nothing after the colon inside a scene (`ACTION:`) is a note line of that scene, not a trailing section (a section still starts after the End card, where the HUY example has its rule); with no `FORMAT:` line the first `vertical 9:16`-style phrase in a scene's lines sets the format.
+- Reel (`mapSceneScript`): a script with no `TITLE` line and no `End card` maps onto the new `clip-reel` template (`templates/clip-reel/beats.json`, `extends: "explainer"`, 1-12 `video` scenes, 3-150 s, `captions: false`): no title card, no closing card, no lower third unless a scene has `ON SCREEN:`, no subtitles. `IMAGES` in a reel is an error that says how to get an explainer instead (add a TITLE line). The clips' seconds and the Generate flow are Part A and B unchanged.
+- Renderer: the explainer draws a reel's clips full frame (`script.template === 'clip-reel'`, the stage video block without the shade when there is no text) and asks the kit for no subtitle band. Prepare skips the heard captions on a `captions: false` template (`sceneVideos`).
+- `insertClip` (`ui/shots.js`) finds a `Cảnh n` scene and no longer stops at a bare capital label.
+- Golden frames for `clip-reel` in 16:9 and 9:16; the template count in the docs goes to 19.

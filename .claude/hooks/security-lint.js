@@ -264,9 +264,9 @@ process.stdin.on('end', () => {
     {
       id: 'MODEL_CALL_OUTSIDE_ALLOWED',
       severity: 'CRITICAL',
-      desc: 'A model API or Claude Code called outside the person-clicked paths (server/director.mjs + server/worker/, server/generate.mjs, server/voice-cloud.mjs)',
-      fix: 'Route it through Run Director, the Brand tab Generate or Make cloud voice; never from engine/, a cron or a loop',
-      pattern: (src) => !inDir('server/director.mjs', 'server/worker/', 'server/generate.mjs', 'tests/')
+      desc: 'A model API or Claude Code called outside the person-clicked paths (server/director.mjs + server/worker/, server/generate.mjs, server/voice-cloud.mjs, server/assistant-model.mjs)',
+      fix: 'Route it through Run Director, the Brand tab Generate, Make cloud voice or the Assistant panel; never from engine/, a cron or a loop',
+      pattern: (src) => !inDir('server/director.mjs', 'server/worker/', 'server/generate.mjs', 'server/voice-cloud.mjs', 'server/assistant-model.mjs', 'tests/')
         && /api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.openai\.com|['"]claude(?:\.exe)?['"]\s*,\s*\[/.test(src),
     },
     {

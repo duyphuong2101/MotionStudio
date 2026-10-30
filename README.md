@@ -57,7 +57,7 @@ To clean up, **Delete…** on a job moves its brief and output to `trash/`. Dele
 
 ## Templates
 
-All 18 are built in. Mixable templates can lend their scenes to another lead template in one video (tick them under "Mix in scenes from").
+All 19 are built in. Mixable templates can lend their scenes to another lead template in one video (tick them under "Mix in scenes from").
 
 | Template | Formats | Length | Mixable |
 |---|---|---|---|
@@ -68,6 +68,7 @@ All 18 are built in. Mixable templates can lend their scenes to another lead tem
 | Data story (incl. bar chart race and warming stripes) | all six | 10-120 s | yes |
 | Event / webinar | all six | 8-60 s | yes |
 | Explainer (steps, diagrams, footage in a window) | all six | 15-150 s | yes |
+| Clip reel (clips only, full frame with their own sound, no cards or subtitles; made by New from script, not by the Director) | all six | 3-150 s | |
 | Feature launch | 16:9 | 15-60 s | yes |
 | Lifestyle slideshow | all six | 8-60 s | |
 | Logo reveal / sting | all six | 3-10 s | |
@@ -107,12 +108,14 @@ It needs `models/whisper/`: `encoder.int8.onnx`, `decoder.int8.onnx` and `tokens
 
 The Brand tab's **Generate with Gemini** makes one picture or one clip per click on your own Google key, and saves it under the brand's assets with a **Generated** tag. Put `GEMINI_API_KEY=…` in `.env` in the Motion Studio folder (or set it in your environment), then restart `npm run ui`. The key is sent to `generativelanguage.googleapis.com` in a request header only; it is never written, logged or shown.
 
-- **Image** uses a Nano Banana model.
+- **Image** uses a Nano Banana model. It takes up to 3 **Reference pictures** too: give it a character's master picture and ask for another angle, an expression or a full-body view, and it keeps the same person. That is how to build a character pack before making clips.
 - **Clip (Gemini Omni, with sound)** uses `gemini-omni-1.1-flash` at 720p, 9:16 or 16:9. Pick up to 3 of the brand's pictures as **Reference pictures** and the clip keeps their subject, so one character stays the same person from clip to clip. Without pictures the clip is made from the prompt alone. Google picks the clip's length, and a clip usually takes 1-3 minutes.
 - Price: clips cost about $0.10 per second at 720p, billed by Google on your key. There is no free tier. A clip longer than `generate.maxVideoSeconds` (600 s) is not saved, and Google still bills it.
 - One click is one request. Nothing generates on its own: no batch, no retry, no "generate all". One request runs at a time, and the day and month caps sit in `config/studio.json` → `generate`. A quota or spend error pauses Generate for 15 minutes; **Clear pause** lifts it.
 
 **Clip defaults** under Generate hold a **Clip brief** (the character and style block every clip shares, up to 1,500 characters) and up to 3 **Default reference pictures**. **New from script** uses them: after **Check script**, each scene has a **Generate clip** button with the prompt in an editable box (the clip brief, `SCENE:` the scene title, `ACTION:` the scene's description lines, then the aspect). A prompt over 2,000 characters says how much to cut. When the clip is saved, its file name goes into that scene's `CLIP:` line; check the script again, then make the next one.
+
+A script written for a video model works as it is: `Cảnh 1 – Title` (or `Scene 1:`) opens a scene, `an 8-second video` in its text gives its length, `vertical 9:16` its format, and `ACTION:`, `CAMERA:` or `AUDIO:` sections stay with their scene as the prompt's lines. With no `TITLE` line and no `End card`, the job is a **clip reel**: each clip full frame with its own sound, no title card, no end card, no subtitles (an `ON SCREEN:` line puts a lower third on that clip). Add a `TITLE` with a `VOICE` line to get an explainer with cards and captions instead.
 
 ## Rules for the Director
 

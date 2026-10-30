@@ -1,0 +1,134 @@
+{
+  "id": "clip-reel",
+  "label": "Clip reel",
+  "extends": "explainer",
+  "help": {
+    "kinds": {
+      "video": "One clip, full frame, with its own sound. No card before or after; a title shows as a lower third only when the scene has one."
+    },
+    "fields": {
+      "video": "The video clip (.mp4, .webm or .mov) from the project assets.",
+      "title": "Optional lower-third text (the ON SCREEN line of a scene script). Leave it out for a clean frame.",
+      "in": "Where in the clip to start, in seconds.",
+      "out": "Where in the clip to stop, in seconds.",
+      "sound": "Plays the clip's own sound; the scene lasts as long as the clip. On by default in a reel.",
+      "caption": "A reel shows no captions; the field is kept so an explainer scene can be pasted in unchanged.",
+      "hold": "Seconds (0-4) of quiet after the clip ends: the scene keeps the last frame that long. Set by New from script to fill a scene's span."
+    }
+  },
+  "description": "A film cut from generated or filmed clips only, each full frame with its own sound: no title card, no end card, no subtitles. Made by New from script when the script has no TITLE line and no End card; the Director never writes one.",
+  "formats": [
+    "16:9",
+    "1:1",
+    "9:16",
+    "4:5",
+    "2:3",
+    "21:9"
+  ],
+  "sizes": {
+    "16:9": [
+      1920,
+      1080
+    ],
+    "1:1": [
+      1080,
+      1080
+    ],
+    "9:16": [
+      1080,
+      1920
+    ],
+    "4:5": [
+      1080,
+      1350
+    ],
+    "2:3": [
+      1080,
+      1620
+    ],
+    "21:9": [
+      2520,
+      1080
+    ]
+  },
+  "marks": true,
+  "captions": false,
+  "durations": [
+    3,
+    150
+  ],
+  "directors": [],
+  "sequence": [
+    {
+      "kind": [
+        "video"
+      ],
+      "min": 1,
+      "max": 12
+    }
+  ],
+  "fields": {
+    "video": {
+      "required": [
+        "video",
+        "source"
+      ],
+      "optional": [
+        "title",
+        "vo",
+        "kicker",
+        "in",
+        "out",
+        "sound",
+        "text",
+        "pace",
+        "caption",
+        "sfx",
+        "hold"
+      ]
+    }
+  },
+  "limits": {
+    "title": 44,
+    "kicker": 24,
+    "text": 110,
+    "voWords": 34,
+    "caption": 160
+  },
+  "enums": {
+    "pace": [
+      "quick",
+      "normal",
+      "focus"
+    ],
+    "sfx": [
+      "whoosh",
+      "hit",
+      "riser",
+      "click",
+      "none"
+    ]
+  },
+  "defaults": {
+    "video": {
+      "in": 0,
+      "sound": true
+    }
+  },
+  "pace": {
+    "quick": {
+      "perShot": 2,
+      "minScene": 2.5,
+      "tail": 0.3
+    },
+    "normal": {
+      "perShot": 3.2,
+      "minScene": 3.8
+    },
+    "focus": {
+      "perShot": 4.5,
+      "minScene": 5.5,
+      "tail": 1
+    }
+  }
+}

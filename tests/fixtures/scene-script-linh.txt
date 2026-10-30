@@ -1,0 +1,124 @@
+Cảnh 1 – Phát hiện lỗi
+Create an 8-second photorealistic cinematic video, vertical 9:16.
+
+MAIN CHARACTER: CHAR-02 LINH.
+
+Linh is a 27-year-old Vietnamese female electronics technician with a natural oval face, warm light-medium Asian skin, dark brown eyes, and straight black hair tied in a neat low ponytail.
+
+She wears a charcoal-gray technician shirt with subtle teal accents, dark work trousers, and a small teal name patch reading "LINH".
+
+LOCATION:
+A modern, realistic electronics repair workshop in Vietnam.
+
+ACTION:
+A black robotic vacuum cleaner is sitting on a perfectly flat wooden floor. It repeatedly attempts to move forward but stops and signals an error.
+
+Linh kneels beside the robot, observes the unusual behavior, and looks slightly puzzled.
+
+She gently lifts the robot after switching it off and inspects the underside.
+
+CAMERA:
+Start with an extreme close-up of the robot's wheels, then smoothly move toward Linh's focused face.
+
+LIGHTING:
+Soft cinematic workshop lighting, natural skin texture.
+
+AUDIO:
+Realistic robotic motor sounds, subtle error beeps, natural workshop ambience.
+
+No dialogue. No subtitles.
+
+CHARACTER CONSISTENCY:
+Use the supplied LINH reference images. Preserve exactly the same face, hairstyle, outfit, age, and body proportions throughout the video.
+
+Cảnh 2 – Tìm nguyên nhân
+Create an 8-second photorealistic cinematic video, vertical 9:16.
+
+MAIN CHARACTER: CHAR-02 LINH.
+
+Use the exact same Linh character reference images and outfit from Scene 1.
+
+LOCATION:
+The same electronics repair workshop.
+
+ACTION:
+Linh places the powered-off robotic vacuum upside down on a padded repair mat.
+
+She examines the cliff sensors located underneath the robot.
+
+Using a small inspection light, she notices dirt and residue covering one of the optical sensor windows.
+
+She carefully compares the dirty sensor with the other clean sensors.
+
+CAMERA:
+Macro close-up of the optical sensor window, followed by an over-the-shoulder shot showing Linh examining the robot.
+
+AUDIO:
+Subtle ASMR sounds of tools touching the workbench.
+
+TECHNICAL ACCURACY:
+The dirty cliff sensor is a possible cause of the false cliff-detection error. Do not show Linh concluding that the sensor is faulty before testing.
+
+No dialogue. No subtitles.
+
+Maintain exactly the same character identity and workshop continuity.
+
+
+Cảnh 3 – Sửa chữa
+Create an 8-second photorealistic cinematic video, vertical 9:16.
+
+MAIN CHARACTER: CHAR-02 LINH.
+
+Preserve the exact same face, hairstyle, outfit, and workshop environment.
+
+ACTION:
+Linh gently cleans the dirty cliff sensor window using a suitable soft cleaning tool.
+
+The camera shows a detailed before-and-after comparison of the optical window.
+
+She inspects the sensor again and confirms that the visible residue has been removed.
+
+She carefully returns the robotic vacuum to its normal position.
+
+CAMERA:
+Extreme macro close-ups of the cleaning process, realistic hand movements, shallow depth of field.
+
+AUDIO:
+Soft ASMR cleaning sounds, natural workshop ambience.
+
+No dialogue. No subtitles.
+
+IMPORTANT:
+Show only realistic, mechanically plausible cleaning actions. Do not invent electronic components or unrealistic repair procedures.
+
+
+Cảnh 4 – Kiểm tra kết quả
+Create an 8-second photorealistic cinematic video, vertical 9:16.
+
+MAIN CHARACTER: CHAR-02 LINH.
+
+Use the same character and workshop reference images.
+
+ACTION:
+Linh places the robotic vacuum on the same flat wooden floor.
+
+She activates the robot.
+
+This time, the robot moves forward smoothly without stopping or reporting a false obstacle or cliff error.
+
+Linh watches carefully, then gives a small satisfied smile.
+
+CAMERA:
+Low-angle tracking shot following the robotic vacuum, followed by a close-up of Linh's natural smile.
+
+AUDIO:
+Realistic robotic motor sound, subtle satisfying mechanical ambience.
+
+No dialogue. No subtitles.
+
+ENDING:
+The robot continues cleaning successfully.
+
+Maintain the exact same Linh identity and clothing from all previous scenes.
+
+

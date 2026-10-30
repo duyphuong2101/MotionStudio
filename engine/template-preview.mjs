@@ -37,7 +37,7 @@ export function sampleScript(beats) {
       scenes.push(sc);
     }
   }
-  return { lang: 'en', scenes };
+  return { lang: 'en', template: beats.id, scenes };
 }
 
 /** The neutral photo and clip every preview uses, generated once by ffmpeg (one shared run). */

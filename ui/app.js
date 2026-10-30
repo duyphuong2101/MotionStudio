@@ -1,4 +1,6 @@
 import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, assetPick, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt, insertClip } from './shots.js';
+import { mountAssistant } from './assistant.js';
+import { mountSettings } from './settings.js';
 import { HOLD_MAX, HOLD_STEP, CUE_LEAD, roundHold, fmtSec, sceneSpans, totalOf, moveItem, dropIndex, cueWord, snapWord, stepWord, shotTimes, cueRange, sfxOptions, takesCue, editScript } from './timeline.js';
 
 const S = {
@@ -275,6 +277,12 @@ async function boot() {
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-copy]'); if (b) copyText(b.dataset.copy); });
   window.addEventListener('beforeunload', (e) => { if (hasUnsaved(true) || S.uploading) e.preventDefault(); });
   renderTemplates(); renderBrand(); renderHelp();
+  S.assistant = mountAssistant({
+    api, toast, review: REVIEW, project: () => S.project,
+    changed: (kind) => { if (kind === 'brand') { S.brandDirty = false; renderBrand(); } else if (kind === 'sequences') refreshSequences(); else refreshJobs(false); },
+  });
+  // A saved key, provider or model changes what the Director panel and the Assistant offer.
+  S.settings = mountSettings({ api, toast, review: REVIEW, changed: () => { S.dirHtml = null; refreshDirector(); S.assistant?.reloadModels(); } });
   await refreshJobs(true);
   setInterval(poll, 2500);
 }
@@ -312,6 +320,7 @@ async function switchProject(id) {
   $('#detail').innerHTML = '<p class="muted">Select a job on the left.</p>';
   renderBrand();
   resetTemplatePreviews();
+  S.assistant?.refreshScope();
   try { await refreshJobs(true); } catch (e) {
     $('#detail').innerHTML = `<div class="banner bad" role="alert"><p>Could not load ${esc(id)}: ${esc(e.message)}</p><button class="btn" type="button" id="proj-retry">Retry</button></div>`;
     $('#proj-retry').addEventListener('click', () => switchProject(id));
@@ -321,6 +330,7 @@ async function switchProject(id) {
 function showTab(tab) {
   $$('#nav button').forEach((x) => x.classList.toggle('on', x.dataset.tab === tab));
   $$('.tab').forEach((t) => t.classList.toggle('on', t.id === `tab-${tab}`));
+  if (tab === 'settings') S.settings?.show();
 }
 
 function setListMode(mode) {
@@ -1478,6 +1488,8 @@ function panePreView(pane) {
 // the script through the Script tab's route: it locks like any person edit and sends the job back to step 5.
 const TL_MIN_PPS = 28; // px per second at the least; a long video scrolls sideways
 const TL_BLOCK_MIN = 18; // px: a very short scene still shows its grip
+const TL_GAP = 4; // px between blocks, .tl-block margin-right: a block's box ends that much before its cut
+const TL_SETTLE_MS = 180;
 const TL_KEY_REST_MS = 700; // keyboard nudges save once the keys rest
 const TL_TICKS = [1, 2, 5, 10, 15, 30, 60];
 
@@ -1494,6 +1506,7 @@ function mountTimeline(box, go) {
   const oldStart = (id) => S.detail.timing?.scenes.find((x) => x.id === id)?.start ?? 0;
   const say = (text, bad = false) => { $('#tl-st', box).textContent = bad ? '' : text; $('#tl-err', box).textContent = bad ? text : ''; };
   const scene = (id) => work.scenes.find((s) => s.id === id);
+  const blockWidth = (len) => `${(Math.max(TL_BLOCK_MIN, len * pps) - TL_GAP).toFixed(1)}px`;
 
   const cutHtml = (sc, i) => {
     if (!i) return '';
@@ -1513,11 +1526,11 @@ function mountTimeline(box, go) {
   const blockHtml = (sp, i) => {
     const sc = work.scenes[i];
     const len = `${fmtSec(sp.base)}${sp.hold ? ` + ${fmtSec(sp.hold)}` : ''}`;
-    return `<div class="tl-block${sp.estimated ? ' est' : ''}" role="listitem" tabindex="0" data-i="${i}" data-id="${esc(sp.id)}" style="width:${Math.max(TL_BLOCK_MIN, sp.length * pps).toFixed(1)}px"
+    return `<div class="tl-block${sp.estimated ? ' est' : ''}" role="listitem" tabindex="0" data-i="${i}" data-id="${esc(sp.id)}" style="width:${blockWidth(sp.length)}"
         aria-label="${esc(`${i + 1}. ${sp.id}, ${bareKind(sp.kind)}, ${len}${sp.estimated ? ', estimated' : ''}. Arrow keys move it, Enter plays it.`)}" title="${esc(`${sp.id} · ${sp.kind} · ${len}${sp.estimated ? ' (estimated: not prepared yet)' : ''}`)}">
       <span class="tl-lab"><b>${esc(sp.id)}</b> <span class="muted">${esc(bareKind(sp.kind))}</span></span>
       <span class="tl-len mono">${esc(len)}</span>
-      <span class="tl-hold" style="width:${(sp.hold * pps).toFixed(1)}px"></span>
+      <span class="tl-hold" style="width:${(sp.hold * pps).toFixed(1)}px"${sp.hold ? '' : ' hidden'}></span>
       <span class="tl-grip" role="slider" tabindex="0" data-grip="${i}" aria-label="${esc(`Pause after the line of ${sp.id}`)}" aria-valuemin="0" aria-valuemax="${HOLD_MAX}" aria-valuenow="${sp.hold}" aria-valuetext="${esc(fmtSec(sp.hold))}"></span>
       ${cutHtml(sc, i)}${shotsHtml(sc, sp)}</div>`;
   };
@@ -1541,7 +1554,7 @@ function mountTimeline(box, go) {
       <div class="tl-scroll"><div class="tl-inner" style="width:${(total * pps + TL_BLOCK_MIN).toFixed(0)}px">
         <div class="tl-ruler" aria-hidden="true">${ruler}</div>
         <div class="tl-track${cues ? ' cues' : ''}" role="list" aria-label="Scenes in order">${spans.map(blockHtml).join('')}</div>
-        <div class="tl-play" hidden></div><div class="tl-drop" hidden></div>
+        <div class="tl-play" hidden></div>
       </div></div>
       <div class="tl-sounds" role="group" aria-label="Cut sounds">${chips}</div>
       <p class="small ${stale() ? 'warn-t' : 'muted'}" id="tl-note">${stale() ? 'Lengths are from the last storyboard and the preview still plays it. Rebuild the storyboard to hear these changes.' : 'Lengths come from the voice; only a pause after a line makes a scene longer.'}</p>
@@ -1608,8 +1621,10 @@ function mountTimeline(box, go) {
   };
   const paintHold = (block, sp, v) => {
     const len = `${fmtSec(sp.base)}${v ? ` + ${fmtSec(v)}` : ''}`;
-    block.style.width = `${Math.max(TL_BLOCK_MIN, (sp.base + v) * pps).toFixed(1)}px`;
-    $('.tl-hold', block).style.width = `${(v * pps).toFixed(1)}px`;
+    block.style.width = blockWidth(sp.base + v);
+    const hold = $('.tl-hold', block);
+    hold.style.width = `${(v * pps).toFixed(1)}px`;
+    hold.hidden = !v;
     $('.tl-len', block).textContent = len;
     $('#tl-total', box).textContent = fmtSec(totalOf(spans) - sp.hold + v);
     say(`${sp.id}: ${len}`);
@@ -1651,19 +1666,30 @@ function mountTimeline(box, go) {
       });
     }
     let to = i;
-    const drop = $('.tl-drop', box);
+    const track = block.parentElement, blocks = [...track.children];
+    const left0 = blocks.map((b) => b.offsetLeft), wide = blocks.map((b) => b.offsetWidth + TL_GAP);
     drag(e, block, {
       onMove: (dx) => {
+        track.classList.add('sorting');
         block.classList.add('drag');
         block.style.transform = `translateX(${dx}px)`;
         to = dropIndex(spans, i, sp.start + sp.length / 2 + dx / pps);
-        const rest = spans.filter((_, j) => j !== i);
-        drop.hidden = false;
-        drop.style.left = `${((rest[to]?.start ?? totalOf(spans)) * pps).toFixed(1)}px`;
+        // The other blocks slide aside to open the slot it would land in.
+        let x = left0[0];
+        moveItem(blocks.map((_, j) => j), i, to).forEach((j) => {
+          if (j !== i) blocks[j].style.transform = `translateX(${(x - left0[j]).toFixed(1)}px)`;
+          x += wide[j];
+        });
       },
       onDrop: () => {
-        if (to === i) { draw(); return; }
-        edit({ order: moveItem(work.scenes.map((s) => s.id), i, to), moved: sp.id }, `moved ${sp.id} to place ${to + 1}`, `.tl-block[data-id="${CSS.escape(sp.id)}"]`);
+        const from = block.getBoundingClientRect().left;
+        if (to === i) draw();
+        else edit({ order: moveItem(work.scenes.map((s) => s.id), i, to), moved: sp.id }, `moved ${sp.id} to place ${to + 1}`, `.tl-block[data-id="${CSS.escape(sp.id)}"]`);
+        // The redraw puts the others where they already slid to; the dropped block glides from the pointer into its slot.
+        const now = $(`.tl-block[data-id="${CSS.escape(sp.id)}"]`, box);
+        if (now && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          now.animate([{ transform: `translateX(${(from - now.getBoundingClientRect().left).toFixed(1)}px)` }, { transform: 'none' }], { duration: TL_SETTLE_MS, easing: 'ease-out' });
+        }
       },
       onClick: () => go(oldStart(sp.id)),
     });
@@ -2089,7 +2115,9 @@ function openSceneScriptForm() {
     <p class="muted" style="margin:0">Paste a scene script: <code>TITLE:</code> with a <code>VOICE:</code> line for the opening card, then
       <code>SCENE 1 — TITLE (0–4 seconds)</code> blocks, each with <code>CLIP: name.mp4 0:00-0:04</code> (one or more) or <code>IMAGES:</code> (2-4 pictures),
       and optional <code>VOICE:</code> and <code>ON SCREEN:</code> lines. An <code>End card:</code> takes its own <code>VOICE:</code> and <code>BUTTON:</code>.
-      Other lines stay as notes. The job is an explainer with every field locked as you wrote it; no Director runs.</p>
+      Other lines stay as notes. The job is an explainer with every field locked as you wrote it; no Director runs.<br>
+      A script with no <code>TITLE</code> and no <code>End card</code> makes a <b>clip reel</b> instead: the clips full frame with their own sound, no cards, no subtitles.
+      <code>Cảnh 1 – Title</code> works too, a scene's length may sit in its text (<code>an 8-second video</code>), and <code>ACTION:</code>, <code>CAMERA:</code> or <code>AUDIO:</code> sections stay with their scene.</p>
     <div class="f"><label for="ss-text">Scene script</label><textarea id="ss-text" maxlength="${SCRIPT_CHARS}" spellcheck="false"></textarea></div>
     <div class="grid2">
       <div class="f"><label for="ss-file">Or load a .txt or .md file</label><input type="file" id="ss-file" accept=".txt,.md,text/plain,text/markdown" aria-describedby="ss-filest">
@@ -3300,7 +3328,7 @@ async function renderBrand() {
       <div class="f"><label for="gen-model">Model for this click</label><select id="gen-model"></select></div></div>
     <p class="muted small" id="gen-cliphint" style="margin:0" hidden>${esc(GEN_CLIP_NOTE)}</p>
     <div class="f"><label for="gen-prompt">Prompt</label><textarea id="gen-prompt" rows="3" maxlength="${GEN_PROMPT_MAX}">${esc(`${b.name} product photo, brand colors ${b.colors.primary} and ${b.colors.secondary}, clean studio background`)}</textarea></div>
-    <div class="f" id="gen-refrow" hidden><span class="flabel" id="gen-refl">Reference pictures <span class="muted">(optional, up to ${GEN_REFS_MAX}: the clip keeps their subject, e.g. one character)</span></span>
+    <div class="f" id="gen-refrow"><span class="flabel" id="gen-refl">Reference pictures <span class="muted">(optional, up to ${GEN_REFS_MAX}: the image or clip keeps their subject, e.g. one character)</span></span>
       <div class="refpick" id="gen-refs" role="group" aria-labelledby="gen-refl"></div></div>
     <div class="grid2"><div class="f"><label for="gen-ar">Aspect ratio</label><select id="gen-ar"></select></div>
       <div class="f"><label for="gen-name">File name (optional)</label><input id="gen-name" class="mono" maxlength="80" placeholder="gen-yyyymmdd-hhmm.jpg"></div></div>
@@ -3450,7 +3478,6 @@ async function renderBrand() {
     $('#gen-fetched').innerHTML = `<span class="muted">${fetchedAt ? `Model list fetched ${esc(when(fetchedAt))}` : 'Click Refresh models to see what your key can reach'}</span>${missing.map((id) => `<br><span class="bad-t">${esc(id)} is not in the fetched list</span>`).join('')}`;
     $('#gen-ackrow').hidden = Boolean(gen.notice);
     const clip = kind === 'video';
-    $('#gen-refrow').hidden = !clip;
     $('#gen-cliphint').hidden = !clip;
     $('#gen-name').placeholder = `gen-yyyymmdd-hhmm.${clip ? 'mp4' : 'jpg'}`;
     const c = gen.caps;
@@ -3565,7 +3592,7 @@ async function renderBrand() {
           method: 'POST',
           body: {
             kind: $('#gen-kind').value, prompt: $('#gen-prompt').value, aspectRatio: $('#gen-ar').value, model: $('#gen-model').value,
-            ...($('#gen-kind').value === 'video' ? { refs: genRefs } : {}),
+            refs: genRefs,
             name: $('#gen-name').value.trim(), replace: $('#gen-replace').checked, acknowledged: $('#gen-ack').checked,
           },
         });

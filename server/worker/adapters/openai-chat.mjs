@@ -29,6 +29,19 @@ function wireMessages(system, messages) {
   return out;
 }
 
+/** `{ url, init }` for the model list (Settings → Connect): metadata only, the key in the `Authorization` header. */
+export function modelsRequest({ provider, key }) {
+  const base = String(provider.baseUrl || '').replace(/\/+$/, '');
+  if (!base) throw new StudioError(`${provider.label} has no baseUrl in config/providers.json`, 503);
+  return { url: `${base}/models`, init: { method: 'GET', headers: { authorization: `Bearer ${key}` } } };
+}
+
+/** `[{ id, label }]` from a model list body (Gemini's compatible endpoint names them `models/<id>`). */
+export const modelsFrom = (json) => (Array.isArray(json?.data) ? json.data : []).map((m) => {
+  const id = String(m?.id || '').replace(/^models\//, '');
+  return { id, label: String(m?.display_name || m?.name || id).replace(/^models\//, '') };
+});
+
 /** `{ url, init }` for one call; the key goes in the `Authorization` header only. */
 export function request({ provider, model, key, system, messages, tools = [], maxOutputTokens }) {
   const base = String(provider.baseUrl || '').replace(/\/+$/, '');

@@ -41,7 +41,8 @@ test('a request is checked against the options table', () => {
   assert.throws(() => validateRequest({ kind: 'image', prompt: 'x', aspectRatio: '3:1' }, o), /Aspect ratio/);
   assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', aspectRatio: '1:1' }, o), /Aspect ratio/);
   assert.deepEqual(validateRequest({ kind: 'video', prompt: 'x', refs: ['a.png', 'b.jpg'], unique: true }, o).refs, ['a.png', 'b.jpg']);
-  assert.throws(() => validateRequest({ kind: 'image', prompt: 'x', refs: ['a.png'] }, o), /clips only/);
+  assert.deepEqual(validateRequest({ kind: 'image', prompt: 'x', refs: ['a.png'] }, o).refs, ['a.png']);
+  assert.throws(() => validateRequest({ kind: 'image', prompt: 'x', refs: ['a.png', 'b.png', 'c.png', 'd.png'] }, o), /at most 3/);
   assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', refs: ['a.png', 'b.png', 'c.png', 'd.png'] }, o), /at most 3/);
   assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', refs: ['a.png', 'a.png'] }, o), /twice/);
   assert.throws(() => validateRequest({ kind: 'video', prompt: 'x', refs: 'a.png' }, o), /list of picture names/);
@@ -60,6 +61,8 @@ test('the image request goes to the fixed host with the key in the header only',
   assert.equal(body.input, 'a cup');
   assert.equal(body.response_format.type, 'image');
   assert.equal(body.response_format.aspect_ratio, '16:9');
+  const withRef = JSON.parse(imageRequest({ model: 'm', prompt: 'Huy, profile view', aspectRatio: '1:1', size: '1K', refs: [{ name: 'huy.png', mime: 'image/png', data: 'AAAA' }] }, KEY).init.body);
+  assert.deepEqual(withRef.input, [{ type: 'image', data: 'AAAA', mime_type: 'image/png' }, { type: 'text', text: 'Huy, profile view' }]);
 });
 
 test('the image is read from the interaction steps under the byte cap', () => {
@@ -102,7 +105,9 @@ test('the filter keeps image and clip models and drops the rest', () => {
   for (const id of ['gemini-nano-banana-2.1', 'nano-banana-pro-preview', 'gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview']) assert.equal(kinds[id], 'image', id);
   // Clips come from Gemini Omni through generateContent; the Veo previews (predictLongRunning) were shut down on 2026-10-22.
   assert.equal(kinds['gemini-omni-1.1-flash'], 'video');
-  for (const id of ['veo-3.1-lite-generate-preview', 'veo-3.1-generate-preview', 'veo-3.0-generate-001', 'gemini-2.5-pro', 'text-embedding-004', 'imagen-4.0-generate-001']) assert.ok(!(id in kinds), id);
+  for (const id of ['veo-3.1-lite-generate-preview', 'veo-3.1-generate-preview', 'veo-3.0-generate-001', 'text-embedding-004', 'imagen-4.0-generate-001']) assert.ok(!(id in kinds), id);
+  // A Gemini chat model stays in the list as `text` (the Settings tab's choices for the Assistant and the Director).
+  assert.equal(kinds['gemini-2.5-pro'], 'text');
   assert.deepEqual(filterModels([res('gemini-omni-1.1-flash', ['predictLongRunning'])]), [], 'an Omni id without generateContent is dropped');
   const one = filterModels(PROBE).find((m) => m.id === 'nano-banana-pro-preview');
   assert.deepEqual(Object.keys(one), ['id', 'displayName', 'description', 'methods', 'kind']);
@@ -416,7 +421,7 @@ test('refresh follows the page token and stores one filtered, sorted list', asyn
   assert.deepEqual(stored.models, sortModels(filterModels(PROBE)));
   const file = JSON.parse(fs.readFileSync(files.models, 'utf8'));
   assert.ok(Date.parse(file.fetchedAt));
-  assert.equal(file.models.length, 6);
+  assert.equal(file.models.length, 7, 'six image and clip models and one Gemini text model');
   assert.ok(!fs.readFileSync(files.models, 'utf8').includes(KEY));
   assert.deepEqual(usage(files.images), { day: 0, month: 0 });
   assert.equal(state(files).models.fetchedAt, file.fetchedAt);
@@ -671,4 +676,19 @@ test('a scene clip takes the first free name instead of refusing a taken one', a
   await settle();
   assert.equal(state(files).last.name, 'job-scene-1-2.mp4');
   assert.throws(() => clipStart(files, fakeFetch(reply(CLIP_JSON)), { body: { name: 'job-scene-1.mp4' } }), (e) => e.code === 409);
+});
+
+test('an image from reference pictures sends them before the prompt and names them in the sidecar', async (t) => {
+  const files = withPictures(t);
+  const fetch = fakeFetch(reply(IMAGE_JSON));
+  assert.deepEqual(start(files, fetch, { body: { name: 'huy-side', refs: ['huy.png'] } }), { started: 'image', name: 'huy-side.jpg', model: FALLBACK_MODELS.image });
+  await settle();
+  assert.equal(state(files).last.status, 'done', state(files).last.message);
+  const body = JSON.parse(fetch.calls[0].init.body);
+  assert.deepEqual(body.input.map((p) => p.type), ['image', 'text']);
+  assert.equal(body.input[0].data, REF.data);
+  assert.equal(body.response_format.type, 'image');
+  assert.deepEqual(JSON.parse(fs.readFileSync(sidecarFile(P, 'huy-side.jpg'), 'utf8')).references, ['huy.png']);
+  assert.deepEqual(usage(files.images), { day: 1, month: 1 });
+  assert.throws(() => start(files, fetch, { body: { refs: ['missing.png'] } }), (e) => e.code === 404);
 });

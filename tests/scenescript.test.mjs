@@ -13,12 +13,17 @@ import { createProject, getStatus, loadBrief, jobFile, mergeRespectingLocks, loa
 import { commit, prepare } from '../engine/pipeline.mjs';
 import { ffmpeg } from '../engine/media.mjs';
 import {
-  parseSceneScript, mapSceneScript, sceneScriptToJob, importSceneScript, sceneBeats, lockAll, parseSeconds, parseFormat, scriptJobId,
+  parseSceneScript, mapSceneScript, sceneScriptToJob, importSceneScript, sceneBeats, lockAll, parseSeconds, parseFormat, scriptJobId, isReel,
   SCENE_SCRIPT_RECORD,
 } from '../engine/scenescript.mjs';
 import { hasChrome } from './helpers/chrome-folder.mjs';
 
 const HUY = fs.readFileSync(fileURLToPath(new URL('./fixtures/scene-script-huy.txt', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+// A prompt-style episode script as a person writes one for a video model (plan part C): `Cảnh n – Title`, the length
+// in the text, capital sections inside each scene, no TITLE, no End card.
+const LINH = fs.readFileSync(fileURLToPath(new URL('./fixtures/scene-script-linh.txt', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+const LINH_CLIPS = LINH.replace(/^(Cảnh (\d).*)$/gm, (m, line, n) => `${line}\nCLIP: linh-${n}.mp4`);
+const LINH_MEDIA = { 'linh-1.mp4': { duration: 8.2, hasAudio: true }, 'linh-2.mp4': { duration: 7.5, hasAudio: true }, 'linh-3.mp4': { duration: 9, hasAudio: true }, 'linh-4.mp4': { duration: 8, hasAudio: true } };
 // What the explainer contract asks on top of the script as written: a shorter title with a voice line for the
 // opening card, and a voice line and a button for the end card. Every other word is the person's own.
 const HUY_FIXED = HUY
@@ -123,7 +128,7 @@ test('each error names its scene', () => {
   const cases = [
     ['SCENE 1 — NOTHING (0–4 seconds)\nVOICE: no picture here.', 'Scene 1 has no CLIP or IMAGE: add the clip or picture it shows'],
     ['SCENE 1 — MISSING (0–4 seconds)\nCLIP: nope.mp4', 'Scene 1: nope.mp4 is not in the project assets: upload it, then check again'],
-    ['SCENE 1 — A (0–4 seconds)\nCLIP: c1.mp4\nSCENE 2 — NO SPAN\nCLIP: c2.mp4', 'Scene 2: add its seconds to the SCENE line, e.g. (0–4 seconds)'],
+    ['SCENE 1 — A (0–4 seconds)\nCLIP: c1.mp4\nSCENE 2 — NO SPAN\nCLIP: c2.mp4', 'Scene 2: add its seconds to the SCENE line, e.g. (0–4 seconds), or say its length in the text, e.g. an 8-second video'],
     ['SCENE 1 — PAST (0–4 seconds)\nCLIP: c1.mp4 0:00-0:09', 'Scene 1: c1.mp4 is 5 s long, its range ends at 9 s'],
     ['SCENE 1 — SHORT (0–12 seconds)\nCLIP: c1.mp4', 'Scene 1: the clips run 5 s of a 12 s span, and a clip holds its last frame at most 4 s: add 3 s of clip'],
     ['SCENE 1 — LONG (0–4 seconds)\nCLIP: c1.mp4\nON SCREEN: This line on screen is far too long for the title', 'Scene 1: ON SCREEN is 49 characters, limit 44 (video scene title): cut 5'],
@@ -240,6 +245,75 @@ test('import-script: a person\'s command on real clips, in the help and not in t
   assert.match(help.stdout, /node engine\/cli\.mjs import-script <project> <file\.txt> \[--job <id>\] \[--by name\]/);
   const { allowedTools } = loadStudioConfig().director;
   assert.ok(allowedTools.every((x) => !x.includes('import-script') && !/cli\.mjs \*\)$/.test(x)), allowedTools.join(', '));
+});
+
+test('a prompt-style script parses: Cảnh lines, lengths from the text, sections kept as notes, the format from the text', () => {
+  const doc = parseSceneScript(LINH);
+  assert.deepEqual(doc.errors, []);
+  assert.deepEqual(doc.scenes.map((s) => [s.n, s.title, s.from, s.to, s.errors]), [[1, 'Phát hiện lỗi', 0, 8, []], [2, 'Tìm nguyên nhân', 8, 16, []], [3, 'Sửa chữa', 16, 24, []], [4, 'Kiểm tra kết quả', 24, 32, []]]);
+  assert.equal(doc.header.format, '9:16');
+  assert.equal(doc.header.title, undefined);
+  assert.equal(doc.endCard, null);
+  assert.deepEqual(doc.sections, [], 'ACTION:, CAMERA: and AUDIO: inside a scene are its notes, not trailing sections');
+  assert.ok(doc.scenes[0].notes.includes('ACTION:') && doc.scenes[0].notes.includes('No dialogue. No subtitles.'));
+  assert.ok(doc.scenes[3].notes.includes('ENDING:'), 'the last scene keeps its sections too');
+  assert.ok(isReel(doc));
+  // The HUY example keeps its rule after the End card as a section.
+  assert.equal(parseSceneScript(HUY).sections[0].title, 'IMPORTANT TECHNICAL RULE');
+  assert.equal(scriptJobId(doc.header, doc), 'phat-hien-loi-reel');
+  assert.deepEqual(parseSceneScript('Scene 1: Open\nA 4 s clip.\nCLIP: a.mp4\nSCENE 2 — Next\nCLIP: b.mp4').scenes.map((s) => [s.from, s.to, s.errors]),
+    [[0, 4, []], [null, null, ['Scene 2: add its seconds to the SCENE line, e.g. (0–4 seconds), or say its length in the text, e.g. an 8-second video']]]);
+});
+
+test('a script with no TITLE and no End card maps onto the clip reel: clips full frame, no cards, no text, each holding its span', () => {
+  const m = map(LINH_CLIPS, { assets: Object.keys(LINH_MEDIA), media: LINH_MEDIA, lang: 'vi' });
+  assert.deepEqual(m.errors, [], m.errors.join(' | '));
+  assert.deepEqual([m.brief.template, m.brief.mix, m.brief.format, m.brief.duration, m.id], ['clip-reel', [], '9:16', 32, 'phat-hien-loi-reel']);
+  assert.deepEqual(m.rows.map((r) => r.at), ['Scene 1', 'Scene 2', 'Scene 3', 'Scene 4'], 'no title card row and no end card row');
+  assert.deepEqual(m.script.scenes.map((s) => [s.id, s.kind, s.title, s.video, s.in, s.out, s.sound, s.hold]),
+    [['scene-1', 'video', undefined, 'linh-1.mp4', 0, 8, true, undefined], ['scene-2', 'video', undefined, 'linh-2.mp4', 0, 7.5, true, 0.5], ['scene-3', 'video', undefined, 'linh-3.mp4', 0, 8, true, undefined], ['scene-4', 'video', undefined, 'linh-4.mp4', 0, 8, true, undefined]]);
+  assert.equal(m.script.template, 'clip-reel');
+  assert.ok(m.notes[0].startsWith('No TITLE line and no End card: the film is a clip reel'));
+  assert.equal(m.brief.message, '4 clips: Phát hiện lỗi, Tìm nguyên nhân, Sửa chữa, Kiểm tra kết quả');
+  assert.equal(m.source.bullets[0].ref, 'script.txt, the scenes');
+  // ON SCREEN gives a reel clip a lower third; IMAGES and a header VOICE do not belong in a reel.
+  const shown = map(LINH_CLIPS.replace('CLIP: linh-1.mp4', 'CLIP: linh-1.mp4\nON SCREEN: Robot báo lỗi'), { assets: Object.keys(LINH_MEDIA), media: LINH_MEDIA, lang: 'vi' });
+  assert.equal(shown.script.scenes[0].title, 'Robot báo lỗi');
+  const pics = map('Cảnh 1 – Ảnh\nAn 8-second video.\nIMAGES: p1.jpg, p2.jpg\nVOICE: Hai ảnh.');
+  assert.ok(pics.errors.some((e) => /a clip reel takes CLIP scenes only: add a TITLE line/.test(e)), pics.errors.join(' | '));
+  const voiced = map('VOICE: Hello.\nSCENE 1 — A (0–4 seconds)\nCLIP: c1.mp4');
+  assert.ok(voiced.errors.some((e) => /VOICE before SCENE 1 belongs to a title card/.test(e)), voiced.errors.join(' | '));
+  // Every reel field is locked like an explainer's.
+  const locked = lockAll(m.script, loadTemplate('clip-reel').beats, 'tester');
+  assert.ok(['scene:scene-1.video', 'scene:scene-1.out', 'scene:scene-2.hold', 'scenes'].every((k) => locked.locks[k]), Object.keys(locked.locks).join(' '));
+});
+
+test('a reel import builds a storyboard: full-frame clips, no subtitle band, no heard captions', { timeout: 600000 }, async (t) => {
+  if (!(await hasChrome(loadStudioConfig().engine.chromeChannel))) { t.skip('Chrome is not available'); return; }
+  const p = `${P}-reel`;
+  clean(p);
+  t.after(() => clean(p));
+  createProject({ id: p, name: 'Scene Script Reel' });
+  const brandFile = within(DIRS.profiles, p, 'brand.json');
+  writeJson(brandFile, { ...readJson(brandFile), voice: { tts: 'none' }, music: { file: null, gainDb: -18 }, subtitles: { style: 'pill' } });
+  await makeClips(p);
+  const text = 'Cảnh 1 – Mở\nCreate a 4-second video, vertical 9:16.\nCLIP: a.mp4\nACTION:\nA walks in.\n\nCảnh 2 – Đóng\nA 3-second video.\nCLIP: b.mp4 0:01-0:04\nON SCREEN: Xong\n';
+  const r = await importSceneScript(p, text, { by: 'tester', file: 'reel.txt' });
+  assert.equal(r.brief.template, 'clip-reel');
+  assert.equal(r.brief.format, '9:16');
+  const ID = r.brief.id;
+  const st = await prepare(p, ID, 'tester');
+  assert.equal(st.status, 'awaiting_review', JSON.stringify(st.lint?.findings));
+  assert.equal(st.lint.errors, 0);
+  const timing = readJson(jobFile(p, ID, 'timing.json'));
+  const len = (id) => { const s = timing.scenes.find((x) => x.id === id); return s.end - s.start; };
+  assert.ok(Math.abs(len('scene-1') - 4) < 0.01, `scene-1 lasts ${len('scene-1')} s`);
+  assert.ok(Math.abs(len('scene-2') - 3) < 0.01, `scene-2 lasts ${len('scene-2')} s`);
+  assert.ok(!timing.videos.some((v) => v.caption), 'a reel clip gets no heard captions');
+  const html = fs.readFileSync(jobFile(p, ID, 'index.html'), 'utf8');
+  assert.ok(html.includes('class="sc fill dark vfull" id="g-scene-1"') && !/id="g-scene-1">[\s\S]*?<div class="vshade">[\s\S]*?id="g-scene-2"/.test(html), 'scene 1 is full frame with no shade or text');
+  assert.ok(/id="g-scene-2">[\s\S]*?<div class="vshade">[\s\S]*?<div class="hd vt" data-lint>Xong<\/div>/.test(html), 'scene 2 shows its ON SCREEN line as a lower third');
+  assert.ok(!html.includes('class="subt'), 'no subtitle band');
 });
 
 test('a two-scene import builds a storyboard: each clip scene lasts its span', { timeout: 600000 }, async (t) => {

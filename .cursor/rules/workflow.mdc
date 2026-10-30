@@ -44,7 +44,7 @@ Full workflow details: `.claude/commands/workflow.md` (shared with Claude Code)
 - [ ] HTML text through `escapeHtml`/`h()`/`esc()`; JSON into `<script>` through `jsonForScript`
 - [ ] Child processes capped (args array, `shell:false`, timeout, capped log)
 - [ ] Templates deterministic (`seek(t)` only)
-- [ ] No code path invokes Claude or any model, except the three person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key) and `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key); server still localhost-only
+- [ ] No code path invokes Claude or any model, except the four person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key), `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key) and `server/assistant-model.mjs` (the Assistant panel's intent pick: with `assistant.freeform` on and a model picked, one request to a connected API provider's model (never the Claude seat) with the person's own key for a line the parser does not know; the model names an intent, the person still approves the card); server still localhost-only
 - [ ] Product text is English
 - [ ] Hallucination check: every new import, function or field you referenced exists
 

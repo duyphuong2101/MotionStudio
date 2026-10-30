@@ -17,8 +17,10 @@ import { estimateTiming } from './timing.mjs';
 import { probeMedia } from './media.mjs';
 
 const SCENE_SCRIPT_CAPS ={ chars: 64 * 1024, scenes: 30, clips: 6, probes: 40 };
-// Clip scenes are explainer `video` scenes; picture scenes are lifestyle `gallery` scenes through the mix.
+// Clip scenes are explainer `video` scenes; picture scenes are lifestyle `gallery` scenes through the mix. A script with
+// no TITLE and no End card is a clip reel (templates/clip-reel): clips only, full frame, no cards, no subtitles.
 const LEAD = 'explainer';
+const REEL = 'clip-reel';
 const PICTURES = 'lifestyle';
 const GALLERY = `${PICTURES}.gallery`;
 const DEFAULT_FORMAT = '16:9';
@@ -35,7 +37,9 @@ export const SCENE_SCRIPT_RECORD = 'scene-script.json';
 // Lockable fields every scene has (engine/jobs.mjs sceneFieldNames).
 const EVERY_SCENE = ['speaker', 'stress', 'hold'];
 
-const SCENE_RE = /^SCENE\s+(\d{1,3})\s*(?:[-–—]+|:)\s*(.*?)\s*(?:\(([^()]*)\))?$/;
+const SCENE_RE = /^(?:SCENE|Scene|Cảnh|CẢNH)\s+(\d{1,3})\s*(?:[-–—]+|:)\s*(.*?)\s*(?:\(([^()]*)\))?$/;
+// `Create an 8-second video` inside a scene without a span: its length, laid after the scene before it.
+const LENGTH_RE = /\b(\d{1,3}(?:\.\d+)?)[\s-]*(?:s|secs?|seconds?)\b/i;
 const SPAN_RE = /^([\d:.]+)\s*s?\s*[-–—]\s*([\d:.]+)\s*(?:s|secs?|seconds?)?$/i;
 const CLIP_RE = /^(\S+)(?:\s+([\d:.]+)\s*s?\s*[-–—]\s*([\d:.]+)\s*s?)?$/i;
 const KEY_RE = /^(clip|image|images|voice|on screen|button)\s*:\s*(.*)$/i;
@@ -168,8 +172,7 @@ export function parseSceneScript(text, caps = SCENE_SCRIPT_CAPS) {
       if (!sc[2]) scene.errors.push(`Scene ${num}: give the scene a title after the dash`);
       const span = sc[3] === undefined ? null : SPAN_RE.exec(sc[3].trim());
       const from = span && parseSeconds(span[1]), to = span && parseSeconds(span[2]);
-      if (sc[3] === undefined) scene.errors.push(`Scene ${num}: add its seconds to the SCENE line, e.g. (0–4 seconds)`);
-      else if (from === null || to === null || to <= from) scene.errors.push(`Scene ${num}: "(${sc[3]})" is not a span of seconds: write it like (10–19 seconds)`);
+      if (sc[3] !== undefined && (from === null || to === null || to <= from)) scene.errors.push(`Scene ${num}: "(${sc[3]})" is not a span of seconds: write it like (10–19 seconds)`);
       else Object.assign(scene, { from, to });
       doc.scenes.push(scene);
       where = 'scene';
@@ -200,18 +203,40 @@ export function parseSceneScript(text, caps = SCENE_SCRIPT_CAPS) {
       if (end[1].trim()) put('text', end[1], n); else later('text', n);
       return;
     }
-    if (isLabel(line)) { section = { title: label[1], lines: [] }; doc.sections.push(section); where = 'section'; return; }
+    // A bare capital label after the End card opens a trailing section; inside a scene (ACTION:, CAMERA:) it is a note.
+    if (isLabel(line) && where === 'card') { section = { title: label[1], lines: [] }; doc.sections.push(section); where = 'section'; return; }
     (where === 'card' ? doc.endCard.notes : scene.notes).push(line);
   });
   if (pending) pending.missing();
+  spanScenes(doc);
+  if (!doc.header.format) {
+    for (const s of doc.scenes) { const f = s.notes.map(parseFormat).find(Boolean); if (f) { doc.header.format = f; break; } }
+  }
   if (!doc.scenes.length) doc.errors.push('No SCENE lines found: start each scene with SCENE 1 — TITLE (0–4 seconds)');
   if (doc.scenes.length > caps.scenes) doc.errors.push(`The script has ${doc.scenes.length} scenes, limit ${caps.scenes}: split it into two videos`);
   return doc;
 }
 
+/**
+ * A scene with no `(a–b seconds)` takes its length from an `N-second` phrase in its lines and starts where the scene
+ * before it ends (0 for the first); a scene with neither gets an error. Spans given on the SCENE line are kept.
+ */
+function spanScenes(doc) {
+  let end = 0;
+  for (const s of doc.scenes) {
+    if (s.from === null && s.to === null && !s.errors.some((e) => e.includes('is not a span'))) {
+      const m = s.notes.map((l) => LENGTH_RE.exec(l)).find(Boolean);
+      const len = m ? parseSeconds(m[1]) : null;
+      if (len) Object.assign(s, { from: round(end), to: round(end + len) });
+      else s.errors.push(`Scene ${s.n}: add its seconds to the SCENE line, e.g. (0–4 seconds), or say its length in the text, e.g. an 8-second video`);
+    }
+    if (s.to !== null) end = s.to;
+  }
+}
+
 /** A job id from the script: its VIDEO ID, else its TITLE, as a-z0-9 and dashes. */
-export function scriptJobId(header) {
-  const s = slugOf(header.videoId) || slugOf(header.title);
+export function scriptJobId(header, doc = null) {
+  const s = slugOf(header.videoId) || slugOf(header.title) || slugOf(doc?.scenes?.[0]?.title && `${doc.scenes[0].title}-reel`);
   return s ? s.slice(0, 64).replace(/-+$/, '') : 'scene-script';
 }
 
@@ -271,8 +296,9 @@ const sceneFact = (s) => `Scene ${s.n} — ${s.title}${s.onScreen ? `. On screen
  * `{ duration, hasAudio }` (or `{ error }`); `timing` is config/studio.json → timing. Each row (title card, scene,
  * end card) lists the scenes it made with their assets, and its own errors and warnings, each naming the row.
  */
-export function mapSceneScript(doc, { beats, assets = [], media = {}, timing, lang = 'en', file = 'script', job, project, by = 'cli', caps = SCENE_SCRIPT_CAPS }) {
-  const lead = beats.sources[LEAD], pics = beats.sources[PICTURES];
+export function mapSceneScript(doc, { beats, reel: reelBeats = null, assets = [], media = {}, timing, lang = 'en', file = 'script', job, project, by = 'cli', caps = SCENE_SCRIPT_CAPS }) {
+  const reel = isReel(doc);
+  const lead = reel ? (reelBeats || loadTemplate(REEL).beats) : beats.sources[LEAD], pics = beats.sources[PICTURES];
   const wps = timing.wordsPerSecond[lang] ?? timing.wordsPerSecond[String(lang).split('-')[0]] ?? timing.wordsPerSecond.default;
   const speaks = (vo, tail = timing.tailOut) => round(timing.leadIn + wordsOf(vo).length / wps + tail, 1);
   const rows = [], errors = [...doc.errors], warnings = [], notes = [], facts = [], scenes = [];
@@ -281,13 +307,18 @@ export function mapSceneScript(doc, { beats, assets = [], media = {}, timing, la
   const { header } = doc;
   const title = header.title || '';
 
-  const open = row('Title card', title);
-  if (!title) open.errors.push('Title card: add a TITLE line: explainer opens on a title card');
-  if (!header.voice) open.errors.push('Title card: explainer opens on a title card with a voice line: add a VOICE: line under TITLE, before SCENE 1');
-  limit(open, lead, 'title', title, 'TITLE', 'title card');
-  limit(open, lead, 'vo', header.voice, 'VOICE', 'title card');
-  scenes.push({ id: 'title', kind: 'title', title, vo: header.voice || '', source: 'bullets[0]' });
-  open.parts.push({ id: 'title', kind: 'title', assets: [] });
+  if (reel) {
+    notes.push(`No TITLE line and no End card: the film is a clip reel (${REEL}), the clips full frame with their own sound, no cards and no subtitles. Add a TITLE line with a VOICE line for an explainer with a title card.`);
+    if (header.voice) errors.push('VOICE before SCENE 1 belongs to a title card: add a TITLE line for an explainer, or move the line under its scene');
+  } else {
+    const open = row('Title card', title);
+    if (!title) open.errors.push('Title card: add a TITLE line: explainer opens on a title card');
+    if (!header.voice) open.errors.push('Title card: explainer opens on a title card with a voice line: add a VOICE: line under TITLE, before SCENE 1');
+    limit(open, lead, 'title', title, 'TITLE', 'title card');
+    limit(open, lead, 'vo', header.voice, 'VOICE', 'title card');
+    scenes.push({ id: 'title', kind: 'title', title, vo: header.voice || '', source: 'bullets[0]' });
+    open.parts.push({ id: 'title', kind: 'title', assets: [] });
+  }
 
   let mixed = false, prev = null;
   const fixed = {};
@@ -302,10 +333,13 @@ export function mapSceneScript(doc, { beats, assets = [], media = {}, timing, la
     if (!s.clips.length && !pictures.length) { r.errors.push(`${at} has no CLIP or IMAGE: add the clip or picture it shows`); continue; }
     if (s.clips.length && pictures.length) { r.errors.push(`${at} has both CLIP and IMAGE lines: give it one or the other`); continue; }
     if (s.image && s.images.length) { r.errors.push(`${at} has both IMAGE and IMAGES lines: keep one`); continue; }
+    if (pictures.length && reel) { r.errors.push(`${at}: a clip reel takes CLIP scenes only: add a TITLE line with a VOICE line to make an explainer, which shows IMAGES as a picture scene`); continue; }
     if (s.image) { r.errors.push(`${at}: IMAGE shows one picture, and no scene kind that mixes into explainer shows one picture (lifestyle photo does not mix): use IMAGES: with 2-4 pictures, or a CLIP`); continue; }
     const source = factOf(sceneFact(s), `scene ${s.n}`);
     if (s.clips.length) {
-      limit(r, lead, 'title', shown, line, 'video scene');
+      // A reel clip carries text only when the scene has an ON SCREEN line; its title stays in the script record.
+      const label = reel ? s.onScreen : shown;
+      limit(r, lead, 'title', label, line, 'video scene');
       limit(r, lead, 'vo', s.voice, 'VOICE', 'video scene');
       if (s.clips.length > caps.clips) { r.errors.push(`${at} has ${s.clips.length} clips, limit ${caps.clips}: split it into two scenes`); continue; }
       const parts = s.clips.map((c) => clipPart(c, r, assets, media)).filter(Boolean);
@@ -314,7 +348,7 @@ export function mapSceneScript(doc, { beats, assets = [], media = {}, timing, la
         const id = parts.length > 1 ? `scene-${s.n}${String.fromCharCode(97 + k)}` : `scene-${s.n}`;
         const vo = k === 0 ? s.voice : '';
         scenes.push({
-          id, kind: 'video', title: shown, ...(vo ? { vo } : {}), video: p.name, in: p.in, out: p.out,
+          id, kind: 'video', ...(label ? { title: label } : {}), ...(vo ? { vo } : {}), video: p.name, in: p.in, out: p.out,
           ...(p.sound ? { sound: true } : {}), ...(p.hold ? { hold: p.hold } : {}), source,
         });
         r.parts.push({ id, kind: 'video', assets: [p.name], in: p.in, out: p.out, hold: p.hold, sound: p.sound });
@@ -355,32 +389,32 @@ export function mapSceneScript(doc, { beats, assets = [], media = {}, timing, la
     r.parts.push({ id: 'end', kind: 'cta', assets: [] });
   }
 
-  const body = scenes.filter((s) => s.id !== 'title' && s.id !== 'end').length, bodyMax = lead.sequence[1].max;
-  if (body > bodyMax) errors.push(`The scenes make ${body} body scenes (each clip of a scene is one), explainer takes at most ${bodyMax}: cut ${body - bodyMax}`);
+  const body = scenes.filter((s) => s.id !== 'title' && s.id !== 'end').length, bodyMax = lead.sequence[reel ? 0 : 1].max;
+  if (body > bodyMax) errors.push(`The scenes make ${body} body scenes (each clip of a scene is one), ${lead.id} takes at most ${bodyMax}: cut ${body - bodyMax}`);
   let format = header.format;
   if (!format) { format = DEFAULT_FORMAT; warnings.push(`FORMAT: none given, so the video is ${DEFAULT_FORMAT}`); }
   const formats = mixed ? lead.formats.filter((f) => pics.formats.includes(f)) : lead.formats;
   if (!formats.includes(format)) errors.push(`FORMAT: ${format} is not one of ${formats.join(', ')}`);
 
-  const script = { template: LEAD, generated: 'scene-script', scenes };
+  const script = { template: lead.id, generated: 'scene-script', scenes };
   const all = [...errors, ...rows.flatMap((r) => r.errors)];
-  const [dLo, dHi] = beats.durations;
+  const [dLo, dHi] = reel ? lead.durations : beats.durations;
   // The title card and the end card follow their voice lines, so the film runs a little past the spans.
-  const total = all.length ? null : estimateTiming(script, timing, lang, beats.pace, fixed).duration;
-  if (total !== null && total > dHi) all.push(`The film runs about ${total} s, explainer makes at most ${dHi} s: cut scenes`);
+  const total = all.length ? null : estimateTiming(script, timing, lang, reel ? lead.pace : beats.pace, fixed).duration;
+  if (total !== null && total > dHi) all.push(`The film runs about ${total} s, ${lead.id} makes at most ${dHi} s: cut scenes`);
   const duration = total === null ? Math.min(dHi, Math.max(dLo, header.duration || dLo)) : Math.min(dHi, Math.max(dLo, Math.ceil(total)));
   if (total !== null && header.duration && Math.abs(header.duration - total) > 1) warnings.push(`DURATION says ${header.duration} s; with the title card and the end card the film runs about ${total} s, so the brief asks ${duration} s`);
 
-  const id = job ? assertId(job, 'job') : scriptJobId(header);
+  const id = job ? assertId(job, 'job') : scriptJobId(header, doc);
   const sceneIds = Object.fromEntries(rows.map((r) => [r.at, r.parts.map((p) => p.id)]));
   return {
     id,
     brief: {
-      project, id, template: LEAD, mix: mixed ? [PICTURES] : [], format, duration, subject: String(header.videoId || '').slice(0, 64), message: title.slice(0, 400),
+      project, id, template: lead.id, mix: mixed ? [PICTURES] : [], format, duration, subject: String(header.videoId || '').slice(0, 64), message: (title || `${doc.scenes.length} clips: ${doc.scenes.map((s) => s.title).join(', ')}`).slice(0, 400),
       notes: `Imported from the scene script ${file}: ${doc.scenes.length} scene(s) and their media, every field locked as written. The scene descriptions are in ${SCENE_SCRIPT_RECORD}.`,
       createdBy: by,
     },
-    source: { name: title, url: '', bullets: [{ text: title, ref: `${file}, TITLE` }], facts },
+    source: { name: title || `Clip reel from ${file}`, url: '', bullets: [{ text: title || `${doc.scenes.length} clips from ${file}`, ref: `${file}, ${title ? 'TITLE' : 'the scenes'}` }], facts },
     script, rows, errors: all, warnings: [...warnings, ...rows.flatMap((r) => r.warnings)], notes, duration: total,
     record: {
       file, header: doc.header,
@@ -392,6 +426,9 @@ export function mapSceneScript(doc, { beats, assets = [], media = {}, timing, la
 
 /** The rules a scene import maps onto: explainer with lifestyle mixed in (the brief mixes only when a scene needs it). */
 export const sceneBeats = () => composeBeats(loadTemplate(LEAD).beats, [loadTemplate(PICTURES).beats]);
+
+/** A parsed script with no TITLE line and no End card is a clip reel. */
+export const isReel = (doc) => !doc.header.title && !doc.endCard;
 
 function assertProject(project) {
   assertId(project, 'project');

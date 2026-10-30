@@ -22,7 +22,7 @@ export const MAX_REF_BYTES = 8 * 1024 * 1024;
 export const FALLBACK_MODELS = { image: 'gemini-nano-banana-2.1', video: 'gemini-omni-1.1-flash' };
 // Omni takes no clip length: the model picks it, and generate.maxVideoSeconds refuses a longer clip after the download.
 export const GENERATE_OPTIONS = {
-  image: { aspectRatios: ['16:9', '9:16', '1:1', '4:5'] },
+  image: { aspectRatios: ['16:9', '9:16', '1:1', '4:5'], maxRefs: MAX_REFS },
   video: { aspectRatios: ['16:9', '9:16'], maxRefs: MAX_REFS },
 };
 const IMAGE_SIZES = ['512', '1K'];
@@ -66,7 +66,7 @@ export const optionsFor = (g) => ({
   video: { ...GENERATE_OPTIONS.video },
 });
 
-/** One click's request, checked against the options: `refs` (clips only) names 0-MAX_REFS brand pictures; `unique` takes a free name. */
+/** One click's request, checked against the options: `refs` names 0-MAX_REFS brand pictures; `unique` takes a free name. */
 export function validateRequest(body, options) {
   const b = body && typeof body === 'object' ? body : {};
   const kind = b.kind;
@@ -79,7 +79,6 @@ export function validateRequest(body, options) {
   if (!o.aspectRatios.includes(aspectRatio)) throw new StudioError(`Aspect ratio must be one of ${o.aspectRatios.join(', ')}`, 400);
   const refs = b.refs ?? [];
   if (!Array.isArray(refs) || refs.some((r) => typeof r !== 'string')) throw new StudioError('refs must be a list of picture names', 400);
-  if (refs.length && !o.maxRefs) throw new StudioError('Reference pictures are for clips only', 400);
   if (refs.length > (o.maxRefs || 0)) throw new StudioError(`Pick at most ${o.maxRefs} reference pictures`, 400);
   if (new Set(refs).size !== refs.length) throw new StudioError('A reference picture is picked twice', 400);
   const model = b.model ? String(b.model) : null;
@@ -88,7 +87,7 @@ export function validateRequest(body, options) {
   return { kind, prompt, aspectRatio, refs, model, name, replace: b.replace === true, unique: b.unique === true, acknowledged: b.acknowledged === true };
 }
 
-/** The picked pictures for a clip, base64: image assets listed in this brand only, each at most MAX_REF_BYTES. */
+/** The picked reference pictures, base64: image assets listed in this brand only, each at most MAX_REF_BYTES. */
 export function readRefs(project, names) {
   const listed = listAssets(project);
   return names.map((name) => {
@@ -106,14 +105,15 @@ export function readRefs(project, names) {
 
 const keyHeaders = (key) => ({ 'content-type': 'application/json', 'x-goog-api-key': key });
 
-/** POST /interactions for one image. The key goes in the header only, never the URL. */
-export function imageRequest({ model, prompt, aspectRatio, size, mime = 'image/jpeg' }, key) {
+/** POST /interactions for one image: the reference pictures in order, then the prompt. The key goes in the header only, never the URL. */
+export function imageRequest({ model, prompt, aspectRatio, size, mime = 'image/jpeg', refs = [] }, key) {
+  const input = refs.length ? [...refs.map((r) => ({ type: 'image', data: r.data, mime_type: r.mime })), { type: 'text', text: prompt }] : prompt;
   return {
     url: `${API}/interactions`,
     init: {
       method: 'POST',
       headers: keyHeaders(key),
-      body: JSON.stringify({ model, input: prompt, response_format: { type: 'image', mime_type: mime, aspect_ratio: aspectRatio, image_size: size } }),
+      body: JSON.stringify({ model, input, response_format: { type: 'image', mime_type: mime, aspect_ratio: aspectRatio, image_size: size } }),
     },
   };
 }
@@ -227,6 +227,8 @@ const kindOf = (id, displayName, methods) => {
   if (!methods.includes('generateContent')) return null;
   if (/omni/i.test(id)) return 'video';
   if (/image|banana/i.test(id) || /image|banana/i.test(displayName)) return 'image';
+  // A Gemini chat model: the Settings tab offers it to the Assistant and the Director.
+  if (/^gemini-/i.test(id) && !/tts|audio|embed|robotics|computer-use|transcribe|live|lyria|veo|deep-research/i.test(id)) return 'text';
   return null;
 };
 
@@ -403,9 +405,9 @@ function freeAssetName(project, name) {
   throw new StudioError(`No free file name for ${name}. Delete or rename some assets.`, 409);
 }
 
-async function runImage(ctx, req, run) {
+async function runImage(ctx, req, run, refs) {
   const mime = mimeForName(run.name);
-  const json = await callGoogle(ctx, imageRequest({ model: run.model, prompt: req.prompt, aspectRatio: req.aspectRatio, size: ctx.g.imageSize, mime }, ctx.key));
+  const json = await callGoogle(ctx, imageRequest({ model: run.model, prompt: req.prompt, aspectRatio: req.aspectRatio, size: ctx.g.imageSize, mime, refs }, ctx.key));
   const img = imageFromInteraction(json, ctx.g.maxResponseBytes);
   // Another format than asked: the overwrite check was for the old name, so never replace. The call is paid, so a taken name gets a suffix.
   const same = img.mime === mime;
@@ -414,6 +416,7 @@ async function runImage(ctx, req, run) {
   const saved = saveAsset(ctx.project, replace ? target : freeAssetName(ctx.project, target), img.buf, { replace });
   writeJson(sidecarFile(ctx.project, saved.name), {
     provider: 'gemini', kind: 'image', model: run.model, prompt: req.prompt, aspectRatio: req.aspectRatio, size: ctx.g.imageSize,
+    references: refs.map((r) => r.name),
     madeAt: nowIso(), by: run.by, key: `personal (${ctx.keyEnv})`, bytes: saved.bytes, responseId: typeof json.id === 'string' ? json.id : null,
   });
   return saved;
@@ -488,7 +491,7 @@ export function startGenerate(g, providers, { project, body, by, fetch = globalT
   logLine(ctx, `${project}.log`, `${by} ${req.kind} ${model} ${name} ${req.aspectRatio}${refs.length ? ` refs ${req.refs.join(',')}` : ''}: ${req.prompt.slice(0, 200)}`);
   const run = { project, kind: req.kind, model, name, by, startedAt: nowIso(), status: 'running' };
   current = run;
-  (video ? runVideo(ctx, req, run, refs) : runImage(ctx, req, run))
+  (video ? runVideo(ctx, req, run, refs) : runImage(ctx, req, run, refs))
     .then((saved) => {
       run.status = 'done';
       run.message = saved.name === run.name ? `Generated ${saved.name}`
@@ -532,7 +535,7 @@ export async function refreshModels(g, providers, { by, fetch = globalThis.fetch
     const stored = { fetchedAt: nowIso(), by, models };
     writeJson(files.models, stored);
     const count = (kind) => models.filter((m) => m.kind === kind).length;
-    logLine(ctx, MODELS_LOG, `${by} models refreshed: ${count('image')} image, ${count('video')} video (of ${all.length})`);
+    logLine(ctx, MODELS_LOG, `${by} models refreshed: ${count('image')} image, ${count('video')} video, ${count('text')} text (of ${all.length})`);
     return stored;
   } catch (err) {
     try { logLine(ctx, MODELS_LOG, `${by} models refresh failed: ${err?.message}`); } catch { /* the error still reaches the UI */ }

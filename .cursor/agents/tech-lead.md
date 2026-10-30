@@ -24,7 +24,7 @@ You are the technical lead for Motion Studio: a local brief-to-video tool (Node 
 - Pipeline of 11 steps (`STEPS` in `engine/jobs.mjs`); statuses in `STATUSES`; a person approves before render.
 - All state is JSON on disk under `out/<project>/<job>/`; human edits create `locks` the director must keep.
 - A template = `beats.json` rules + `template.mjs` renderer; `extends` reuses another renderer.
-- The server is localhost-only and never calls a model, except the three person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key) and `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key); it spawns `engine/cli.mjs` with caps.
+- The server is localhost-only and never calls a model, except the four person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key), `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key) and `server/assistant-model.mjs` (the Assistant panel's intent pick: one request to a connected API provider's model (never the Claude seat) with the person's own key for a line the parser does not know; the person still approves the card); it spawns `engine/cli.mjs` with caps.
 
 ## Reusable code to check before proposing new
 - `engine/core.mjs`: ids, `within`, `readJson`/`writeJson`, `escapeHtml`, `jsonForScript`, `StudioError`

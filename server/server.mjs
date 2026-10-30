@@ -39,9 +39,9 @@ import {
   pickBackend, directorProviders, setDefaultProvider, recoverStale, engineEnv, directorSlots, trackChild, untrackChild, exeName, recoverInflight,
 } from './director.mjs';
 import {
-  FILES as GENERATE_FILES, startGenerate, refreshModels, saveModelDefaults, fetchedModels, generateState, generateHas, sidecarFile,
+  FILES as GENERATE_FILES, startGenerate, refreshModels, saveModelDefaults, fetchedModels, generateState, generateHas, sidecarFile, modelDefaults,
 } from './generate.mjs';
-import { clearPause as clearPauseFile } from './caps.mjs';
+import { clearPause as clearPauseFile, usage } from './caps.mjs';
 import { keyEnvNames, loadKeysFromEnvFile } from './keys.mjs';
 import { templatePreview, previewFile } from '../engine/template-preview.mjs';
 import { writeBanner, bannerFile, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZES, BANNER_LIMITS } from '../engine/banner.mjs';
@@ -50,6 +50,10 @@ import { nodeProblem } from '../engine/runtime.mjs';
 import { importSceneScript } from '../engine/scenescript.mjs';
 import { FILES as VOICE_CLOUD_FILES, startCloudVoice, voiceCloudState, voiceCloudHas } from './voice-cloud.mjs';
 import { COOKIE, lanInterface, newCode, codeMatches, cookieCode, reviewRoute, reviewPage } from './review.mjs';
+import { createAssistant } from './assistant.mjs';
+import { createIntentPicker } from './assistant-model.mjs';
+import { allowedKeyNames, keyStates, saveKey, removeKey, saveAssistantSettings } from './settings.mjs';
+import { connectProvider, connectedModels, settingsConfig, FILES as CONNECT_FILES } from './worker/models.mjs';
 import {
   evidenceConfig, repoAliases, resolveRepo, gitSearch, csvEvidence, csvColumns, decodeCsv, csvName, MAX_CSV_BYTES, MAX_RANGES, MAX_TICKETS,
 } from '../engine/evidence.mjs';
@@ -65,11 +69,16 @@ const USER = (() => { try { return os.userInfo().username; } catch { return 'ui'
 const BODY_LIMIT = 256 * 1024;
 const PROVIDERS_FILE = path.join(DIRS.config, 'providers.json');
 
-// Fixed path, read once here: no request or config value can point the server at another file.
+// Fixed path: no request or config value can point the server at another file. Read once here; the Settings tab
+// (server/settings.mjs) rewrites one NAME= line of it when the person saves or removes a key.
+const ENV_FILE = path.join(ROOT, '.env');
+// The key names whose value came from the file (removable in Settings); any other set name came from the environment.
+const ENV_FROM_FILE = new Set();
 try {
   const voiceKey = cfg.voiceCloud?.keyEnv ? { providers: { voiceCloud: { keyEnv: cfg.voiceCloud.keyEnv } } } : null;
   const names = [...new Set([...keyEnvNames(readJson(PROVIDERS_FILE)), ...keyEnvNames(voiceKey)])];
-  const loaded = loadKeysFromEnvFile(path.join(ROOT, '.env'), names, process.env);
+  const loaded = loadKeysFromEnvFile(ENV_FILE, names, process.env);
+  loaded.forEach((n) => ENV_FROM_FILE.add(n));
   if (loaded.length) console.log(`Keys from .env: ${loaded.join(', ')}`);
 } catch (err) {
   console.error(`Could not read .env (${err.code || 'unreadable'}). Keys come from the environment only.`);
@@ -427,6 +436,80 @@ function assertVoiceFits(project, brief) {
   if (problem) throw new StudioError(problem, 400);
 }
 
+// The Assistant panel (server/assistant.mjs): its writes go through the same functions the buttons use. With
+// assistant.freeform on, a line the parser does not know goes once to the picked model (server/assistant-model.mjs,
+// a connected API provider, the person's own key) to name an intent; the model never writes. Settings → Assistant
+// changes assistantCfg in place, so the next ask uses it.
+const assistantCfg = { approvalMinutes: 10, maxOpen: 20, freeform: false, ...(cfg.assistant || {}) };
+const assistant = createAssistant({
+  user: USER,
+  providers: () => readJson(PROVIDERS_FILE),
+  assertVoiceFits,
+  nextRun: (project) => nextRun(cfg.director, project, pickBackend(readJson(PROVIDERS_FILE))),
+  startDirector: ({ project, job }) => {
+    if (pickBackend(readJson(PROVIDERS_FILE)).kind === 'seat' && running.size >= cfg.engine.maxConcurrentRuns) {
+      throw new StudioError('A render, prepare, transcript or analysis is running. Start the Director when it has finished.', 429);
+    }
+    return startDirector(cfg.director, { project, job, by: USER, engineBusy: (id) => running.has(`${project}/${id}`), runPrepare: (p, id) => runEngine('prepare', p, id) });
+  },
+  makeClip: (project, asset, body) => withAssetSlot('clip', project, asset, () => makeClip(project, asset, body, { by: USER })),
+  saveBrand: (project, brand) => writeJson(path.join(profileDir(project), 'brand.json'), brand),
+  picker: createIntentPicker(() => assistantCfg, { providers: () => readJson(PROVIDERS_FILE) }),
+}, assistantCfg);
+
+/* ---------- settings (server/settings.mjs, server/worker/models.mjs) ---------- */
+const STUDIO_FILE = path.join(DIRS.config, 'studio.json');
+const API_KINDS = ['openai', 'openai-compatible', 'anthropic'];
+
+/** The chat models a provider's last Connect listed; Gemini's come from the Generate model list (kind text). */
+function connectedFor(id) {
+  if (id === 'gemini') {
+    const doc = readJson(GENERATE_FILES.models, null);
+    const list = (doc?.models || []).filter((m) => m.kind === 'text').map((m) => ({ id: m.id, label: m.displayName || m.id }));
+    return doc ? { fetchedAt: doc.fetchedAt || null, models: list } : null;
+  }
+  const doc = connectedModels(id, CONNECT_FILES);
+  return doc && { fetchedAt: doc.fetchedAt, models: doc.models };
+}
+
+/** Every `provider:model` a Connect listed: the Assistant may pick only from these. */
+const assistantChoices = (providers) => new Set(Object.entries(providers.providers || {})
+  .filter(([, p]) => API_KINDS.includes(p.kind))
+  .flatMap(([id]) => (connectedFor(id)?.models || []).map((m) => `${id}:${m.id}`)));
+
+function settingsState() {
+  const providers = readJson(PROVIDERS_FILE);
+  const names = allowedKeyNames(providers, cfg);
+  const usedBy = (name) => [
+    ...Object.entries(providers.providers || {}).filter(([, p]) => p.keyEnv === name).map(([id, p]) => p.label || id),
+    ...(cfg.voiceCloud?.keyEnv === name ? ['Cloud voice'] : []),
+  ];
+  const keys = keyStates(names, process.env, ENV_FROM_FILE).map((k) => ({ ...k, usedBy: usedBy(k.name) }));
+  const keyOf = (name) => keys.find((k) => k.name === name) || { hasKey: false, source: null };
+  const gen = readJson(GENERATE_FILES.models, null);
+  const s = settingsConfig(cfg.settings);
+  return {
+    keys,
+    providers: Object.entries(providers.providers || {}).map(([id, p]) => ({
+      id, kind: p.kind, label: p.label || id, note: p.note || '', keyEnv: p.keyEnv || null, api: API_KINDS.includes(p.kind),
+      hasKey: p.keyEnv ? keyOf(p.keyEnv).hasKey : false, source: p.keyEnv ? keyOf(p.keyEnv).source : null,
+      model: p.model || '', strongModel: p.strongModel || '', vision: p.vision === true,
+      connected: API_KINDS.includes(p.kind) ? connectedFor(id) : null,
+    })),
+    director: { default: providers.default || 'seat', seatModel: cfg.director.model ?? 'auto', seatModels: DIRECTOR_MODELS },
+    generate: {
+      defaults: modelDefaults(providers), fetchedAt: gen?.fetchedAt || null,
+      image: (gen?.models || []).filter((m) => m.kind === 'image').map((m) => ({ id: m.id, label: m.displayName || m.id })),
+      video: (gen?.models || []).filter((m) => m.kind === 'video').map((m) => ({ id: m.id, label: m.displayName || m.id })),
+    },
+    assistant: {
+      freeform: assistantCfg.freeform === true, models: assistantCfg.models || [], maxAsksPerDay: assistantCfg.maxAsksPerDay ?? 200,
+      usedToday: assistant.capabilities().model?.usedToday ?? 0,
+    },
+    connect: { usedToday: usage(CONNECT_FILES.count).day, maxConnectsPerDay: s.maxConnectsPerDay },
+  };
+}
+
 /* ---------- routes ---------- */
 // `review` is true for a request through the read-only review link: it never sees the providers.
 async function api(req, res, url, review = false) {
@@ -439,6 +522,43 @@ async function api(req, res, url, review = false) {
       mix: { maxExtras: MAX_MIX_EXTRAS },
       running: [...running.entries()].map(([k, v]) => ({ job: k, ...v })),
     });
+  }
+  // Never on the review link (reviewRoute lists no /api/settings path). A key goes in; it never comes back out.
+  if (parts[0] === 'settings') {
+    if (review) throw new StudioError('Not found', 404);
+    if (m === 'GET' && parts.length === 1) return send(res, 200, settingsState());
+    if (parts[1] === 'keys' && parts.length === 3) {
+      const keyCtx = { env: process.env, fromFile: ENV_FROM_FILE, allowed: allowedKeyNames(readJson(PROVIDERS_FILE), cfg) };
+      if (m === 'PUT') { saveKey(ENV_FILE, parts[2], (await readBody(req)).value, keyCtx); return send(res, 200, settingsState()); }
+      if (m === 'DELETE') { removeKey(ENV_FILE, parts[2], keyCtx); return send(res, 200, settingsState()); }
+    }
+    if (m === 'POST' && parts[1] === 'providers' && parts.length === 4 && parts[3] === 'connect') {
+      const id = assertId(parts[2], 'provider');
+      if (id === 'gemini') await refreshModels(cfg.generate, readJson(PROVIDERS_FILE), { by: USER });
+      else await connectProvider(cfg.settings, readJson(PROVIDERS_FILE), id, { by: USER });
+      return send(res, 200, settingsState());
+    }
+    if (m === 'PUT' && parts[1] === 'assistant' && parts.length === 2) {
+      const saved = saveAssistantSettings(STUDIO_FILE, await readBody(req), assistantChoices(readJson(PROVIDERS_FILE)));
+      Object.assign(assistantCfg, saved);
+      return send(res, 200, settingsState());
+    }
+  }
+  // Never on the review link (reviewRoute lists no /api/assistant path).
+  if (parts[0] === 'assistant') {
+    if (review) throw new StudioError('Not found', 404);
+    if (m === 'GET' && parts[1] === 'capabilities' && parts.length === 2) return send(res, 200, assistant.capabilities());
+    if (m === 'GET' && parts[1] === 'suggestions' && parts.length === 2) return send(res, 200, assistant.suggestions(url.searchParams.get('project') || ''));
+    if (m === 'POST' && parts[1] === 'ask' && parts.length === 2) {
+      const body = await readBody(req);
+      return send(res, 200, await assistant.ask({ project: String(body.project || ''), text: body.text, model: body.model ? String(body.model) : null }));
+    }
+    if (m === 'GET' && parts[1] === 'approvals' && parts.length === 2) return send(res, 200, { approvals: assistant.approvals() });
+    if (parts[1] === 'approvals' && parts.length === 4) {
+      const id = assertId(parts[2], 'approval');
+      if (m === 'POST' && parts[3] === 'approve') return send(res, 200, await assistant.approve(id));
+      if (m === 'POST' && parts[3] === 'reject') return send(res, 200, assistant.reject(id));
+    }
   }
   if (parts[0] === 'director') {
     if (m === 'GET' && parts.length === 1) {

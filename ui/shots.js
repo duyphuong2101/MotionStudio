@@ -121,10 +121,8 @@ export const motionOpt = (id) => MOTION_OPTIONS.find((o) => o.id === id) || MOTI
 
 // A scene script's lines as engine/scenescript.mjs reads them: a scene starts at SCENE n and ends at the next SCENE,
 // at End card or at a capital section label with nothing after its colon.
-const SCENE_LINE_RE = /^\s*SCENE\s+(\d{1,3})\b/;
+const SCENE_LINE_RE = /^\s*(?:SCENE|Scene|Cảnh|CẢNH)\s+(\d{1,3})\b/;
 const SCENE_END_RE = /^\s*end card\s*:/i;
-const SECTION_RE = /^\s*[A-Z][A-Z0-9 ]*[A-Z0-9]\s*:\s*$/;
-const KEY_LINE_RE = /^\s*(clip|image|images|voice|on screen|button)\s*:/i;
 const CLIP_LINE_RE = /^(\s*CLIP\s*:)(.*)$/i;
 
 /**
@@ -137,7 +135,7 @@ export function insertClip(text, n, name) {
   const at = lines.findIndex((l) => Number(SCENE_LINE_RE.exec(l)?.[1]) === n);
   if (at < 0) return null;
   let end = at + 1;
-  while (end < lines.length && !SCENE_LINE_RE.test(lines[end]) && !SCENE_END_RE.test(lines[end]) && !(SECTION_RE.test(lines[end]) && !KEY_LINE_RE.test(lines[end]))) end++;
+  while (end < lines.length && !SCENE_LINE_RE.test(lines[end]) && !SCENE_END_RE.test(lines[end])) end++;
   const clip = lines.slice(at + 1, end).findIndex((l) => CLIP_LINE_RE.test(l));
   if (clip < 0) lines.splice(at + 1, 0, `CLIP: ${name}`);
   else {

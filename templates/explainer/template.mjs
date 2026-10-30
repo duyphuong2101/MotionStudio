@@ -31,12 +31,17 @@ export const CTA_BG_CSS = '.ctabg{position:absolute;inset:0;width:100%;height:10
 export const decalOf = (decal, ICONS, brand) => (decal && typeof decal === 'object' && ICONS[decal.icon] ? { ...decal, d: ICONS[decal.icon], color: brand.colors?.secondary, bg: '#ffffff' } : undefined);
 const themed = (sc) => sc.theme === 'dark' || sc.theme === 'accent';
 
+// The clip reel (templates/clip-reel, extends this renderer): clips full frame, no subtitle band.
+const REEL = 'clip-reel';
+const isReel = ({ script, brief }) => (script?.template || brief?.template) === REEL;
+
 export function build(args) {
-  return page({ ...args, title: 'explainer', ...parts(args) });
+  return page({ ...args, title: 'explainer', subtitles: !isReel(args), ...parts(args) });
 }
 
 /** css, body, scenes and js for page(); a mixed video composes these from several templates. */
-export function parts({ brand, script, timing, size, icons }) {
+export function parts({ brand, script, timing, size, icons, brief }) {
+  const reel = isReel({ script, brief });
   const ICONS = iconSet(icons);
   const g = geometry(size);
   const { px, padX, port, land, W, H, U, short } = g;
@@ -91,10 +96,11 @@ export function parts({ brand, script, timing, size, icons }) {
       // Footage in a window: prepare cut it to clips/<id>.mp4; the kit seeks it with the page clock.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
       const clip = `<video data-clip="${id}" data-start="${t.start}" data-end="${t.end}" src="clips/${encodeURIComponent(id)}.mp4" muted playsinline preload="auto"></video>`;
-      if (stage) {
-        // Full frame: the footage, a shade for the type, and the title as a lower third.
-        blocks.push(`<div class="sc fill dark vfull" id="g-${id}"><div class="vbg" id="${id}-win">${clip}</div><div class="vshade"></div>
-        <div class="vcap">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd vt" data-lint>${h(sc.title)}</div>${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
+      if (stage || reel) {
+        // Full frame: the footage, a shade for the type, and the title as a lower third (a reel clip without text keeps a clean frame).
+        const typed = sc.title || sc.kicker || sc.text;
+        blocks.push(`<div class="sc fill dark vfull" id="g-${id}"><div class="vbg" id="${id}-win">${clip}</div>${typed ? `<div class="vshade"></div>
+        <div class="vcap">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}${sc.title ? `<div class="hd vt" data-lint>${h(sc.title)}</div>` : ''}${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div>` : ''}</div>`);
         scenes.push({ id, kind: 'video', dark: true });
         continue;
       }
@@ -202,12 +208,12 @@ export function parts({ brand, script, timing, size, icons }) {
 .snum{font-size:${px(land || port ? 42 : 34)}}.stt{font-size:${px(land || port ? 108 : 76)}}.stext .stx{font-size:${px(land ? 50 : port ? 46 : 40)};max-width:${px(1100)}}
 .diag{padding:${px(A.top)} ${padX(120)} ${px(A.bottom)};gap:${px(tight ? 36 : 56)}}.dt{font-size:${px(port ? 100 : land ? 96 : 76)}}
 .nodes{max-width:100%;gap:${px(tight ? 8 : 16)}}${stageNodes}
-.diag .stx{font-size:${px(land ? 50 : 44)};max-width:${px(1300)}}${hasVideo ? `
+.diag .stx{font-size:${px(land ? 50 : 44)};max-width:${px(1300)}}` : ''}${hasVideo && (stage || reel) ? `
 .vfull{background:#000}
 .vbg{position:absolute;inset:0;overflow:hidden}.vbg video{display:block;width:100%;height:100%;object-fit:cover}
 .vshade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.38) 0%,rgba(0,0,0,0) 24%,rgba(0,0,0,0) 46%,rgba(0,0,0,.72) 100%)}
 .vcap{position:absolute;left:${padX(110)};right:${padX(110)};bottom:${px(port ? 300 : 200)};display:flex;flex-direction:column;gap:${px(14)}}
-.vcap .vt{font-size:${px(port ? 86 : 80)};color:#fff}.vcap .stx{color:rgba(255,255,255,.85);max-width:${px(1100)}}` : ''}` : ''}`;
+.vcap .vt{font-size:${px(port ? 86 : 80)};color:#fff}.vcap .stx{color:rgba(255,255,255,.85);max-width:${px(1100)}}` : ''}`;
   const firstIcon = scenes.find((s) => s.icon)?.icon || ICONS.circle;
   const body = blocks.join('\n') +`<svg id="xicon" viewBox="0 0 100 112" aria-hidden="true"><path id="xshape" d="${firstIcon}"/><path id="xfill" d="${firstIcon}"/></svg>`;
   const js = `
@@ -287,7 +293,7 @@ ${hasFlash ? `  flash(sc, s, e) {
     }
     if (sc.title) fadeUp($(sc.id + '-ft'), T[sc.n], { y: 24, d: 0.5 });
   },
-` : ''}${hasVideo && stage ? `  video(sc, s) {
+` : ''}${hasVideo && (stage || reel) ? `  video(sc, s) {
     const g = $('g-' + sc.id);
     fadeUp(g.querySelector('.kick'), s + 0.35); fadeUp(g.querySelector('.vt'), s + 0.45, { d: 0.7 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.5));
   },

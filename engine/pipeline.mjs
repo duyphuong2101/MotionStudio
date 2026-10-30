@@ -200,7 +200,7 @@ export async function prepare(project, id, by = 'engine') {
     fs.rmSync(path.join(dir0, REVIEW_DIR), { recursive: true, force: true });
     const size = sizeFor(beats, brief.format);
     const footage = beats.audio === 'footage';
-    const clips = footage ? await footageClips(project, script, beats.footage || 'video') : await sceneVideos(project, script);
+    const clips = footage ? await footageClips(project, script, beats.footage || 'video') : await sceneVideos(project, script, beats);
     // A clip with sound and no typed text gets its words from local speech recognition, with real timings.
     // Motion scenes do the same for a clip that plays its own sound with no voice line over it.
     const heard = sttStatus().available ? clips.filter((c) => c.hasAudio && !c.text && (footage || c.caption)) : [];
@@ -387,8 +387,9 @@ async function footageClips(project, script, media = 'video') {
 /**
  * A motion scene may show a clip of footage (`video`, e.g. a screen recording): trimmed like footage,
  * played muted under the voice unless the scene sets `sound`, then its sound plays and it sets the scene's length.
+ * A template with `captions: false` (clip-reel) gets no heard captions.
  */
-async function sceneVideos(project, script) {
+async function sceneVideos(project, script, beats = {}) {
   const out = [];
   for (const sc of script.scenes) {
     if (!sc.video) continue;
@@ -403,8 +404,9 @@ async function sceneVideos(project, script) {
     // A clip that speaks with no voice line over it is captioned: from the typed `caption` when the scene has one
     // (timed on what is heard), else from what is heard.
     const speaks = sc.sound === true && info.hasAudio;
+    const captioned = speaks && beats.captions !== false && !String(sc.vo || '').trim();
     out.push({ id: sc.id, asset: sc.video, file, from, seconds: round(to - from, 3), hasAudio: speaks, hasVideo: true, fit: 'contain', text: '',
-      ...(speaks && !String(sc.vo || '').trim() ? { caption: true, typed: String(sc.caption || '').trim() } : {}) });
+      ...(captioned ? { caption: true, typed: String(sc.caption || '').trim() } : {}) });
   }
   return out;
 }

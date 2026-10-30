@@ -16,7 +16,7 @@ alwaysApply: false
 ## 2. New server route
 - [ ] Add the branch inside `api()` in `server/server.mjs`; ids through `assertId`
 - [ ] Validate the body at the boundary; throw `StudioError(message, code)`
-- [ ] Writes keep the Host/Origin/`X-Studio` checks (they run before `api()`); never add a route that invokes a model, except the three person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key) and `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key)
+- [ ] Writes keep the Host/Origin/`X-Studio` checks (they run before `api()`); never add a route that invokes a model, except the four person-clicked paths, `server/director.mjs` (Run Director: the Claude seat, or the API worker in `server/worker/` on the person's own provider key), `server/generate.mjs` (Gemini assets with the person's own key), `server/voice-cloud.mjs` (ElevenLabs voice lines with the person's own key) and `server/assistant-model.mjs` (the Assistant panel's intent pick: with `assistant.freeform` on and a model picked, one request to a connected API provider's model (never the Claude seat) with the person's own key for a line the parser does not know; the model names an intent, the person still approves the card)
 - [ ] Long work goes through `runEngine` (capped, timed out), never inline in the request
 
 ## 3. Engine change
