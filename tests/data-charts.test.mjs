@@ -140,6 +140,40 @@ test('bars may stand as columns: value above, label below, both series side by s
   assert.doesNotMatch(rows.body + rows.css + rows.js, /cols|class="cp"|height: '0%'/, 'no column code for a page without columns');
 });
 
+test('columns may carry one dashed reference line at a value, labelled once; rows refuse it and pages without it are unchanged', () => {
+  const one = (sc) => validateScript({ lang: 'en', scenes: [sc] }, beats).errors.join(' | ');
+  const ref = { value: 100, label: 'Green zone' };
+  assert.equal(one(pex({ layout: 'columns', ref })), '');
+  assert.match(one(pex({ ref })), /ref needs layout "columns"/);
+  assert.match(one(pex({ layout: 'columns', ref: { value: 'x' } })), /ref must be/);
+  assert.match(one(pex({ layout: 'columns', ref: { value: 100, label: 'x'.repeat(25) } })), /at most 24 characters/);
+  const out = parts({ brand: {}, script: { lang: 'en', scenes: [pex({ layout: 'columns', ref })] }, size: { width: 1920, height: 1080 } });
+  assert.match(out.body, /<div class="bars cols rf"><div class="cref" style="top:calc\([^"]+\* 0\.3390\)"><i><\/i><span data-lint>Green zone<\/span><\/div>/, 'one line at 100 of 295');
+  assert.equal((out.body.match(/class="cref"/g) || []).length, 1, 'one line across all the columns');
+  assert.ok(out.css.includes('.bars.rf{position:relative') && out.js.includes(".querySelectorAll('.cref')"));
+  // A value above the data widens the scale, so the line stays on the columns.
+  const high = parts({ brand: {}, script: { lang: 'en', scenes: [pex({ layout: 'columns', ref: { value: 400 } })] }, size: { width: 1920, height: 1080 } });
+  assert.match(high.body, /\* 1\.0000\)"><i><\/i><\/div>/);
+  assert.match(high.body, /id="pex-b0" style="background:[^"]+" data-frac="0.7375"/);
+  const plain = parts({ brand: {}, script: { lang: 'en', scenes: [pex({ layout: 'columns' })] }, size: { width: 1920, height: 1080 } });
+  assert.doesNotMatch(plain.body + plain.css + plain.js, /cref|\brf\b/, 'no reference code for a page without one');
+});
+
+test('a bars item may set its own tone: only its value is coloured, and a bad tone is refused', () => {
+  const one = (sc) => validateScript({ lang: 'en', scenes: [sc] }, beats).errors.join(' | ');
+  const items = [{ label: 'Manual checklist', value: 57 }, { label: 'Automated suite', value: 10, tone: 'up' }];
+  const tax = pex({ id: 'tax', series: undefined, tone: undefined, unit: 'min', format: 'int', items });
+  assert.equal(one(tax), '');
+  assert.match(one({ ...tax, items: [items[0], { ...items[1], tone: 'green' }] }), /items\[1\]: tone must be "up"/);
+  const out = parts({ brand: {}, script: { lang: 'en', scenes: [tax] }, size: { width: 1920, height: 1080 } });
+  assert.match(out.body, /<span><b id="tax-bv0" data-count="57"/, 'the untoned value stays plain');
+  assert.match(out.body, /<span class="tup"><b id="tax-bv1" class="tup" data-count="10"/, 'the toned value and its unit are green');
+  assert.ok(out.css.includes('.tup{color:#15803d'));
+  // An item tone wins over the scene tone for that item only.
+  const mixed = parts({ brand: {}, script: { lang: 'en', scenes: [{ ...tax, tone: 'up', items: [{ ...items[0], tone: 'down' }, items[1]] }] }, size: { width: 1920, height: 1080 } });
+  assert.match(mixed.body, /id="tax-bv0" class="tdn"[\s\S]*id="tax-bv1" class="tup"/);
+});
+
 test('in the page, toned numbers are green on light, accent and dark scenes and the second bars grow too', { timeout: 120000 }, async (t) => {
   const cfg = loadStudioConfig();
   const require = createRequire(import.meta.url);

@@ -13,11 +13,11 @@ import { iconsFor, loadBrandIcons } from './icons.mjs';
 import { motionProfile } from './brand.mjs';
 import { assertValidScript, validateSource, wordsOf, draftScenes, assertNoDrafts, sourceRefProblems } from './script.mjs';
 import { repairScript } from './repair.mjs';
-import { lookBrand, BRAND_LOOK } from './looks.mjs';
+import { scriptBrand, BRAND_LOOK } from './looks.mjs';
 import { validateOutline, expandOutline } from './quick.mjs';
 import { estimateTiming, toSrt, sceneGaps, resolvePace } from './timing.mjs';
 import { buildMixed } from './mix.mjs';
-import { ttsProvider, speakScript, voiceFor, voiceProblem, sapiCulture, sameLanguage } from './tts.mjs';
+import { ttsProvider, speakScript, voiceFor, voiceProblem, sapiCulture, sameLanguage, kokoroWords } from './tts.mjs';
 import { brandAssets } from '../templates/shared.mjs';
 import { ensureMusic, musicPath, isLibraryMusic, MUSIC } from './library.mjs';
 import { detectBeats, beatSnap } from './beats.mjs';
@@ -28,6 +28,8 @@ import { pacing, sheetShots, cutShots, writeSheet, writeCutSheet, REVIEW_DIR, SH
 import { runQa } from './qa.mjs';
 import { buildHtmlVideo } from './htmlvideo.mjs';
 import { clipWords, sttStatus, decode, speechOnset } from './stt.mjs';
+import { SAMPLE_RATE as STT_RATE } from './stt/whisper.mjs';
+import { voicedPauses } from './tts/kokoro.mjs';
 import { clipGains } from './loudness.mjs';
 import { recordedVoice } from './voicetake.mjs';
 import { jobSfx, SFX_FILE } from './sfx.mjs';
@@ -161,7 +163,7 @@ export function commit(project, id, kind, by) {
 }
 
 /** The brand a job's video uses: the project brand with the script's look laid over it (engine/looks.mjs). */
-const jobBrand = (project, script) => lookBrand(script?.look, loadBrand(project));
+const jobBrand = (project, script) => scriptBrand(script, loadBrand(project));
 
 /* ---------- steps 5-7: timing, compose, stills + lint ---------- */
 export async function prepare(project, id, by = 'engine') {
@@ -178,7 +180,7 @@ export async function prepare(project, id, by = 'engine') {
   const brandFile = loadBrand(project);
   const script = readJson(jobFile(project, id, 'script.json'));
   // This video's brand: the script's look under what the brand sets, then the brief's language and voice on top.
-  const brand = { ...lookBrand(script.look, brandFile), voice: voiceFor(brandFile, brief) };
+  const brand = { ...scriptBrand(script, brandFile), voice: voiceFor(brandFile, brief) };
   // A recorded take replaces the TTS voice, so the TTS voice's language limits do not apply.
   const problem = brief.voiceTake ? null : voiceProblem(brand.voice);
   if (problem) throw new StudioError(problem, 400);
@@ -206,13 +208,28 @@ export async function prepare(project, id, by = 'engine') {
     const heard = sttStatus().available ? clips.filter((c) => c.hasAudio && !c.text && (footage || c.caption)) : [];
     for (const c of heard) {
       c.words = await clipWords(project, c.asset, c.from, c.seconds, { lang: brand.voice.lang, cacheDir: jobFile(project, id, 'stt') });
-      if (c.words.length) c.words = startOnSpeech(c.words, speechOnset(await decode(c.file, c.from, c.seconds)));
+      if (c.words.length) {
+        const pcm = await decode(c.file, c.from, c.seconds);
+        c.words = startOnSpeech(c.words, speechOnset(pcm));
+        c.pcm = pcm;
+        c.pauses = voicedPauses(pcm, STT_RATE, CLIP_PAUSE);
+      }
       c.text = c.words.map((w) => w.w).join(' ');
     }
     // A typed caption wins over what was heard; without speech recognition it is spread over the clip.
     for (const c of clips.filter((x) => x.typed)) {
+      if (c.words?.length) c.heard = c.words;
       c.words = typedWords(c.typed, c.words || [], c.seconds);
       c.text = c.typed;
+    }
+    // Recognition times drift; the pauses in the clip's own sound are where its words really break. Typed clean speech
+    // with at least two clear pauses inside it is timed from the sound itself; the rest is pinned to its pauses.
+    for (const c of heard) {
+      if (!c.words?.length || !c.pcm) continue;
+      const heardWords0 = c.heard || c.words;
+      const inside = c.pauses.filter((p) => p.start > c.words[0].start && p.end < c.words.at(-1).end).length;
+      c.words = c.typed && inside >= 2 ? speechWords(c.typed, c.pcm, heardWords0) : pinToPauses(c.words, c.pauses, { end: c.seconds });
+      delete c.pcm;
     }
     // Footage clips set their scene's length; a motion scene's clip does only when it plays its own sound.
     const timed = clips.filter((c) => footage || c.hasAudio);
@@ -416,14 +433,43 @@ async function sceneVideos(project, script, beats = {}) {
  * timings, so it is spread over the clip.
  */
 /**
- * Times a typed caption on the words heard in the same clip (clip-relative seconds): word for word when the counts
- * match, otherwise spread by length over the heard speech (or the whole clip when nothing was heard).
+ * Times a typed caption on the words heard in the same clip (clip-relative seconds): word for word when they line up
+ * one to one, otherwise each typed word takes the time of the heard word (or two heard words, "North Shore's" for
+ * "NorthShore's") it lines up with, and the typed words with no heard partner share the gap around them by length.
+ * With nothing heard the caption spreads over the whole clip.
  */
 export function typedWords(typed, heard, seconds) {
   const ws = wordsOf(typed);
   if (!ws.length) return [];
-  if (heard.length === ws.length) return ws.map((w, i) => ({ w, start: heard[i].start, end: heard[i].end }));
-  const a = heard.length ? heard[0].start : 0.1, b = heard.length ? heard[heard.length - 1].end : Math.max(0.2, seconds - 0.1);
+  if (!heard.length) return spreadWords(ws, 0.1, Math.max(0.2, seconds - 0.1));
+  const spans = alignWords(ws.map(plainWord), heard.map((h) => plainWord(h.w)));
+  // Word for word only when the alignment is: an equal count can hide one merged and one split word ("15.net", "North Shore's").
+  if (heard.length === ws.length && spans.every((s, i) => s && s[0] === i && s[1] === i)) return ws.map((w, i) => ({ w, start: heard[i].start, end: heard[i].end }));
+  const out = ws.map((w, i) => (spans[i] ? { w, start: heard[spans[i][0]].start, end: heard[spans[i][1]].end } : null));
+  // Two typed words on one heard word split its time by length.
+  for (let i = 0; i < out.length; i++) {
+    if (!spans[i]) continue;
+    let k = i;
+    while (k + 1 < out.length && spans[k + 1] && spans[k + 1][0] === spans[i][0]) k++;
+    if (out[i] && k > i) spreadWords(ws.slice(i, k + 1), out[i].start, out[i].end + 0.02).forEach((x, n) => { out[i + n] = x; });
+    i = k;
+  }
+  // A typed word ends where the next one starts when heard words between them had no typed partner.
+  for (let i = 0; i + 1 < out.length; i++) if (out[i] && out[i + 1]) out[i].end = Math.max(out[i].end, round(out[i + 1].start - 0.02));
+  for (let i = 0; i < out.length; i++) {
+    if (out[i]) continue;
+    let k = i;
+    while (k < out.length && !out[k]) k++;
+    const a = i ? out[i - 1].end + 0.02 : heard[0].start, b = k < out.length ? out[k].start : heard[heard.length - 1].end;
+    spreadWords(ws.slice(i, k), a, Math.max(b, a + 0.1 * (k - i))).forEach((x, n) => { out[i + n] = x; });
+    i = k;
+  }
+  return out.map((x) => ({ w: x.w, start: round(x.start), end: round(Math.max(x.end, x.start + 0.05)) }));
+}
+
+const plainWord = (w) => String(w).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+function spreadWords(ws, a, b) {
   const total = ws.reduce((n, w) => n + w.length + 1, 0);
   let at = a;
   return ws.map((w) => {
@@ -435,18 +481,118 @@ export function typedWords(typed, heard, seconds) {
 }
 
 /**
+ * Lines typed words up with heard words by edit distance: a typed word may take one heard word, two heard words
+ * (or two typed words one heard word) that read the same joined, or none. Returns, per typed word, the first and
+ * last heard index it takes, or null.
+ */
+export function alignWords(t, h) {
+  const n = t.length, m = h.length, cost = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(Infinity)), how = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(null));
+  cost[0][0] = 0;
+  const step = (i, j, ni, nj, c, op) => { if (cost[i][j] + c < cost[ni][nj]) { cost[ni][nj] = cost[i][j] + c; how[ni][nj] = op; } };
+  for (let i = 0; i <= n; i++) for (let j = 0; j <= m; j++) {
+    if (cost[i][j] === Infinity) continue;
+    if (i < n && j < m) step(i, j, i + 1, j + 1, t[i] === h[j] ? 0 : 1, '11');
+    if (i < n && j + 1 < m) step(i, j, i + 1, j + 2, t[i] === h[j] + h[j + 1] ? 0 : 1.5, '12');
+    if (i + 1 < n && j < m) step(i, j, i + 2, j + 1, t[i] + t[i + 1] === h[j] ? 0 : 1.5, '21');
+    if (i < n) step(i, j, i + 1, j, 1, '10');
+    if (j < m) step(i, j, i, j + 1, 1, '01');
+  }
+  const spans = new Array(n).fill(null);
+  for (let i = n, j = m; i || j;) {
+    const op = how[i][j];
+    if (op === '11') { spans[i - 1] = [j - 1, j - 1]; i--; j--; }
+    else if (op === '12') { spans[i - 1] = [j - 2, j - 1]; i--; j -= 2; }
+    else if (op === '21') { spans[i - 1] = spans[i - 2] = [j - 1, j - 1]; i -= 2; j--; }
+    else if (op === '10') i--;
+    else j--;
+  }
+  return spans;
+}
+
+/**
  * Speech recognition often stamps a clip's first words from 0 s, before anyone speaks. The words stamped before the
  * speech is heard (`onset`, clip seconds) are spread from there to the first word placed after it; every other word
- * keeps its time.
+ * keeps its time. When that leaves no room, they get 0.2 s each from the onset and the words after them move back
+ * only as far as they would overlap.
  */
 export function startOnSpeech(words, onset) {
   if (!words.length || !(onset > words[0].start)) return words;
   const k = words.findIndex((w) => w.start >= onset);
   const lead = k < 0 ? words.length : k;
   const until = k < 0 ? Math.max(words.at(-1).end, onset + 0.2 * lead) : words[k].start;
-  if (until - onset < 0.05 * lead) return words;
+  if (until - onset < 0.05 * lead) {
+    let prev = null;
+    return words.map((w, i) => {
+      const start = round(i < lead ? onset + 0.2 * i : Math.max(w.start, prev.end + 0.02), 2);
+      prev = i < lead ? { ...w, start, end: round(start + 0.18, 2) } : start === w.start ? w : { ...w, start, end: round(start + (w.end - w.start), 2) };
+      return prev;
+    });
+  }
   const slot = (until - onset) / lead;
   return words.map((w, i) => (i < lead ? { ...w, start: round(onset + slot * i, 2), end: round(onset + slot * (i + 1) - 0.02, 2) } : w));
+}
+
+// A pause in a clip's sound at least this long (s) is a break between words, not a stop consonant.
+const CLIP_PAUSE = 0.12;
+// How far (s) from a pause the word after it may lie and still be moved onto it.
+const CLIP_PIN_REACH = 0.6;
+
+/**
+ * Moves caption words onto the pauses in a clip's sound (clip seconds), in order: each pause takes the word whose
+ * start, shifted by the correction of the pin before it, lies nearest its end (a word after punctuation wins a near
+ * tie). The words between two pins keep their share of that stretch; the others shift with the pin before them, and
+ * end before the pause where the speech stops when the last words would run into it. No word ends after `end`.
+ */
+export function pinToPauses(words, pauses, { reach = CLIP_PIN_REACH, end = Infinity } = {}) {
+  if (!words.length) return words;
+  const pins = [];
+  let last = 0, shift = 0;
+  for (const p of pauses) {
+    if (p.end <= words[0].start + shift || p.start >= words.at(-1).end + shift) continue;
+    let best = -1, cost = Infinity;
+    for (let k = last + 1; k < words.length; k++) {
+      const d = Math.abs(words[k].start + shift - p.end);
+      if (d > reach) continue;
+      const c = d - (/[,.;:!?]$/.test(words[k - 1].w) ? 0.3 : 0);
+      if (c < cost) { cost = c; best = k; }
+    }
+    if (best < 0) continue;
+    pins.push({ k: best, start: p.start, end: p.end });
+    shift = p.end - words[best].start;
+    last = best;
+  }
+  if (!pins.length) return words;
+  const lastEnd = words.at(-1).end + shift;
+  const tail = pauses.find((p) => p.start > pins.at(-1).end && p.start < lastEnd && p.end >= lastEnd);
+  const out = words.map((w) => ({ ...w }));
+  // Each stretch runs from one anchor (its first word's new start) to the next pause, mapped linearly from the old times.
+  const anchors = [{ k: 0, to: words[0].start }, ...pins.map((p) => ({ k: p.k, to: p.end, pauseStart: p.start }))];
+  anchors.forEach((a, n) => {
+    const next = anchors[n + 1];
+    const k1 = next ? next.k : words.length;
+    const o0 = words[a.k].start, o1 = next ? words[k1].start : words.at(-1).end;
+    const n1 = next ? next.pauseStart : Math.min(a.to + (o1 - o0), tail ? tail.start : Infinity, end);
+    const scale = o1 > o0 ? (n1 - a.to) / (o1 - o0) : 1;
+    for (let k = a.k; k < k1; k++) {
+      out[k].start = round(a.to + (words[k].start - o0) * scale, 2);
+      out[k].end = round(Math.max(out[k].start + 0.05, a.to + (words[k].end - o0) * scale), 2);
+    }
+    if (next) out[k1 - 1].end = round(Math.max(out[k1 - 1].start + 0.05, Math.min(out[k1 - 1].end, next.pauseStart)), 2);
+  });
+  return out.map((w) => (w.end <= end ? w : { ...w, start: round(Math.min(w.start, end - 0.05), 2), end: round(end, 2) }));
+}
+
+/**
+ * Times a typed caption from the clip's own sound, as the Kokoro voice is timed (kokoroWords: words weighted by their
+ * letters, every punctuation mark on a real pause), for clean speech whose recognition times drift (a quick list such
+ * as "CMS 13, Commerce 15, .NET 10." comes out most of a second early). The sound is cut just after the last word
+ * recognised, so a sip or a laugh after it does not stretch the words. Clip seconds, like the heard words.
+ */
+export function speechWords(typed, samples, heard, rate = STT_RATE) {
+  const until = Math.min(samples.length, Math.round((heard.at(-1).end + 0.6) * rate));
+  const at = kokoroWords(typed, samples.subarray(0, until), rate);
+  const stop = until / rate;
+  return at.map((w, k) => ({ w: w.w, start: w.at, end: round(Math.max(w.at + 0.05, k + 1 < at.length ? at[k + 1].at - 0.02 : Math.min(stop, heard.at(-1).end)), 2) }));
 }
 
 /** Adds the words recognised in each clip's sound to the timing as that scene's caption words, at real times. */
@@ -491,13 +637,16 @@ async function cutClips(dir, clips, timing, { width, height }) {
 
 const FOOTAGE_TIMEOUT_MS = 300000;
 
-/** ffmpeg args for footage.wav: each clip's sound at its scene start, with its `gainDb` from the loudness match. */
+/**
+ * ffmpeg args for footage.wav: each clip's sound at its scene start, with its `gainDb` from the loudness match.
+ * asetpts after adelay: a sought aac input keeps its own timestamps, and atrim would cut the delay off again.
+ */
 export function footageArgs(voiced, timing, out) {
   const args = ['-y'];
   for (const c of voiced) args.push('-ss', String(c.from), '-t', String(c.seconds), '-i', c.file);
   const at = (c) => timing.scenes.find((s) => s.id === c.id).start;
   const gain = (c) => (c.gainDb ? `volume=${c.gainDb}dB,` : '');
-  const chains = voiced.map((c, i) => `[${i}:a]aresample=48000,${gain(c)}afade=t=in:d=0.08,afade=t=out:st=${Math.max(0, c.seconds - 0.12).toFixed(3)}:d=0.12,adelay=${Math.round(at(c) * 1000)}:all=1[a${i}]`);
+  const chains = voiced.map((c, i) => `[${i}:a]aresample=48000,${gain(c)}afade=t=in:d=0.08,afade=t=out:st=${Math.max(0, c.seconds - 0.12).toFixed(3)}:d=0.12,adelay=${Math.round(at(c) * 1000)}:all=1,asetpts=N/SR/TB[a${i}]`);
   const mix = `${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:duration=longest:normalize=0,apad,atrim=0:${timing.duration}[out]`;
   args.push('-filter_complex', `${chains.join(';')};${mix}`, '-map', '[out]', '-ac', '1', '-ar', '48000', out);
   return args;

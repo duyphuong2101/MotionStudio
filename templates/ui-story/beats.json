@@ -15,7 +15,8 @@
       "logo": "false keeps the brand logo off this title card, e.g. when the film shows its logo only at the end. Default true.",
       "stat": "An optional number on the beat: { \"value\": 3, \"unit\": \"x\", \"format\": \"int\" }.",
       "beat.icon": "An icon for this idea. It morphs from the previous beat's icon.",
-      "cta.icon": "The icon the closing card ends on; it morphs from the last beat."
+      "cta.icon": "The icon the closing card ends on; it morphs from the last beat.",
+      "tilt": "Shot scenes: left or right turns the app window in 3D depth as it comes in, then slowly toward flat while the voice runs. Use on one or two hero shots, not every one. Default none."
     }
   },
   "description": "A software tour drawn as live, animated UI instead of screenshots: an app shell with a nav rail, dashboards whose numbers count up, tables that cascade in, record detail pages with actions, new-record forms that fill themselves in, an assistant panel with typed questions and approvals, and full-screen beat scenes where one SVG icon morphs from idea to idea. Shot scenes put a real screenshot from the project assets in the same window, with camera zoom, cursor, click and highlight. Subtitles follow the voice word by word.",
@@ -101,7 +102,8 @@
       "optional": [
         "kicker",
         "pace",
-        "sfx"
+        "sfx",
+        "tilt"
       ]
     },
     "cta": {
@@ -172,7 +174,8 @@
       "walls",
       "waves",
       "none"
-    ]
+    ],
+    "tilt": ["none", "left", "right"]
   },
   "mixable": [
     "ui",

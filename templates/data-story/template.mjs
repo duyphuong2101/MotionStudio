@@ -91,23 +91,30 @@ export function parts({ brand, script, size }) {
       const items = (sc.items || []).slice(0, 6);
       const two = Array.isArray(sc.series) && sc.series.length === 2;
       const cols = sc.layout === 'columns';
-      const max = Math.max(1, ...items.flatMap((x) => (two ? [num(x.value), num(x.value2)] : [num(x.value)])));
-      const val = (bid, v) => {
-        const b = `<b id="${bid}"${toneClass(sc) ? ` class="${toneClass(sc).trim()}"` : ''} data-count="${v}" data-format="${h(f)}" data-dec="${dec}">0</b>`;
+      const bref = cols && sc.ref && Number.isFinite(Number(sc.ref.value)) ? sc.ref : null;
+      const max = Math.max(1, ...(bref ? [num(bref.value)] : []), ...items.flatMap((x) => (two ? [num(x.value), num(x.value2)] : [num(x.value)])));
+      // An item's own tone wins over the scene's, for that item's value only.
+      const val = (bid, v, x) => {
+        const tc = toneClass(x?.tone ? x : sc);
+        const b = `<b id="${bid}"${tc ? ` class="${tc.trim()}"` : ''} data-count="${v}" data-format="${h(f)}" data-dec="${dec}">0</b>`;
         // A toned value colours its unit too (the wrapper carries the tone), so "295.0%" reads as one green number.
-        return sc.unit ? `<span${toneClass(sc) ? ` class="${toneClass(sc).trim()}"` : ''}>${b}<small style="font-size:.7em;margin-left:.2em">${h(sc.unit)}</small></span>` : b;
+        return sc.unit ? `<span${tc ? ` class="${tc.trim()}"` : ''}>${b}<small style="font-size:.7em;margin-left:.2em">${h(sc.unit)}</small></span>` : b;
       };
       // Two series: one colour per series, each item a pair of bars with its own value, and a legend above.
       // The label sits left of its pair, so three items take the height of three rows, not six.
       const pair = (x, k) => `<div class="bar two"><div class="bl"><span data-lint>${h(x.label)}</span></div><div class="bps">
-          ${[[x.value, ''], [x.value2, 'x']].map(([v, sfx], j) => `<div class="bp"><div class="bt"><i id="${id}-b${k}${sfx}" style="background:${C.series[j]}" data-frac="${num(v) / max}"></i></div>${val(`${id}-bv${k}${sfx}`, num(v))}</div>`).join('')}</div></div>`;
+          ${[[x.value, ''], [x.value2, 'x']].map(([v, sfx], j) => `<div class="bp"><div class="bt"><i id="${id}-b${k}${sfx}" style="background:${C.series[j]}" data-frac="${num(v) / max}"></i></div>${val(`${id}-bv${k}${sfx}`, num(v), x)}</div>`).join('')}</div></div>`;
       // Columns: each item a group of upright bars growing from a shared baseline, its value above and its label below.
-      const col = (x, k) => `<div class="col"><div class="cps">${(two ? [[x.value, ''], [x.value2, 'x']] : [[x.value, '']]).map(([v, sfx], j) => `<div class="cp">${val(`${id}-bv${k}${sfx}`, num(v))}<div class="ct"><i id="${id}-b${k}${sfx}" style="background:${C.series[two ? j : k % C.series.length]}" data-frac="${num(v) / max}"></i></div></div>`).join('')}</div><div class="cl" data-lint>${h(x.label)}</div></div>`;
-      blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="box">${head(sc)}${two ? `<div class="sleg">${sc.series.map((n, j) => `<span data-lint><i style="background:${C.series[j]}"></i>${h(n)}</span>`).join('')}</div>` : ''}<div class="bars${cols ? ' cols' : ''}">
+      // A reference value draws one dashed line across all the columns at its height (the tracks share a baseline
+      // cpsH below the top and leave 60 px above for the values), labelled at its right end.
+      const cpsH = px(port ? 520 : 400);
+      const cref = bref ? `<div class="cref" style="top:calc(${cpsH} - (${cpsH} - ${px(60)}) * ${(num(bref.value) / max).toFixed(4)})"><i></i>${bref.label ? `<span data-lint>${h(bref.label)}</span>` : ''}</div>` : '';
+      const col = (x, k) => `<div class="col"><div class="cps">${(two ? [[x.value, ''], [x.value2, 'x']] : [[x.value, '']]).map(([v, sfx], j) => `<div class="cp">${val(`${id}-bv${k}${sfx}`, num(v), x)}<div class="ct"><i id="${id}-b${k}${sfx}" style="background:${C.series[two ? j : k % C.series.length]}" data-frac="${num(v) / max}"></i></div></div>`).join('')}</div><div class="cl" data-lint>${h(x.label)}</div></div>`;
+      blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="box">${head(sc)}${two ? `<div class="sleg">${sc.series.map((n, j) => `<span data-lint><i style="background:${C.series[j]}"></i>${h(n)}</span>`).join('')}</div>` : ''}<div class="bars${cols ? ' cols' : ''}${bref ? ' rf' : ''}">${cref}
         ${items.map((x, k) => {
           if (cols) return col(x, k);
           if (two) return pair(x, k);
-          return `<div class="bar"><div class="bl"><span data-lint>${h(x.label)}</span>${val(`${id}-bv${k}`, num(x.value))}</div>
+          return `<div class="bar"><div class="bl"><span data-lint>${h(x.label)}</span>${val(`${id}-bv${k}`, num(x.value), x)}</div>
           <div class="bt"><i id="${id}-b${k}" style="background:${C.series[k % C.series.length]}" data-frac="${num(x.value) / max}"></i></div></div>`;
         }).join('')}</div>
         ${sc.text ? `<div class="dsub" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
@@ -196,8 +203,9 @@ export function parts({ brand, script, size }) {
   const lines = script.scenes.filter((s) => s.kind === 'line');
   const hasBand = lines.some((s) => s.band), hasRef = lines.some((s) => s.ref);
   // Written only when a scene uses them, so every other page stays byte for byte the same.
-  const hasTone = script.scenes.some((s) => toneClass(s)), hasSeries = script.scenes.some((s) => s.kind === 'bars' && Array.isArray(s.series) && s.series.length === 2);
+  const hasTone = script.scenes.some((s) => toneClass(s) || (s.kind === 'bars' && Array.isArray(s.items) && s.items.some((x) => toneClass(x ?? {})))), hasSeries = script.scenes.some((s) => s.kind === 'bars' && Array.isArray(s.series) && s.series.length === 2);
   const hasCols = script.scenes.some((s) => s.kind === 'bars' && s.layout === 'columns');
+  const hasBarRef = script.scenes.some((s) => s.kind === 'bars' && s.layout === 'columns' && s.ref);
   const hasBreak = script.scenes.some((s) => String(s.title ?? '').includes('\n'));
   const hasFocus = script.scenes.some((s) => s.pace === 'focus' && ['stat', 'bars', 'line', 'donut', 'stripes'].includes(s.kind));
   const dsubAt = hasFocus ? 'later' : 'cue';
@@ -217,7 +225,10 @@ export function parts({ brand, script, size }) {
 .bars.cols{flex-direction:row;align-items:flex-start;justify-content:center;gap:${px(land ? 110 : port ? 36 : 60)}}.col{display:flex;flex-direction:column;align-items:center;gap:${px(22)};flex:0 1 ${px(land ? 440 : port ? 230 : 300)};min-width:0}
 .cps{display:flex;align-items:flex-end;gap:${px(18)};height:${px(port ? 520 : 400)}}.cp{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:${px(14)};height:100%;font-size:${px(port ? 32 : 40)};font-weight:700;font-variant-numeric:tabular-nums}
 .cp .ct{width:${px(land ? 96 : port ? 60 : 72)};height:calc(100% - ${px(60)});border-radius:${px(14)} ${px(14)} 0 0;background:rgba(15,23,42,.07);overflow:hidden;display:flex;align-items:flex-end}.cp .ct i{display:block;width:100%;height:0;border-radius:${px(14)} ${px(14)} 0 0}
-.cl{font-size:${px(port ? 32 : 38)};font-weight:600;text-align:center;line-height:1.15}` : ''}
+.cl{font-size:${px(port ? 32 : 38)};font-weight:600;text-align:center;line-height:1.15}` : ''}${hasBarRef ? `
+.bars.rf{position:relative;align-self:center}.cref{position:absolute;left:-${px(48)};right:-${px(48)};height:0;z-index:2}.cref i{position:absolute;inset:0;border-top:${px(4)} dashed #15803d;opacity:.85}
+.cref span{position:absolute;left:calc(100% + ${px(16)});top:0;transform:translateY(-50%);white-space:nowrap;font-weight:800;font-size:${px(30)};letter-spacing:.06em;text-transform:uppercase;color:#15803d}
+.dark .cref i{border-color:#4ade80}.dark .cref span{color:#4ade80}.acc .cref i{border-color:var(--ink)}.acc .cref span{color:var(--ink)}` : ''}
 .bars{display:flex;flex-direction:column;gap:${px(26)}}
 .bl{display:flex;justify-content:space-between;font-size:${px(40)};font-weight:600}.bl b{font-variant-numeric:tabular-nums}
 .bt{height:${px(28)};border-radius:${px(14)};background:rgba(15,23,42,.07);overflow:hidden;margin-top:${px(10)}}.bt i{display:block;height:100%;border-radius:${px(14)};width:0}
@@ -274,7 +285,8 @@ ${hasFocus ? `const later = (sc, f) => (sc.focus ? Math.min(cue(sc, f), sc.start
     fadeUp(g.querySelector('.dsub'), ${dsubAt}(sc, 0.4));
   },
   bars(sc, s) {
-    const g = intro(sc, s);
+    const g = intro(sc, s);${hasBarRef ? `
+    g.querySelectorAll('.cref').forEach((el) => tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.6, immediateRender: false }, s + 0.3));` : ''}
     for (let k = 0; k < sc.n; k++) {
       const at = s + 0.45 + k * 0.18;
       const bar = $(sc.id + '-b' + k);${hasCols ? `

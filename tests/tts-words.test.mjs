@@ -39,6 +39,15 @@ test('kokoroWords pins every mark in order on a longer line', () => {
   assert.deepEqual(times, [...times].sort((a, b) => a - b));
 });
 
+test('kokoroWords gives every comma of a list its own pause, even when the next pause is longer', () => {
+  // The weights put the first comma late; the longest pause in reach then is the one after "speed,".
+  const words = kokoroWords('the marketing engine, speed, Auto-Ship, security, AI, and the platform upgrade.',
+    audio(5.5, [[0, 1.05], [1.17, 1.69], [1.83, 2.37], [2.47, 3.25], [3.39, 3.93], [4.13, 5.4]]));
+  for (const [w, t] of [['speed,', 1.17], ['Auto-Ship,', 1.83], ['security,', 2.47], ['AI,', 3.39], ['and', 4.13]]) {
+    assert.ok(Math.abs(at(words, w) - t) < 0.03, `${w} at ${at(words, w)}`);
+  }
+});
+
 test('kokoroWords pins a clear pause with no punctuation to the nearest word boundary', () => {
   const words = kokoroWords('third quarter revenue grew fourteen percent', audio(3, [[0, 1.2], [1.5, 2.8]]));
   const next = words.find((w) => w.at >= 1.45);
@@ -75,7 +84,7 @@ test('startOnSpeech moves only the words stamped before the speech', () => {
   const ws = [{ w: "I'm", start: 0, end: 0.4 }, { w: 'Adam', start: 0.42, end: 0.7 }];
   assert.deepEqual(startOnSpeech(ws, 0.28), [{ w: "I'm", start: 0.28, end: 0.4 }, ws[1]]);
   assert.equal(startOnSpeech(ws, 0), ws, 'speech from the start: unchanged');
-  assert.equal(startOnSpeech(ws, 0.4), ws, 'no room before the next word: unchanged');
+  assert.deepEqual(startOnSpeech(ws, 0.4), [{ w: "I'm", start: 0.4, end: 0.58 }, { w: 'Adam', start: 0.6, end: 0.88 }], 'no room before the next word: it moves back');
   assert.deepEqual(startOnSpeech([], 0.3), []);
 });
 
@@ -85,6 +94,14 @@ test('startOnSpeech spreads several early words from the onset to the first word
   assert.deepEqual(out.map((w) => w.start), [0.28, 0.38, 0.48]);
   assert.ok(out[0].end < out[1].start && out[1].end < out[2].start);
   assert.equal(out[2], ws[2]);
+});
+
+test('startOnSpeech with no room moves later words back only as far as they would overlap', () => {
+  const ws = [['Oh', 0, 0.21], ['yeah', 0.23, 0.77], ['and', 0.79, 1.05], ['AI', 1.07, 1.28], ['ran', 1.7, 1.9]].map(([w, start, end]) => ({ w, start, end }));
+  const out = startOnSpeech(ws, 0.72);
+  assert.deepEqual(out.map((w) => w.start), [0.72, 0.92, 1.12, 1.4, 1.7]);
+  assert.equal(out[4], ws[4]);
+  assert.ok(out.every((w, i) => w.end > w.start && (i === 0 || w.start > out[i - 1].end)));
 });
 
 test('innerBoundaries marks the joins inside a word the voice says as several', () => {

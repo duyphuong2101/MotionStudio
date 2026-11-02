@@ -7,7 +7,7 @@ import { DIRS, readJson, writeJson, loadStudioConfig } from '../engine/core.mjs'
 import {
   loadTemplate, validateBrief, saveBrief, updateBrief, setStatus, jobFile, commitBase, humanEdit, mergeRespectingLocks, diffLocks, editDirtyFrom,
 } from '../engine/jobs.mjs';
-import { LOOKS, LOOK_NAMES, BRAND_LOOK, lookBrand, lookProblem } from '../engine/looks.mjs';
+import { LOOKS, LOOK_NAMES, BRAND_LOOK, lookBrand, lookProblem, scriptBrand, effectsProblems } from '../engine/looks.mjs';
 import { validateBrand, motionProfile, MOTIONS, BACKDROPS, WIPES, CUT_SOUNDS } from '../engine/brand.mjs';
 import { MUSIC } from '../engine/library.mjs';
 import { validateScript } from '../engine/script.mjs';
@@ -241,3 +241,35 @@ for (const name of LOOK_NAMES) {
     }
   });
 }
+
+/* ---------- per-video effects ---------- */
+
+test('script effects win over the brand and the look; false or "none" turns one off', () => {
+  const brand = { name: 'B', leaks: true, shine: true, sfx: { cut: 'hit', gainDb: -18 } };
+  const out = scriptBrand({ look: 'premium', effects: { leaks: false, carry: true, sfx: 'none', backdrop: 'aurora' } }, brand);
+  assert.equal('leaks' in out, false);
+  assert.equal('sfx' in out, false);
+  assert.equal(out.carry, true);
+  assert.equal(out.shine, true, 'a field the effects leave out stays as the brand set it');
+  assert.equal(out.backdrop, 'aurora');
+  assert.equal(scriptBrand({}, brand), brand, 'no effects and no look: the brand itself');
+});
+
+test('script effects are checked by name and value', () => {
+  assert.deepEqual(effectsProblems(undefined), []);
+  assert.deepEqual(effectsProblems({ leaks: true, sfx: { cut: 'whoosh', gainDb: -24 } }), []);
+  assert.deepEqual(effectsProblems({ glow: true }), ['effects.glow is not one of leaks, carry, shine, confetti, backdrop, sfx']);
+  assert.deepEqual(effectsProblems({ leaks: 'yes' }), ['effects.leaks must be true or false']);
+  assert.equal(effectsProblems({ sfx: { cut: 'boom', gainDb: -3 } }).length, 1);
+  assert.ok(validateScript({ ...script(), effects: { backdrop: 'stars' } }, loadTemplate('explainer').beats).errors.some((e) => e.startsWith('effects.backdrop')));
+});
+
+test('a person\'s effects edit is locked and kept on the next merge', () => {
+  const fx = { effects: { leaks: true } };
+  const { doc, changed } = humanEdit('script', script(), { ...script(), ...fx }, 'anna');
+  assert.deepEqual(changed, ['effects']);
+  assert.equal(editDirtyFrom('script', doc, changed), 5);
+  const { doc: merged, kept } = mergeRespectingLocks('script', doc, script());
+  assert.deepEqual(merged.effects, { leaks: true });
+  assert.deepEqual(kept, ['effects']);
+});

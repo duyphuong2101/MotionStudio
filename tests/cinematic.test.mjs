@@ -466,7 +466,7 @@ test('the carrier rests under each anchor, moves only over the cut and takes the
   for (const f of ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js']) fs.copyFileSync(path.join(gsapDir, f), path.join(dir, 'vendor', f));
   const brand = { ...BRAND, motion: 'cinematic', carry: true, fonts: { display: 'Arial', body: 'Arial' } };
   const stat = (id, o) => S(id, 'stat', { kicker: 'Online revenue', value: 9.7, format: 'pct', text: 'growth', ...o });
-  const scenes = [stat('a'), S('b', 'bars', { title: 'Delivered against committed', items: [{ label: 'A', value: 2 }, { label: 'B', value: 1 }] }), stat('c', { theme: 'accent' }), stat('d')];
+  const scenes = [stat('a'), S('b', 'bars', { title: 'Delivered\nagainst committed', items: [{ label: 'A', value: 2 }, { label: 'B', value: 1 }] }), stat('c', { theme: 'accent' }), stat('d'), S('e', 'bars', { title: 'Mobile draws level with desktop', items: [{ label: 'A', value: 2 }, { label: 'B', value: 1 }] })];
   const file = path.join(dir, 'carry.html');
   fs.writeFileSync(file, await render('data-story', scenes, brand));
   let opened;
@@ -477,7 +477,7 @@ test('the carrier rests under each anchor, moves only over the cut and takes the
       const at = (x) => { window.seek(x); const b = C.getBoundingClientRect(), cs = getComputedStyle(C); return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), op: Math.round(+cs.opacity * 100) / 100, bg: cs.backgroundColor }; };
       return window.__studio.scenes.map((sc) => ({ id: sc.id, mid: at((sc.start + sc.end) / 2), late: at(sc.end - 0.3), start: at(sc.start), early: at(sc.start + 0.4) }));
     });
-    const [a, b, c, d] = r;
+    const [a, b, c, d, e] = r;
     assert.equal(a.mid.op, 1, 'shown on the first scene');
     for (const s of [b, c, d]) {
       assert.deepEqual([s.early.x, s.early.y, s.early.w], [s.mid.x, s.mid.y, s.mid.w], `${s.id}: settled on its anchor once the cut is over`);
@@ -485,9 +485,34 @@ test('the carrier rests under each anchor, moves only over the cut and takes the
       assert.deepEqual([prev.late.x, prev.late.y], [prev.mid.x, prev.mid.y], `${prev.id}: still before the cut`);
     }
     assert.ok(b.mid.y > a.mid.y, 'the bars title sits lower than the stat kicker');
+    // A title broken over two lines is still left-aligned: the bar rests under its start, not mid-frame.
+    assert.ok(b.mid.x < 400, `under the start of a two-line title: ${b.mid.x}`);
+    assert.ok(e.mid.x < 400, `under the start of a long one-line title whose middle is near the frame's: ${e.mid.x}`);
     assert.ok(b.start.y > a.mid.y && b.start.y < b.mid.y, `on its way at the cut: ${JSON.stringify(r)}`);
     assert.notEqual(c.mid.bg, a.mid.bg, 'ink on the accent scene');
     assert.equal(d.mid.bg, a.mid.bg);
+  } finally {
+    await opened.browser.close();
+  }
+});
+
+test('a title card with its own line gets no carrier bar under its heading, with or without a subtitle; one with a kicker keeps it', { timeout: 120000 }, async (t) => {
+  const cfg = loadStudioConfig();
+  const require = createRequire(import.meta.url);
+  const gsapDir = path.dirname(require.resolve('gsap/dist/gsap.min.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-carry-title-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(dir, 'vendor'));
+  for (const f of ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js']) fs.copyFileSync(path.join(gsapDir, f), path.join(dir, 'vendor', f));
+  const brand = { ...BRAND, motion: 'cinematic', carry: true, fonts: { display: 'Arial', body: 'Arial' } };
+  const scenes = [S('open', 'title', { title: 'Chicago.', theme: 'dark' }), S('ask', 'title', { title: 'Chicago has a king.', subtitle: 'Do you know who he is?', theme: 'dark' }), S('road', 'title', { title: 'A roadmap', kicker: 'Roadmap' }), S('a', 'step', { title: 'Plan', icon: 'chat' })];
+  const file = path.join(dir, 'title.html');
+  fs.writeFileSync(file, await render('explainer', scenes, brand));
+  let opened;
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(loadTemplate('explainer').beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
+  try {
+    const op = await opened.page.evaluate(() => window.__studio.scenes.map((sc) => { window.seek((sc.start + sc.end) / 2); return +getComputedStyle(document.getElementById('carrier')).opacity; }));
+    assert.deepEqual(op.map((x) => Math.round(x)), [0, 0, 1, 1], JSON.stringify(op));
   } finally {
     await opened.browser.close();
   }

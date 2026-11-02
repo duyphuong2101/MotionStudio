@@ -234,7 +234,17 @@ const CUE_TIMES = `
     }
     // At least 1.2 s per shot, so a click and its highlight can play before the next shot comes in.
     for (let k = 1; k < n; k++) T[k] = Math.min(Math.max(T[k], T[k - 1] + 1.2), e - 1.2 * (n - k));`;
-const shotJs = (cued) => `
+// Written only when a shot scene of the script sets tilt, so every other page stays byte for byte the same.
+const TILT_IN = `
+    // A tilted scene swings the window in to an angle, then turns it slowly toward flat while the voice runs.
+    if (sc.tilt) {
+      tl.to('#app', { rotationY: sc.tilt * 16, rotationX: -4, scale: 0.95, transformPerspective: 2200, duration: 0.9, ease: XIO }, s - 0.2)
+        .to('#app', { rotationY: sc.tilt * 5, rotationX: -1.5, scale: 0.98, duration: Math.max(0.5, e - s - 0.7), ease: 'sine.inOut' }, s + 0.7);
+    } else if (prev && prev.tilt) tl.to('#app', { rotationY: 0, rotationX: 0, scale: 1, duration: 0.8, ease: XIO }, s - 0.2);
+`;
+const TILT_OUT = `
+    if (sc.tilt) tl.set('#app', { rotationY: 0, rotationX: 0 }, e + 0.5);`;
+const shotJs = (cued, tilted) => `
   const SHOT_MOVE = { quick: 0.55, normal: 0.9, focus: 1.1 };
   let shotUp = false, shotLayer = null, shCur = { x: 960, y: 620 };
   const hideShots = (t) => {
@@ -246,7 +256,7 @@ const shotJs = (cued) => `
     const prev = idx > 0 ? D.scenes[idx - 1] : null;
     if (!prev || (prev.kind !== 'ui' && prev.kind !== 'shot')) tl.to('#app', { opacity: 1, scale: 1, x: 0, y: 0, duration: 0.8 }, s - 0.2);
     else if (prev.zoom === 'assistant') tl.to('#app', { scale: 1, x: 0, y: 0, duration: 0.8, ease: XIO }, s + 0.15);
-    const n = sc.shots.length, slot = (e - s - 0.15) / n, move = SHOT_MOVE[sc.pace] || SHOT_MOVE.normal;${cued ? CUE_TIMES : ''}
+${tilted ? TILT_IN : ''}    const n = sc.shots.length, slot = (e - s - 0.15) / n, move = SHOT_MOVE[sc.pace] || SHOT_MOVE.normal;${cued ? CUE_TIMES : ''}
     sc.shots.forEach((sh, k) => {
       ${cued ? 'const t0 = T[k], slot = (k + 1 < n ? T[k + 1] : e) - t0, layer = $(sh.layer);' : 'const t0 = s + 0.15 + slot * k, layer = $(sh.layer);'}
       if (!shotUp && k === 0 && (!prev || (prev.kind !== 'ui' && prev.kind !== 'shot'))) {
@@ -293,8 +303,11 @@ const shotJs = (cued) => `
     if (next === 'ui' || next === 'shot') return;
     // A beat or another template's scene follows: the window leaves as it does after a ui scene (a cta fades it itself).
     if (next === 'beat' || foreign(idx + 1)) tl.to('#app', { opacity: 0, scale: 0.94, duration: 0.5, ease: XI }, e - 0.25);
-    hideShots(e + 0.5);
+    hideShots(e + 0.5);${tilted ? TILT_OUT : ''}
   };`;
+
+// A tilted shot scene turns the window in depth (+1 faces right, -1 left); none and absent keep it flat.
+const TILTS = { left: 1, right: -1 };
 
 /** Kit page parts: the app window, the beat layer, one group per scene and the shared icon layer. */
 export function parts({ brand, script, icons }) {
@@ -312,6 +325,7 @@ export function parts({ brand, script, icons }) {
       rows: (t.rows || []).length, analytics: !!t.analytics, bars: (t.analytics?.bars || []).length, kpis: (t.analytics?.kpis || []).length,
       approval: !!t.approval, facts: (t.approval?.facts || []).length, approve: !!t.approval?.approve, result: !!t.result, source: !!t.source,
     })),
+    ...(sc.kind === 'shot' && TILTS[sc.tilt] ? { tilt: TILTS[sc.tilt] } : {}),
     ...(sc.kind === 'shot' ? { shots: (sc.shots || []).map((sh, k) => ({
       layer: `shot-${sc.id}-${k}`, cam: camera(sh.focus, IMG), focus: sh.focus || null,
       cursor: sh.cursor || null, click: !!sh.click && !!sh.cursor, highlight: !!sh.highlight && !!sh.focus,
@@ -320,7 +334,8 @@ export function parts({ brand, script, icons }) {
   }));
   // Everything a shot scene adds to the page is written only when the script has one, so other pages stay byte for byte the same.
   const shotScenes = script.scenes.filter((s) => s.kind === 'shot');
-  const hasShots = shotScenes.length > 0, hasCue = shotScenes.some((s) => (s.shots || []).some((sh) => sh.cue));
+  const hasShots = shotScenes.length > 0, hasCue = shotScenes.some((s) => (s.shots || []).some((sh) => sh.cue)),
+    hasTilt = shotScenes.some((s) => TILTS[s.tilt]);
   const shotLayer = hasShots ? `
     <div id="shots"><div id="shview"><div id="shcam">${shotScenes.flatMap((s) => (s.shots || []).map((sh, k) =>
     `<img class="shimg" id="shot-${s.id}-${k}" src="${asset(sh.asset)}" alt="">`)).join('')}<div id="shhl"></div><div id="shring"></div>
@@ -578,7 +593,7 @@ function uiStory() {
     const bottom = el.offsetTop + el.offsetHeight + 16;
     const want = Math.min(0, logH - bottom);
     if (want < logY) { tl.to('#log', { y: want, duration: 0.45, ease: XIO }, at); logY = want; }
-  };${hasShots ? shotJs(hasCue) : ''}
+  };${hasShots ? shotJs(hasCue, hasTilt) : ''}
 
   return (sc, s, e, { last, i: idx, g }) => {
     if (sc.kind === 'ui') liftCap(sc);
@@ -627,7 +642,8 @@ ${hasShots ? "    if (sc.kind === 'shot') return shotScene(sc, s, e, idx, last);
     // After a shot the screenshot leaves as this scene's view comes in, or at once when the view stays.
     const fromShot = shotUp;
     if (fromShot && !(sc.layout && sc.layout !== 'same')) add(0.01, (t) => hideShots(t));` : ''}
-    if (idx > 0 && D.scenes[idx - 1].kind !== 'ui') add(0.01, (t) => tl.to('#app', { opacity: 1, scale: 1, x: 0, y: 0, duration: 0.8 }, t - 0.35));
+    if (idx > 0 && D.scenes[idx - 1].kind !== 'ui') add(0.01, (t) => tl.to('#app', { opacity: 1, scale: 1, x: 0, y: 0, duration: 0.8 }, t - 0.35));${hasTilt ? `
+    if (idx > 0 && D.scenes[idx - 1].tilt) add(0.01, (t) => tl.to('#app', { rotationY: 0, rotationX: 0, scale: 1, duration: 0.8, ease: XIO }, t - 0.35));` : ''}
     const ni = sc.nav ? D.navLabels.indexOf(sc.nav) : -1;
     if (ni >= 0 && ni !== navIdx) {
       const first = navIdx < 0;

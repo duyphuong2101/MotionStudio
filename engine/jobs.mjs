@@ -448,11 +448,12 @@ function carryLocks(prev, oldBeats, newBeats) {
     if (held) out.scenes.push(scene);
   }
   // The look sets the brand overlay, not a template rule, so a person's look carries to any template.
-  if (locks[LOOK_LOCK]) {
-    out.locks[LOOK_LOCK] = locks[LOOK_LOCK];
-    if (prev.look !== undefined) out.look = prev.look;
+  for (const k of TOP_LOCKS) {
+    if (!locks[k]) continue;
+    out.locks[k] = locks[k];
+    if (prev[k] !== undefined) out[k] = prev[k];
   }
-  return out.scenes.length || out.locks[LOOK_LOCK] ? out : null;
+  return out.scenes.length || TOP_LOCKS.some((k) => out.locks[k]) ? out : null;
 }
 
 /**
@@ -526,6 +527,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const BULLET_ASSET_LOCK = 'bullets.asset';
 // Lock key for the script's look (engine/looks.mjs): one top-level field, kept like a scene field.
 const LOOK_LOCK = 'look';
+// The script's top-level fields a person sets (look, per-video effects): each its own lock, kept whatever the template.
+const TOP_LOCKS = [LOOK_LOCK, 'effects'];
 const withoutAssets = (bullets) => (Array.isArray(bullets) ? bullets.map((b) => (b && typeof b === 'object' ? { ...b, asset: undefined } : b)) : bullets);
 
 export function diffLocks(kind, before, after) {
@@ -539,7 +542,7 @@ export function diffLocks(kind, before, after) {
     const bIds = (before?.scenes || []).map((s) => s.id);
     const aIds = (after?.scenes || []).map((s) => s.id);
     if (!same(bIds, aIds)) keys.push('scenes');
-    if (!same(before?.look, after?.look)) keys.push(LOOK_LOCK);
+    for (const k of TOP_LOCKS) if (!same(before?.[k], after?.[k])) keys.push(k);
     const byId = Object.fromEntries((before?.scenes || []).map((s) => [s.id, s]));
     for (const s of after?.scenes || []) {
       const old = byId[s.id];
@@ -664,9 +667,10 @@ export function mergeRespectingLocks(kind, existing, draft) {
   });
   const doc = { ...draft, scenes };
   // A look the person picked (or cleared) stays, whatever template the scenes follow.
-  if (locks[LOOK_LOCK]) {
-    if (existing.look === undefined) delete doc.look; else doc.look = existing.look;
-    kept.push(LOOK_LOCK);
+  for (const k of TOP_LOCKS) {
+    if (!locks[k]) continue;
+    if (existing[k] === undefined) delete doc[k]; else doc[k] = existing[k];
+    kept.push(k);
   }
   // A carried lock the new script did not use lapses, so it cannot pin a later scene of another kind.
   doc.locks = carried ? Object.fromEntries(kept.map((k) => [k, locks[k]])) : locks;

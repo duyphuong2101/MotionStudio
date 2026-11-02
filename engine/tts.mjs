@@ -180,7 +180,10 @@ function wavVoicedSpan(file) {
 // How far (s) from its estimated place a punctuation mark may be pinned to a pause the voice really makes.
 const PIN_REACH = 0.7;
 // Bumped when kokoroWords changes, so cached lines get their word times again from the cached audio.
-const KOKORO_WORDS_V = 5;
+const KOKORO_WORDS_V = 8;
+// Seconds of pause length a pin gives up per second it lies from the estimate: in a list ("speed, Auto-Ship, security,")
+// the pauses are alike, and the longest one in reach is often the next comma's.
+const PIN_DRIFT = 0.2;
 
 /**
  * The word boundaries inside one script word that the voice says as several (brand voice.say: "AMAD" → "Eh Em Eh Dee"),
@@ -200,9 +203,9 @@ const CLEAR_PAUSE = 0.1;
 
 /**
  * Kokoro reports no word timing. Each word is weighted by its letters (digits count more) plus a pause for its
- * trailing punctuation; every punctuation mark is pinned to the longest real pause in the audio near where the
- * weights put it, then any clear pause still free is pinned to the word boundary nearest to it. The words between
- * two pins are spread over that stretch only, so a pause never lets the words after it drift.
+ * trailing punctuation; the punctuation marks are pinned together, in order, to the real pauses in the audio near
+ * where the weights put them (pinScore), then any clear pause still free is pinned to the word boundary nearest to it.
+ * The words between two pins are spread over that stretch only, so a pause never lets the words after it drift.
  */
 export function kokoroWords(text, samples, rate = KOKORO_RATE, { inner = null } = {}) {
   const tokens = wordsOf(text);
@@ -227,23 +230,30 @@ export function kokoroWords(text, samples, rate = KOKORO_RATE, { inner = null } 
     return at;
   };
   const pauses = voicedPauses(samples, rate);
+  // The marks are pinned together, in order: the chain of pins with the highest total pinScore (each against where the
+  // weights put its mark after the previous pin) wins, so in a list every comma keeps its own pause.
+  const marks = tokens.slice(0, -1).map((w, i) => (mark(w) ? i : -1)).filter((i) => i >= 0);
+  const chains = [];
+  let top = null;
+  for (const i of marks) {
+    const found = [];
+    pauses.forEach((p, k) => {
+      let pick = null;
+      for (const prev of [null, ...chains.filter((c) => c.k < k)]) {
+        const start = prev ? pauses[prev.k].end : span.start, first = prev ? prev.i + 1 : 0;
+        if (p.start <= start) continue;
+        const est = start + ((span.end - start) * sum(first, i + 1)) / (sum(first, tokens.length) || 1);
+        if (p.end < est - PIN_REACH || p.start > est + PIN_REACH) continue;
+        const score = (prev ? prev.score : 0) + pinScore(p, est, mark(tokens[i]) === 6);
+        if (!pick || score > pick.score) pick = { i, k, score, back: prev };
+      }
+      if (pick) found.push(pick);
+    });
+    for (const c of found) { chains.push(c); if (!top || c.score > top.score) top = c; }
+  }
   const used = new Set();
   const pins = [];
-  let from = 0, start = span.start, first = 0;
-  for (let i = 0; i < tokens.length - 1; i++) {
-    if (!mark(tokens[i])) continue;
-    const est = start + ((span.end - start) * sum(first, i + 1)) / (sum(first, tokens.length) || 1);
-    let best = -1;
-    for (let k = from; k < pauses.length; k++) {
-      const p = pauses[k];
-      if (p.start <= start || p.end < est - PIN_REACH || p.start > est + PIN_REACH) continue;
-      if (best < 0 || p.end - p.start > pauses[best].end - pauses[best].start) best = k;
-    }
-    if (best < 0) continue;
-    pins.push({ i, ...pauses[best] });
-    used.add(best);
-    from = best + 1; start = pauses[best].end; first = i + 1;
-  }
+  for (let c = top; c; c = c.back) { pins.unshift({ i: c.i, ...pauses[c.k] }); used.add(c.k); }
   pauses.forEach((p, k) => {
     if (used.has(k) || p.end - p.start < CLEAR_PAUSE) return;
     const at = spread(pins);
@@ -258,6 +268,11 @@ export function kokoroWords(text, samples, rate = KOKORO_RATE, { inner = null } 
   });
   return spread(pins).map((at, i) => ({ w: tokens[i], at: round(at) }));
 }
+
+// A sentence end (strong) counts its pause twice, as Kokoro pauses longest there; every pin earns PIN_BONUS, so a chain
+// does not give up a comma's pause to let a period take a slightly longer one further on.
+const PIN_BONUS = 0.15;
+const pinScore = (p, est, strong) => PIN_BONUS + (p.end - p.start) * (strong ? 2 : 1) - PIN_DRIFT * Math.abs(p.start - est);
 
 async function speakKokoro(dir, text, voice, speed, inner = null) {
   const lang = kokoroLang(voice);

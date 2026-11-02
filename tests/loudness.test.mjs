@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { voicedSpans, measureFilter, parseEbur128, matchGains, clipGains, measureLoudness, LOUDNESS_DEFAULTS } from '../engine/loudness.mjs';
 import { footageArgs } from '../engine/pipeline.mjs';
-import { ffmpeg } from '../engine/media.mjs';
+import { ffmpeg, probeMedia } from '../engine/media.mjs';
 import { pacing } from '../engine/review.mjs';
 
 const SUMMARY = (i, p) => `[Parsed_ebur128_1 @ 0000] Summary:
@@ -87,15 +87,28 @@ test('nothing is measured when the match is off or there is nothing to match', a
   assert.equal(await clipGains([], { file: missing.file, words: [] }), null);
 });
 
-test('footage.wav args are unchanged without a gain, and carry volume with one', () => {
+test('footage.wav args carry no volume without a gain, and carry volume with one', () => {
   const clip = { id: 'a', file: 'a.mp4', from: 1, seconds: 2 };
   const timing = { scenes: [{ id: 'a', start: 0.5, end: 2.5 }], duration: 3 };
   const today = ['-y', '-ss', '1', '-t', '2', '-i', 'a.mp4', '-filter_complex',
-    '[0:a]aresample=48000,afade=t=in:d=0.08,afade=t=out:st=1.880:d=0.12,adelay=500:all=1[a0];[a0]amix=inputs=1:duration=longest:normalize=0,apad,atrim=0:3[out]',
+    '[0:a]aresample=48000,afade=t=in:d=0.08,afade=t=out:st=1.880:d=0.12,adelay=500:all=1,asetpts=N/SR/TB[a0];[a0]amix=inputs=1:duration=longest:normalize=0,apad,atrim=0:3[out]',
     '-map', '[out]', '-ac', '1', '-ar', '48000', 'out.wav'];
   assert.deepEqual(footageArgs([clip], timing, 'out.wav'), today);
   assert.deepEqual(footageArgs([{ ...clip, gainDb: 0 }], timing, 'out.wav'), today);
   assert.match(footageArgs([{ ...clip, gainDb: -4.5 }], timing, 'out.wav')[8], /^\[0:a\]aresample=48000,volume=-4\.5dB,afade=t=in/);
+});
+
+test('a clip cut from the middle of an mp4 keeps its silence before the scene in footage.wav (real ffmpeg)', async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-delay-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const clip = path.join(tmp, 'clip.mp4'), out = path.join(tmp, 'footage.wav');
+  await ffmpeg(['-y', '-f', 'lavfi', '-i', 'color=c=gray:s=160x90:r=30:d=12', '-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=12',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-shortest', clip], { timeoutMs: 60000 });
+  const c = { id: 'bite', file: clip, from: 4.23, seconds: 5, hasAudio: true };
+  await ffmpeg(footageArgs([c], { scenes: [{ id: 'bite', start: 20, end: 25 }], duration: 30 }, out), { timeoutMs: 60000 });
+  assert.ok(Math.abs((await probeMedia(out)).duration - 30) < 0.05, 'footage.wav lasts the whole video');
+  assert.equal((await measureLoudness(out, { spans: [[0, 19.5]] })).lufs, null, 'silent before the scene');
+  assert.ok((await measureLoudness(out, { spans: [[20.5, 24.5]] })).lufs > -30, 'the clip sound sits in its scene');
 });
 
 test('the pacing row of a sounding clip carries its loudness gain', () => {

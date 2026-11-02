@@ -163,3 +163,42 @@ test('a shot scene after a non-ui scene has its screenshot in the window from th
     assert.deepEqual(await at(s + 0.02), [1, 1], 'the screenshot is in the window from the start');
   } finally { await opened.browser.close(); }
 });
+
+test('a shot scene tilt must be none, left or right', () => {
+  const b = rules('ui-story');
+  const s = uiStoryScript(b); s.scenes[2].tilt = 'up';
+  assert.ok(validateScript(s, b, { assets: ASSETS }).errors.includes('orders: tilt must be none|left|right'));
+  s.scenes[2].tilt = 'left';
+  assert.deepEqual(validateScript(s, b, { assets: ASSETS }).errors, []);
+});
+
+test('a tilted shot turns the window in depth, then toward flat; the next scene is flat again', { timeout: 120000 }, async (t) => {
+  const require = createRequire(import.meta.url);
+  const gsapDir = path.dirname(require.resolve('gsap/dist/gsap.min.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-tilt-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(dir, 'vendor'));
+  fs.mkdirSync(path.join(dir, 'assets'));
+  fs.writeFileSync(path.join(dir, 'assets', 'csr-orders.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4ceMGAAWEAsGjyhVlAAAAAElFTkSuQmCC', 'base64'));
+  for (const f of ['gsap.min.js', 'DrawSVGPlugin.min.js', 'MorphSVGPlugin.min.js', 'TextPlugin.min.js']) fs.copyFileSync(path.join(gsapDir, f), path.join(dir, 'vendor', f));
+  const { dir: tdir, beats } = loadTemplate('ui-story');
+  const { build } = await import(pathToFileURL(path.join(tdir, 'template.mjs')).href);
+  const script = uiStoryScript(beats, [shot()]);
+  script.scenes.splice(3, 0, scene(beats, 'shot', 'flat', { shots: [shot()] }));
+  script.scenes[2].tilt = 'left';
+  script.scenes[2].vo = 'A longer line, so the window has time to turn slowly toward flat.';
+  const timing = estimateTiming(script, cfg.timing, 'en', beats.pace);
+  const file = path.join(dir, 'tilt.html');
+  fs.writeFileSync(file, build({ brief: { format: '16:9' }, brand: BRAND, script, timing, size: sizeFor(beats, '16:9') }));
+  let opened;
+  try { opened = await openComposition(file, { channel: cfg.engine.chromeChannel, ...sizeFor(beats, '16:9') }); } catch (err) { if (/Composition|render script/.test(err.message)) throw err; t.skip(`Chrome is not available: ${err.message}`); return; }
+  try {
+    const sc = (id) => timing.scenes.find((x) => x.id === id);
+    const turn = (v) => opened.page.evaluate((x) => { window.seek(x); return window.gsap.getProperty('#app', 'rotationY'); }, v);
+    const o = sc('orders'), f = sc('flat');
+    const early = await turn(o.start + 0.8), late = await turn(o.end - 0.1);
+    assert.ok(early > 10, `the window comes in turned (${early})`);
+    assert.ok(late > 0 && late < early, `it turns toward flat (${late})`);
+    assert.equal(Math.round(await turn(f.start + 1)), 0, 'the next scene is flat');
+  } finally { await opened.browser.close(); }
+});

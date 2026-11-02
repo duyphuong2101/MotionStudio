@@ -3,7 +3,7 @@ import { ICON_NAMES } from '../motion-kit/icons.mjs';
 import { splitKind } from './mix.mjs';
 import { MARK_FIELDS, stripMarks, hasMarkup, markErrors } from './marks.mjs';
 import { PART_RE, DECAL_SIZE } from './model-rules.mjs';
-import { lookProblem } from './looks.mjs';
+import { lookProblem, effectsProblems } from './looks.mjs';
 
 const wordsOf = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
 export const SCENE_ID_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -69,6 +69,7 @@ export function validateScript(script, beats,{ assets = [], icons = ICON_NAMES, 
   if (source) errors.push(...sourceRefProblems(script, source, brief));
   const look = lookProblem(script.look);
   if (look) errors.push(look);
+  errors.push(...effectsProblems(script.effects));
 
   const ids = new Set();
   for (const s of scenes) {
@@ -234,6 +235,14 @@ export function validateData(s, kind, d, icons = ICON_NAMES) {
   if (kind === 'bars' && s.series !== undefined) {
     if (!Array.isArray(s.series) || s.series.length !== 2 || !s.series.every((x) => shortText(x, d.seriesChars))) errs.push(`${s.id}: series must name the two values of every item, e.g. ["Commercial PEX", "Delivery PEX"], each at most ${d.seriesChars} characters`);
     else if (!Array.isArray(s.items) || !s.items.every((x) => finite(x?.value2))) errs.push(`${s.id}: with series, every item needs value2, a number`);
+  }
+  // data-story bars: an item may set its own tone (up or down), which colours that value only.
+  if (kind === 'bars' && Array.isArray(s.items)) s.items.forEach((x, i) => { if (x && x.tone !== undefined && !['up', 'down'].includes(x.tone)) errs.push(`${s.id}.items[${i}]: tone must be "up" (green) or "down" (red)`); });
+  // data-story bars in columns: an optional dashed reference value across the columns.
+  if (kind === 'bars' && s.ref !== undefined) {
+    const r = s.ref;
+    if (s.layout !== 'columns') errs.push(`${s.id}: ref needs layout "columns" (a dashed line across upright bars)`);
+    else if (!r || typeof r !== 'object' || !finite(r.value) || (r.label !== undefined && !shortText(r.label, d.labelChars))) errs.push(`${s.id}: ref must be { "value": 100, "label": "Green zone" }: a number, label at most ${d.labelChars} characters`);
   }
   // data-story line: an optional highlighted span of points and an optional dashed reference value.
   if (kind === 'line') {

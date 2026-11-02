@@ -14,7 +14,7 @@
       "stripes": "One colored stripe per value, cool below the average and warm above; can end as bars above and below the average."
     },
     "fields": {
-      "items": "JSON list of bars, largest first: [{ \"label\": \"Product A\", \"value\": 31200 }]; with series, add \"value2\" to each.",
+      "items": "JSON list of bars, largest first: [{ \"label\": \"Product A\", \"value\": 31200 }]; with series, add \"value2\" to each. On bars an item may set \"tone\": \"up\" (green) or \"down\" (red) to colour its value only, e.g. the faster time.",
       "stat.text": "What the number counts, e.g. \"orders this week\".",
       "periods": "JSON list of period labels in time order, e.g. [\"2005\", \"2010\", \"2015\", \"2020\"]. 2-12 periods.",
       "series": "JSON list of bars, each with one value per period: [{ \"label\": \"Coal\", \"values\": [2013, 1847, 1352, 774] }]. Copy every value from the source.",
@@ -25,7 +25,7 @@
       "race.vo": "Give each period about a second of voice: the bars move while the line is spoken.",
       "theme": "light (default), dark (the brand dark colour) or accent (the brand secondary colour). Mix them so the film is not all white.",
       "band": "JSON highlight over a span of points, counted from 0: { \"from\": 2, \"to\": 2, \"label\": \"Q3\" }. Label at most 24 characters.",
-      "ref": "JSON dashed reference line at one value: { \"value\": 50, \"label\": \"50% target\" }. Label at most 24 characters.",
+      "ref": "JSON dashed reference line at one value: { \"value\": 50, \"label\": \"50% target\" }. Label at most 24 characters. On bars (layout \"columns\" only) it is a dashed line across the columns, e.g. { \"value\": 100, \"label\": \"Green zone\" }.",
       "bars.series": "Optional: two names for two bars per item, e.g. [\"Commercial PEX\", \"Delivery PEX\"]; every item then needs \"value2\".",
       "bars.layout": "Optional: \"columns\" draws upright bars side by side with the value above each and the label below (good for 2-4 items with two series); default rows."
     }
@@ -158,7 +158,8 @@
         "sfx",
         "tone",
         "series",
-        "layout"
+        "layout",
+        "ref"
       ]
     },
     "race": {
@@ -483,7 +484,8 @@
       "labelChars": 24
     },
     "bars": {
-      "seriesChars": 24
+      "seriesChars": 24,
+      "labelChars": 24
     }
   }
 }

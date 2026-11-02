@@ -25,7 +25,7 @@ import {
 } from '../engine/sequences.mjs';
 import { validateScript, validateSource, assertNoDrafts } from '../engine/script.mjs';
 import { validateBrand } from '../engine/brand.mjs';
-import { LOOK_NAMES, lookBrand, lookProblem } from '../engine/looks.mjs';
+import { LOOK_NAMES, lookBrand, lookProblem, scriptBrand } from '../engine/looks.mjs';
 import { saveAsset, deleteAsset, maxBytesFor, MAX_ASSET_BYTES, MAX_VIDEO_BYTES, ASSET_TYPES } from '../engine/assets.mjs';
 import { listVoices, previewVoice, voiceFor, voiceProblem } from '../engine/tts.mjs';
 import { MUSIC, ensureMusic, musicPath, SFX, ensureSfx, sfxPath } from '../engine/library.mjs';
@@ -417,7 +417,7 @@ function jobDetail(project, id) {
     running: running.get(`${project}/${id}`) || null,
     music: musicFor(project, script?.look),
     // The Timeline's cut markers: the brand's cut sound under the script's look, for scenes that set none.
-    cutSound: lookBrand(lookProblem(script?.look) ? null : script?.look, loadBrand(project)).sfx?.cut || 'none',
+    cutSound: scriptBrand(lookProblem(script?.look) ? { ...script, look: null } : script, loadBrand(project)).sfx?.cut || 'none',
     looks: LOOK_NAMES,
     template: beats,
     help: sceneHelp(beats),

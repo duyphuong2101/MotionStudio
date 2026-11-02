@@ -270,12 +270,23 @@ function carryCuts() {
     if (!g || [...g.querySelectorAll('video, img')].some(big)) return null;
     const a = g.querySelector('[data-anchor]') || g.querySelector('.kick') || g.querySelector('.hd');
     if (!a) return null;
-    // The text's own box: a heading is a block as wide as its column.
-    const rg = document.createRange();
-    rg.selectNodeContents(a);
-    const r = rg.getBoundingClientRect();
-    if (r.width < 4 || r.height < 4) return null;
-    const w = Math.min(r.width, 180 * U), mid = Math.abs(r.left + r.width / 2 - st.left - D.W / 2) < 0.05 * D.W;
+    // A title card draws its own line under its heading (or under its subtitle): a second bar there would double it.
+    if (a.matches('.hd') && g.querySelector('.tline')) return null;
+    // The text's own box, from its text only: a heading is a block as wide as its column, and so is each line of a
+    // title broken over two lines, which once put the bar in the middle of the frame.
+    const rg = document.createRange(), tw = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
+    let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+    for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+      if (!n.textContent.trim()) continue;
+      rg.selectNodeContents(n);
+      for (const q of rg.getClientRects()) if (q.width > 0) { L = Math.min(L, q.left); T = Math.min(T, q.top); R = Math.max(R, q.right); B = Math.max(B, q.bottom); }
+    }
+    const r = { left: L, top: T, width: R - L, height: B - T, bottom: B };
+    if (!(r.width >= 4 && r.height >= 4)) return null;
+    // Centred text gets a centred bar: by its own alignment, or by where a short line sits (a long left-aligned title
+    // can have its middle near the frame's).
+    const near = Math.abs(r.left + r.width / 2 - st.left - D.W / 2) < 0.05 * D.W;
+    const w = Math.min(r.width, 180 * U), mid = getComputedStyle(a).textAlign === 'center' || (near && r.width < 0.6 * D.W);
     return { x: (mid ? r.left + (r.width - w) / 2 : r.left) - st.left, y: r.bottom - st.top + 10 * U, width: w, backgroundColor: getComputedStyle(g).backgroundColor === accent ? D.ink : accent };
   });
   tl.set(C, { opacity: 0 }, 0);
