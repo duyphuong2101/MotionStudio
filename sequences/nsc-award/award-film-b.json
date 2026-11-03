@@ -1,0 +1,33 @@
+{
+  "id": "award-film-b",
+  "project": "nsc-award",
+  "title": "Digital Commerce_NSC Project Awards 2026",
+  "format": "16:9",
+  "parts": [
+    "a1-hook",
+    "a2-ownership",
+    "a3-roadmap-b",
+    "s5-numbers-b",
+    "a4-ai-close",
+    "a4b-thanks",
+    "a5-logo"
+  ],
+  "transition": "luma-fade",
+  "transitions": [
+    "luma-fade",
+    "luma-fade",
+    "luma-fade",
+    "luma-fade",
+    "luma-fade",
+    "dip-black"
+  ],
+  "musicBed": true,
+  "targetDuration": 200,
+  "createdBy": "claude-for-phuong.nguyen6",
+  "createdAt": "2026-11-02T10:28:33.047Z",
+  "updatedAt": "2026-11-02T10:54:26.422Z",
+  "pad": {
+    "head": 2,
+    "tail": 3
+  }
+}
