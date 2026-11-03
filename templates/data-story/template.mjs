@@ -63,6 +63,8 @@ export function parts({ brand, script, size }) {
   const C = chartColors(brand);
   const stage = motionProfile(brand).layout === 'stage';
   const A = contentArea(brand, g);
+  // Columns shrink so a heading, the chart and its note fit between the logo and the subtitles (about 400 of 1080 for the rest).
+  const colH = Math.max(260, Math.min(400, 1080 - A.top - A.bottom - 400));
   // A portrait chart is narrow: its end value keeps the standard size so the plot keeps its width.
   const LV = stage && !port ? LVAL.stage : LVAL.std, MK = stage ? MARK.stage : MARK.std;
   const chartH = short ? 520 : port ? 700 : 420;
@@ -223,7 +225,7 @@ export function parts({ brand, script, size }) {
 .bar.two{display:grid;grid-template-columns:${px(port ? 300 : 440)} 1fr;align-items:center;gap:${px(28)}}.bar.two .bl{font-size:${px(38)};line-height:1.15}
 .bp{display:grid;grid-template-columns:1fr auto;align-items:center;gap:${px(20)};font-size:${px(34)}}.bp + .bp{margin-top:${px(10)}}.bp .bt{margin-top:0;height:${px(22)}}.bp b{font-weight:700;min-width:${px(170)};text-align:right;font-variant-numeric:tabular-nums}` : ''}${hasCols ? `
 .bars.cols{flex-direction:row;align-items:flex-start;justify-content:center;gap:${px(land ? 110 : port ? 36 : 60)}}.col{display:flex;flex-direction:column;align-items:center;gap:${px(22)};flex:0 1 ${px(land ? 440 : port ? 230 : 300)};min-width:0}
-.cps{display:flex;align-items:flex-end;gap:${px(18)};height:${px(port ? 520 : 400)}}.cp{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:${px(14)};height:100%;font-size:${px(port ? 32 : 40)};font-weight:700;font-variant-numeric:tabular-nums}
+.cps{display:flex;align-items:flex-end;gap:${px(18)};height:${px(port ? 520 : colH)}}.cp{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:${px(14)};height:100%;font-size:${px(port ? 32 : 40)};font-weight:700;font-variant-numeric:tabular-nums}
 .cp .ct{width:${px(land ? 96 : port ? 60 : 72)};height:calc(100% - ${px(60)});border-radius:${px(14)} ${px(14)} 0 0;background:rgba(15,23,42,.07);overflow:hidden;display:flex;align-items:flex-end}.cp .ct i{display:block;width:100%;height:0;border-radius:${px(14)} ${px(14)} 0 0}
 .cl{font-size:${px(port ? 32 : 38)};font-weight:600;text-align:center;line-height:1.15}` : ''}${hasBarRef ? `
 .bars.rf{position:relative;align-self:center}.cref{position:absolute;left:-${px(48)};right:-${px(48)};height:0;z-index:2}.cref i{position:absolute;inset:0;border-top:${px(4)} dashed #15803d;opacity:.85}
@@ -263,7 +265,7 @@ ${C.fade ? '.area{opacity:.3}' : '.area{fill:var(--primary2);opacity:.12}'}.dot{
 .acc .big{color:var(--ink);background:none}.acc .box .dsub{color:var(--ink);opacity:.8}.acc .bt{background:rgba(15,23,42,.1)}.acc .bt i{background:var(--ink)!important}
 .acc .grid{stroke:rgba(15,23,42,.14)}.acc .ln{stroke:var(--ink)}.acc .area{fill:var(--ink)}.acc .dot{fill:var(--ink);stroke:var(--ink)}
 .acc .lval{color:var(--ink)!important;background:none}.acc .axis,.acc .rlab{color:var(--ink)}.acc .band{fill:var(--ink);fill-opacity:.1}.acc .ref{stroke:var(--ink)}` : ''}${stage ? `
-.box.center,.box:has(> .bars),.box:has(> .chart){padding:${px(A.top)} ${padX(land ? 170 : 90)} ${px(A.bottom)}}
+.box.center,.box:has(> .bars),.box:has(> .chart){padding:${px(A.top)} ${padX(land ? 170 : 90)} ${px(A.bottom)};justify-content:safe center}
 .box.center .kick{font-size:${px(40)}}.big{font-size:${px(port ? 270 : land ? 300 : 250)}}.big small{font-size:${px(land ? 120 : 100)}}.chg{font-size:${px(62)}}.box.center .dsub{font-size:${px(land ? 56 : 48)}}
 .box:has(> .bars) .dtt,.box:has(> .chart) .dtt{font-size:${px(land ? 100 : port ? 96 : 80)}}.box:has(> .bars) .dsub,.box:has(> .chart) .dsub{font-size:${px(land ? 50 : 44)}}
 .bars{gap:${px(30)}}.bl{font-size:${px(land || port ? 52 : 44)}}.bt{height:${px(36)};border-radius:${px(18)}}.bt i{border-radius:${px(18)}}

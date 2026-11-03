@@ -17,12 +17,31 @@ const base = {
 };
 const files = [{ family: 'Gilroy', file: 'Gilroy-Regular.woff2', weight: 400 }, { family: 'Gilroy', file: 'Gilroy-SemiBold.otf', weight: 600 }];
 
+// A brand guide that allows only a few weights (Gilroy: Regular, Semibold, Bold) sets one weight for every display
+// class (2026-11-03): the kit writes a rule for it after its own; a brand without it changes nothing.
+test('brand.fonts.headingWeight sets every heavy class of the page to that weight', () => {
+  const b = validateBrand({ ...base, fonts: { ...base.fonts, headingWeight: 600 } });
+  assert.equal(b.fonts.headingWeight, 600);
+  assert.equal(validateBrand(base).fonts.headingWeight, undefined);
+  assert.throws(() => validateBrand({ ...base, fonts: { ...base.fonts, headingWeight: 650 } }), /fonts.headingWeight/);
+  const args = { script: { scenes: [{ id: 'a', kind: 'title' }] }, timing: { duration: 3, scenes: [{ id: 'a', start: 0, end: 3 }], words: [] }, size: { width: 1920, height: 1080 }, title: 't', scenes: [{ id: 'a', kind: 'title' }], body: '<div class="sc" id="g-a"><div class="hd">T</div></div>', js: 'const KINDS = {};' };
+  const html = page({ ...args, brand: b });
+  assert.match(html, /\n\.hd,\.kick,\.btn,[^{]*b,strong\{font-weight:600\}/);
+  assert.ok(!page({ ...args, brand: validateBrand(base) }).includes('b,strong{font-weight:'), 'no rule without the field');
+});
+
 test('brand keeps font files, a subtitle style and the corner logo flag', () => {
   const b = validateBrand({ ...base, fonts: { ...base.fonts, files }, subtitles: { size: 40, color: '#262524', bg: '#ffffff' }, logoBug: true });
   assert.equal(b.fonts.files.length, 2);
   assert.equal(b.fonts.files[1].weight, 600);
   assert.deepEqual(b.subtitles, { size: 40, weight: 400, color: '#262524', bg: '#ffffff' });
+  // A lit colour for the word being spoken (2026-11-03) rides along; a bad one is refused.
+  assert.equal(validateBrand({ ...base, subtitles: { size: 40, color: '#262524', bg: '#ffffff', lit: '#ffd400' } }).subtitles.lit, '#ffd400');
+  assert.throws(() => validateBrand({ ...base, subtitles: { size: 40, color: '#262524', lit: 'yellow' } }), /subtitles.lit/);
   assert.equal(b.logoBug, true);
+  // The dark-surface logo carries a soft dark halo, for bright or busy footage under it (2026-11-03).
+  const html = page({ brand: { ...b, logo: 'a.svg', logoDark: 'b.svg' }, script: { scenes: [{ id: 'a', kind: 'title' }] }, timing: { duration: 3, scenes: [{ id: 'a', start: 0, end: 3 }], words: [] }, size: { width: 1920, height: 1080 }, title: 't', scenes: [{ id: 'a', kind: 'title' }], body: '<div class="sc" id="g-a"></div>', js: 'const KINDS = {};' });
+  assert.match(html, /#lbug-d\{filter:drop-shadow\(0 0 \d+px rgba\(0,0,0,\.6\)\) drop-shadow\(0 0 \d+px rgba\(0,0,0,\.55\)\)\}/);
   assert.deepEqual(brandAssets(b), ['Gilroy-Regular.woff2', 'Gilroy-SemiBold.otf']);
   // Without the new fields the brand has none of them.
   const plain = validateBrand(base);
@@ -136,4 +155,25 @@ test('a page can drop the corner logo, as a logo sting does', () => {
   const args = { brand, script, timing, size: { width: 1920, height: 1080 }, title: 't', js: 'const KINDS = {};', body: '<div class="sc fill" id="g-a"></div>', scenes: [{ id: 'a', kind: 'x' }] };
   assert.match(page(args), /id="lbug"/);
   assert.doesNotMatch(page({ ...args, corner: false }), /id="lbug"/);
+});
+
+// A broadcast safe area (2026-11-03): brand.safeArea (percent of the frame) moves the logo bug and the subtitles
+// that far in from the edge, after every other subtitle rule; out of range is refused; absent changes nothing.
+test('brand.safeArea keeps the logo bug and the subtitles inside the safe area', () => {
+  const b = validateBrand({ ...base, subtitles: { size: 40, color: '#262524', bg: '#ffffff' }, logoBug: true, safeArea: 7 });
+  assert.equal(b.safeArea, 7);
+  assert.throws(() => validateBrand({ ...base, safeArea: 20 }), /safeArea must be 3..12/);
+  assert.equal(validateBrand(base).safeArea, undefined);
+  const args = { script: { scenes: [{ id: 'a', kind: 'title' }] }, timing: { duration: 3, scenes: [{ id: 'a', start: 0, end: 3 }], words: [] }, size: { width: 1920, height: 1080 }, title: 't', scenes: [{ id: 'a', kind: 'title' }], body: '<div class="sc" id="g-a"></div>', js: 'const KINDS = {};' };
+  const html = page({ ...args, brand: { ...b, logo: 'a.svg', logoDark: 'b.svg' } });
+  const at = html.indexOf('.subt{left:134px;right:134px;bottom:76px}\n#lbug{left:134px;top:76px}');
+  assert.ok(at > 0, 'the safe-area rules are written');
+  assert.ok(at > html.lastIndexOf('.subt{bottom:'), 'after every other subtitle rule');
+  assert.ok(!page({ ...args, brand: validateBrand({ ...base, logoBug: true }) }).includes('#lbug{left:134px'), 'nothing without the field');
+});
+
+test('brand.safeArea moves the content area down to clear the lower logo bug', () => {
+  assert.equal(contentArea({ logo: 'a.svg', logoBug: true, safeArea: 7 }, geometry({ width: 1920, height: 1080 })).top, 168);
+  assert.equal(contentArea({ logo: 'a.svg', logoBug: true, safeArea: 3 }, geometry({ width: 1920, height: 1080 })).top, 140, 'never above the plain line');
+  assert.equal(contentArea({ logo: 'a.svg', logoBug: true }, geometry({ width: 1920, height: 1080 })).top, 140);
 });

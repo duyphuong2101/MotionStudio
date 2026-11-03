@@ -32,17 +32,27 @@ export function checkBrand(brand) {
   for (const x of f.files || []) {
     if (!FONT.test(x?.family || '') || !FONT_FILE.test(x?.file || '') || !/^[1-9]00$/.test(String(x?.weight ?? 400))) throw new StudioError('brand.fonts.files holds an unusable entry', 400);
   }
+  if (f.headingWeight != null && !/^[1-9]00$/.test(String(f.headingWeight))) throw new StudioError('brand.fonts.headingWeight must be 100..900', 400);
   const bs = brand.subtitles;
   if (bs?.style != null) {
     if (!SUBTITLE_STYLES.includes(bs.style) || (bs.font != null && bs.font !== 'brand' && !SUBTITLE_FONTS[bs.font])
       || (bs.size != null && !(bs.size >= 36 && bs.size <= 80)) || (bs.marker != null && !HEX.test(bs.marker))) {
       throw new StudioError('brand.subtitles holds an unknown style, font, size or marker color', 400);
     }
-  } else if (bs && (!HEX.test(bs.color || '') || (bs.bg != null && !HEX.test(bs.bg)) || !(bs.size >= 20 && bs.size <= 80) || !/^[1-9]00$/.test(String(bs.weight ?? 400)) || (bs.bgOpacity != null && !(bs.bgOpacity >= 0.1 && bs.bgOpacity <= 1)))) {
+  } else if (bs && (!HEX.test(bs.color || '') || (bs.bg != null && !HEX.test(bs.bg)) || (bs.lit != null && !HEX.test(bs.lit)) || !(bs.size >= 20 && bs.size <= 80) || !/^[1-9]00$/.test(String(bs.weight ?? 400)) || (bs.bgOpacity != null && !(bs.bgOpacity >= 0.1 && bs.bgOpacity <= 1)))) {
     throw new StudioError('brand.subtitles must hold a size, a weight and #rrggbb colors', 400);
   }
   for (const k of ['logo', 'logoDark']) if (brand[k] && !IMG_FILE.test(brand[k])) throw new StudioError(`brand.${k} must be an image asset name`, 400);
+  if (brand.safeArea != null && !(Number(brand.safeArea) >= 3 && Number(brand.safeArea) <= 12)) throw new StudioError('brand.safeArea must be 3..12', 400);
   return { c, f };
+}
+
+/** brand.safeArea: the logo bug sits that far from the top-left corner and the subtitles that far from the bottom. */
+function safeAreaCss(pct, g, bug) {
+  const x = Math.round(g.W * pct / 100), y = Math.round(g.H * pct / 100);
+  return `
+.subt{left:${x}px;right:${x}px;bottom:${y}px}${bug ? `
+#lbug{left:${x}px;top:${y}px}` : ''}`;
 }
 
 /** @font-face rules for the brand's own font files (licensed fonts that Google Fonts does not serve). */
@@ -65,11 +75,16 @@ function logoBug(brand, transparent) {
   return `<div id="lbug" aria-hidden="true">${img('lbug-l', light)}${img('lbug-d', dark)}</div>`;
 }
 
+// Every display-weight class of the kit and its templates (700 and 800): brand.fonts.headingWeight sets them all to one weight.
+const HEAVY_CLASSES = '.hd,.kick,.btn,.fi,.flt,.big,.lval,.chg,.snum,.cval,.tt,.stt,.dt,.ln,.bn,.bh,.at,.tm,.pn,.plabel,.cbtn,.full .t,.full .b,.clogo .txt,b,strong';
+
 /** True when page() draws the corner logo: a scene then leaves out its own logo, so a frame shows the logo once. */
 export const hasLogoBug = (brand) => !!logoBug(brand, false);
 
 // The first free line under the corner logo (1080 units): a top-anchored title starts here when the bug shows.
 export const UNDER_BUG = 140;
+const BUG_H = 46;
+const underBug = (brand) => (brand.safeArea ? Math.round(1080 * brand.safeArea / 100) + 2 * BUG_H : UNDER_BUG);
 
 // The content area's bottom over a preset's band is never less than these (the layouts were drawn against them).
 const PRESET_AREA = { port: 480, other: 230 };
@@ -79,7 +94,8 @@ const PRESET_AREA = { port: 480, other: 230 };
  * (its one caption line at the preset's size in this frame, plus a gap; presetBand).
  */
 export const contentArea = (brand, g) => ({
-  top: hasLogoBug(brand) ? UNDER_BUG : 100,
+  // A safe area moves the bug down; the first free line keeps one bug height under it.
+  top: hasLogoBug(brand) ? Math.max(UNDER_BUG, underBug(brand)) : 100,
   bottom: brand.subtitles?.style ? Math.max(g.port ? PRESET_AREA.port : PRESET_AREA.other, presetBand(brand.subtitles, g).top + BAND_GAP) : g.port ? 300 : 210,
 });
 
@@ -733,8 +749,9 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
   const BS = brand.subtitles || null;
   // A brand preset replaces every other subtitle look, so each clip of the brand reads the same.
   const P = BS?.style ? subPreset(BS, g, c) : null;
-  // A brand subtitle style replaces the lead template's: every word shows in one color, no karaoke dimming.
-  const S = P ? null : BS ? subStyle({ ...subs, size: BS.size, weight: BS.weight ?? 400, color: BS.color, lit: BS.color, darkColor: BS.color, darkLit: BS.color, pill: !!BS.bg })
+  // A brand subtitle style replaces the lead template's: every word shows in one color, no karaoke dimming, unless
+  // the brand names a `lit` colour for the word being spoken.
+  const S = P ? null : BS ? subStyle({ ...subs, size: BS.size, weight: BS.weight ?? 400, color: BS.color, lit: BS.lit || BS.color, darkColor: BS.color, darkLit: BS.lit || BS.color, pill: !!BS.bg })
     : subs && subStyle(subs);
   const bug = corner ? logoBug(brand, transparent) : null;
   // Mix-aware lookups are written only into a mixed page, so a single-template page stays byte for byte the same.
@@ -820,7 +837,9 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:var(--b
 .subdark .sw{color:${S.darkColor}}` : ''}${P ? presetCss(P, px, padX) : ''}${BS && !P ? `
 .sw{font-family:var(--body)${BS.bg ? `;background:${boxBg(BS)};border-radius:${px(6)};padding:${px(8)} ${px(22)}${glass}` : ''}}` : ''}${bug ? `
 #lbug{position:absolute;left:${padX(60)};top:${px(48)};z-index:40;height:${px(46)}}
-.lbug{position:absolute;left:0;top:0;height:${px(46)};width:auto;max-width:${px(320)};object-fit:contain;object-position:left top;visibility:hidden}` : ''}
+.lbug{position:absolute;left:0;top:0;height:${px(46)};width:auto;max-width:${px(320)};object-fit:contain;object-position:left top;visibility:hidden}
+#lbug-d{filter:drop-shadow(0 0 ${px(6)} rgba(0,0,0,.6)) drop-shadow(0 0 ${px(18)} rgba(0,0,0,.55))}` : ''}${f.headingWeight ? `
+${HEAVY_CLASSES}{font-weight:${f.headingWeight}}` : ''}
 ${css}${transparent ? '\nhtml,body,#stage{background:transparent!important}#bgc{display:none}' : ''}${M.entrance === 'cine' ? `
 .cw{display:inline-block}` : ''}${M.entrance === 'editorial' ? EDITORIAL_CSS : ''}${panel ? `
 #cutpanel{position:absolute;inset:0;z-index:21;pointer-events:none;background:var(--primary)}#cutpanel.cpd{background:var(--secondary)}` : ''}${veil ? `
@@ -830,11 +849,11 @@ ${css}${transparent ? '\nhtml,body,#stage{background:transparent!important}#bgc{
 #grain{position:absolute;inset:0;width:${W}px;height:${H}px;z-index:25;pointer-events:none;opacity:.07}` : ''}${M.caps === 'lines' && BS?.bg && !P ? `
 .subt{bottom:${px(64)}}
 .sw{line-height:1.25;letter-spacing:.005em;border-radius:${px(8)};padding:${px(9)} ${px(24)} ${px(11)};box-shadow:0 ${px(4)} ${px(18)} rgba(0,0,0,.16)}
-.sw span{opacity:.5}.sw span.hl{background:linear-gradient(transparent 62%,var(--secondary) 62%,var(--secondary) 94%,transparent 94%)}` : ''}${M.caps === 'lines' && !BS && S ? `
+${BS.lit ? `.sw span.hl{color:${BS.lit}}` : `.sw span{opacity:.5}.sw span.hl{background:linear-gradient(transparent 62%,var(--secondary) 62%,var(--secondary) 94%,transparent 94%)}`}` : ''}${M.caps === 'lines' && !BS && S ? `
 .subt{left:${padX(70)};right:${padX(70)};bottom:${px(70)}}
 .sw,.subdark .sw{font-size:${px(g.port ? 50 : 40)};font-weight:700;color:rgba(255,255,255,.7);background:rgba(15,23,42,.72)}` : ''}${M.caps === 'lines' && !BS ? `
 .sw{line-height:1.25;border-radius:${px(10)};padding:${px(8)} ${px(24)} ${px(10)}}
-.sw span{color:#ffffff;opacity:.7}.sw span.hl{color:var(--secondary)}` : ''}${marks ? MARK_CSS : ''}${shines ? SHINE_CSS : ''}${confetti ? CONFETTI_CSS : ''}${reveal === 'lines' ? REVEAL_CSS : ''}${leaks ? `
+.sw span{color:#ffffff;opacity:.7}.sw span.hl{color:var(--secondary)}` : ''}${brand.safeArea ? safeAreaCss(brand.safeArea, g, bug) : ''}${marks ? MARK_CSS : ''}${shines ? SHINE_CSS : ''}${confetti ? CONFETTI_CSS : ''}${reveal === 'lines' ? REVEAL_CSS : ''}${leaks ? `
 #leak{position:absolute;inset:0;z-index:20;pointer-events:none;opacity:0;overflow:hidden}
 #leak i{position:absolute;left:50%;top:50%;width:${px(1500)};height:${px(1500)};margin:${px(-750)} 0 0 ${px(-750)};border-radius:50%}
 #leak i:first-child{background:radial-gradient(circle,rgba(255,170,90,.62) 0%,rgba(255,122,60,.3) 34%,rgba(255,96,64,0) 68%)}

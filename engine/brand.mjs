@@ -193,9 +193,11 @@ function subtitleStyle(s, errors) {
   if (!WEIGHT(weight)) errors.push('subtitles.weight must be 100..900 in steps of 100');
   if (!HEX.test(s.color || '')) errors.push('subtitles.color must be #rrggbb');
   if (s.bg != null && !HEX.test(s.bg)) errors.push('subtitles.bg must be #rrggbb or null');
+  // The word being spoken may take its own colour (e.g. the brand yellow); without it every word stays one colour.
+  if (s.lit != null && s.lit !== '' && !HEX.test(s.lit)) errors.push('subtitles.lit must be #rrggbb');
   const bgOpacity = s.bgOpacity == null ? null : Number(s.bgOpacity);
   if (bgOpacity != null && !(bgOpacity >= 0.1 && bgOpacity <= 1)) errors.push('subtitles.bgOpacity must be 0.1..1');
-  return { size, weight, color: s.color, bg: s.bg ?? null, ...(bgOpacity != null && bgOpacity < 1 ? { bgOpacity } : {}) };
+  return { size, weight, color: s.color, bg: s.bg ?? null, ...(bgOpacity != null && bgOpacity < 1 ? { bgOpacity } : {}), ...(s.lit ? { lit: s.lit } : {}) };
 }
 
 export function validateBrand(input) {
@@ -209,6 +211,9 @@ export function validateBrand(input) {
   if (!FONT.test(b.fonts?.display || '')) errors.push('fonts.display must be a plain font name');
   if (!FONT.test(b.fonts?.body || '')) errors.push('fonts.body must be a plain font name');
   if (b.fonts?.googleFonts && !GF.test(b.fonts.googleFonts)) errors.push('fonts.googleFonts has unexpected characters');
+  // Brand guides that allow only a few weights (e.g. Semibold for headings) set the display weight here; absent, each template keeps its own.
+  const headingWeight = b.fonts?.headingWeight == null || b.fonts.headingWeight === '' ? null : Number(b.fonts.headingWeight);
+  if (headingWeight != null && !WEIGHT(headingWeight)) errors.push('fonts.headingWeight must be 100..900 in steps of 100');
   let hosts = b.sources?.allowedHosts || [];
   if (!Array.isArray(hosts) || hosts.some((h) => !HOST.test(h))) errors.push('sources.allowedHosts must be host names');
   // An empty list follows the site, as a new project's does; a list the person typed stays.
@@ -230,6 +235,9 @@ export function validateBrand(input) {
   const sfx = cutSfx(b.sfx, errors);
   const clip = clipDefaults(b, errors);
   if (b.logoBug != null && typeof b.logoBug !== 'boolean') errors.push('logoBug must be true or false');
+  // Broadcast safe area: the logo bug and the subtitles keep this far from the frame edge, in percent of the frame.
+  const safeArea = b.safeArea == null || b.safeArea === '' ? null : Number(b.safeArea);
+  if (safeArea != null && !(Number.isFinite(safeArea) && safeArea >= 3 && safeArea <= 12)) errors.push('safeArea must be 3..12 (percent of the frame)');
   if (b.shine != null && typeof b.shine !== 'boolean') errors.push('shine must be true or false');
   if (b.confetti != null && typeof b.confetti !== 'boolean') errors.push('confetti must be true or false');
   if (b.reveal != null && b.reveal !== 'words' && !REVEALS.includes(b.reveal)) errors.push(`reveal must be words or one of ${REVEALS.join(', ')}`);
@@ -258,9 +266,10 @@ export function validateBrand(input) {
     name: b.name, logoText: b.logoText || '', logo: b.logo || null, logoDark: b.logoDark || null, site: b.site || '',
     colors: Object.fromEntries(COLOR_KEYS.map((k) => [k, b.colors[k]])),
     palette: palette.map((p) => ({ name: p.name, hex: p.hex })),
-    fonts: { display: b.fonts.display, body: b.fonts.body, googleFonts: b.fonts.googleFonts || '', ...(files.length ? { files } : {}) },
+    fonts: { display: b.fonts.display, body: b.fonts.body, googleFonts: b.fonts.googleFonts || '', ...(files.length ? { files } : {}), ...(headingWeight != null ? { headingWeight } : {}) },
     ...(subtitles ? { subtitles } : {}),
     ...(b.logoBug ? { logoBug: true } : {}),
+    ...(safeArea != null ? { safeArea } : {}),
     ...(b.shine ? { shine: true } : {}),
     ...(b.confetti ? { confetti: true } : {}),
     ...(REVEALS.includes(b.reveal) ? { reveal: b.reveal } : {}),

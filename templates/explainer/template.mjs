@@ -87,11 +87,14 @@ export function parts({ brand, script, timing, size, icons, brief }) {
     } else if (sc.kind === 'flash') {
       // Kinetic type: one very large item at a time, centred, each replacing the last; the title lands last and holds.
       const items = (sc.items || []).slice(0, 12).map(String);
-      blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="flash">${sc.kicker ? `<div class="kick flk" data-lint>${h(sc.kicker)}</div>` : ''}
+      // Optional footage behind the words, full frame, blurred and dimmed so the type stays the picture.
+      const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
+      const bg = sc.video ? `<div class="fbg" id="${id}-win"><video data-clip="${id}" data-start="${t.start}" data-end="${t.end}" src="clips/${encodeURIComponent(id)}.mp4" muted playsinline preload="auto"></video></div><div class="fshade"></div>` : '';
+      blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}">${bg}<div class="flash">${sc.kicker ? `<div class="kick flk" data-lint>${h(sc.kicker)}</div>` : ''}
         ${items.map((t, k) => `<div class="fl" id="${id}-f${k}"><div class="fi" data-lint style="font-size:${px(fit(t, fmax))}">${h(t)}</div></div>`).join('')}
         ${sc.title ? `<div class="flw"><div class="hd fi flt" id="${id}-ft" data-lint style="font-size:${px(fit(sc.title, Math.round(fmax * 0.85)))}">${h(sc.title)}</div></div>` : ''}</div></div>`);
       // Each item's first word, so the page can flash it as the voice says that word (`nine workstreams` names none: even beats).
-      scenes.push({ id, kind: 'flash', n: items.length, title: !!sc.title, heads: items.map((t) => wordKey(t.split(/\s+/)[0])), ...(sc.title ? { titleHead: wordKey(String(sc.title).split(/\s+/)[0]) } : {}), ...tone(sc) });
+      scenes.push({ id, kind: 'flash', n: items.length, title: !!sc.title, ...(sc.video ? { footage: true } : {}), heads: items.map((t) => wordKey(t.split(/\s+/)[0])), ...(sc.title ? { titleHead: wordKey(String(sc.title).split(/\s+/)[0]) } : {}), ...tone(sc) });
     } else if (sc.kind === 'video') {
       // Footage in a window: prepare cut it to clips/<id>.mp4; the kit seeks it with the page clock.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
@@ -133,6 +136,7 @@ export function parts({ brand, script, timing, size, icons, brief }) {
   const hasVideo = scenes.some((s) => s.kind === 'video');
   const hasDarkTitle = scenes.some((s) => s.kind === 'title' && s.dark);
   const hasFlash = scenes.some((s) => s.kind === 'flash');
+  const hasFlashBg = scenes.some((s) => s.kind === 'flash' && s.footage);
   const hasModel = scenes.some((s) => s.kind === 'model' || s.kind === 'anim');
   const ctaBg = script.scenes.some((s) => s.kind === 'cta' && s.image);
   // The model window: wide in landscape, square in portrait, between the title and the content area's bottom.
@@ -190,7 +194,10 @@ export function parts({ brand, script, timing, size, icons, brief }) {
 .flk{position:absolute;left:0;right:0;top:0;text-align:center}
 .fl,.flw{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}.fl{opacity:0}
 .fi{font-family:var(--display);font-weight:800;letter-spacing:-.03em;line-height:1.02;max-width:100%;overflow-wrap:break-word}
-.flt{color:var(--primary2)}` : ''}${hasDark ? `
+.flt{color:var(--primary2)}` : ''}${hasFlashBg ? `
+.fbg{position:absolute;inset:0;overflow:hidden}.fbg video{display:block;width:100%;height:100%;object-fit:contain;filter:blur(${px(6)}) saturate(.8)}
+.fshade{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.flash .fi,.flash .flk{text-shadow:0 ${px(2)} ${px(24)} rgba(0,0,0,.45)}` : ''}${hasDark ? `
 .dark .flt{color:var(--secondary)}
 .dark .snum{color:var(--secondary)}.dark .snum span{color:var(--on);opacity:.6}.dark .stext .stx,.dark .diag .stx{color:var(--on);opacity:.75}.dark .prog{background:rgba(255,255,255,.14)}
 .dark .node{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);color:var(--on)}.dark .node.on{background:var(--secondary);border-color:var(--secondary);color:var(--ink)}.dark .arr path{stroke:var(--secondary)}

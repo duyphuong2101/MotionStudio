@@ -212,3 +212,36 @@ test('the next version never goes below the last recorded one, even when the fol
     assert.deepEqual(nextVersionFile(dir, 'Film', 0), { file: 'Film v13.mp4', version: 13 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// A pad (2026-11-03): silent black before the first part and after the last, so a player can switch in and out
+// cleanly. The parts start later by the head, the picture fades in and out, and the music bed stays silent there.
+test('a sequence pad adds black and silence either side, and the music bed keeps off it', () => {
+  const parts = [10, 8].map((d, i) => ({ id: `p${i}`, file: `p${i}.mp4`, duration: d, hasAudio: true }));
+  const plan = sequencePlan({ ...render, transition: 'fade', parts, pad: { head: 2, tail: 3 } });
+  assert.deepEqual(plan.starts, [2, 11.6]);
+  assert.equal(plan.duration, 22.6);
+  const steps = graphOf(plan.args).split(';');
+  assert.ok(steps.some((s) => s.endsWith('[vj]')) && steps.some((s) => s.endsWith('[aj]')), 'the join ends in [vj]/[aj]');
+  assert.equal(steps.at(-2), '[vj]tpad=start_duration=2:stop_duration=3:color=black,fade=t=in:st=2:d=0.8,fade=t=out:st=18.800:d=0.8[v]');
+  assert.equal(steps.at(-1), '[aj]adelay=2000:all=1,apad,atrim=0:22.600,afade=t=out:st=18.800:d=0.8[a]');
+  const bed = graphOf(musicBedPlan({ video: 'j.mp4', speech: [{ file: 'v.wav', start: 2 }], music: 'm.wav', duration: plan.duration, out: 'o.mp4', gainDb: -16, pad: plan.pad }));
+  assert.ok(bed.includes('[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=2000:all=1,apad,atrim=0:22.600,volume=-12.99dB,afade=t=in:st=2:d=0.5,afade=t=out:st=17.600:d=2[m]'), bed);
+  // No pad: the plan reads as before.
+  const plain = sequencePlan({ ...render, transition: 'fade', parts });
+  assert.deepEqual(plain.starts, [0, 9.6]);
+  assert.ok(!graphOf(plain.args).includes('tpad'));
+  assert.deepEqual(plan.pad, { head: 2, tail: 3 });
+});
+
+test('pad is validated and stored only when set', (t) => {
+  const P = 'zz-test-seqpad';
+  clean(t, P);
+  for (const id of ['intro', 'demo']) { doneJob(P, id); fs.writeFileSync(jobFile(P, id, 'final.mp4'), ''); }
+  const seq = (over) => ({ id: 'film', project: P, format: '16:9', transition: 'cut', parts: ['intro', 'demo'], ...over });
+  assert.throws(() => createSequence(seq({ pad: { head: 9 } })), /pad.head and pad.tail must be 0-5 seconds/);
+  assert.throws(() => createSequence(seq({ pad: 'x' })), /pad.head and pad.tail/);
+  assert.deepEqual(createSequence(seq({ pad: { head: 1.5 } })).pad, { head: 1.5, tail: 0 });
+  assert.ok(!('pad' in createSequence(seq({ id: 'none', pad: { head: 0, tail: 0 } }))));
+  assert.deepEqual(updateSequence(P, 'film', { pad: { head: 1, tail: 2 } }).changed, ['pad']);
+  assert.deepEqual(loadSequence(P, 'film').pad, { head: 1, tail: 2 });
+});

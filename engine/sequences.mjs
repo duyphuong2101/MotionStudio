@@ -104,7 +104,10 @@ const STATUSES = ['draft', 'rendering', 'done', 'error'];
 const MAX_HISTORY = 30;
 const TITLE_MAX = 80;
 export const TARGET_RANGE = [10, 1200];
-const EDITABLE = ['title', 'format', 'parts', 'transition', 'transitions', 'musicBed', 'targetDuration'];
+/** `pad`: seconds of silent black before the first part and after the last, so a player can switch in and out. */
+export const PAD_MAX = 5;
+const PAD_FADE = 0.8;
+const EDITABLE = ['title', 'format', 'parts', 'transition', 'transitions', 'musicBed', 'targetDuration', 'pad'];
 // Editing only these keeps the render.
 const KEEPS_RENDER = ['title', 'targetDuration'];
 // ffmpeg stops this long before the server's run timeout kills the engine, so no ffmpeg is left orphaned.
@@ -170,6 +173,8 @@ function validateSequence(input) {
   transitions.forEach((t, i) => { if (!TRANSITIONS[t]) errors.push(`transitions[${i}] must be one of: ${Object.keys(TRANSITIONS).join(', ')}`); });
   if (s.title != null && (typeof s.title !== 'string' || s.title.length > TITLE_MAX)) errors.push(`title must be text up to ${TITLE_MAX} characters`);
   if (s.musicBed != null && typeof s.musicBed !== 'boolean') errors.push('musicBed must be true or false');
+  const pad = s.pad == null ? null : { head: Number(s.pad.head ?? 0), tail: Number(s.pad.tail ?? 0) };
+  if (pad && (typeof s.pad !== 'object' || [pad.head, pad.tail].some((v) => !(Number.isFinite(v) && v >= 0 && v <= PAD_MAX)))) errors.push(`pad.head and pad.tail must be 0-${PAD_MAX} seconds`);
   const [tMin, tMax] = TARGET_RANGE;
   if (s.targetDuration != null && (!Number.isInteger(s.targetDuration) || s.targetDuration < tMin || s.targetDuration > tMax)) {
     errors.push(`targetDuration must be whole seconds, ${tMin}-${tMax}`);
@@ -184,6 +189,7 @@ function validateSequence(input) {
     id: s.id, project: s.project, title: (s.title || '').trim(), format: s.format, parts: [...s.parts], transition: s.transition, transitions,
     // Kept only when on, so a sequence saved before the field existed reads the same.
     ...(s.musicBed ? { musicBed: true } : {}),
+    ...(pad && (pad.head || pad.tail) ? { pad } : {}),
     ...(s.targetDuration != null ? { targetDuration: s.targetDuration } : {}),
     createdBy: s.createdBy || 'ui', createdAt: s.createdAt || nowIso(),
   };
@@ -406,7 +412,7 @@ function joinList(count, transition, transitions, fadeSeconds = null) {
  * part i and i + 1); `transition` is the one used where that list is missing. `fadeSeconds` overrides the
  * presets' lengths.
  */
-export function sequencePlan({ parts, transition, transitions = null, fps, crf, size, out, fadeSeconds = null }) {
+export function sequencePlan({ parts, transition, transitions = null, fps, crf, size, out, fadeSeconds = null, pad = null }) {
   const joins = joinList(parts.length, transition, transitions, fadeSeconds);
   parts.forEach((p, i) => {
     const before = joins[i - 1], after = joins[i];
@@ -427,33 +433,42 @@ export function sequencePlan({ parts, transition, transitions = null, fps, crf, 
     return `[${i}:v]fps=${fps},trim=duration=${d},setpts=PTS-STARTPTS,scale=${size.width}:${size.height},setsar=1,format=yuv420p,settb=AVTB[v${i}];`
       + `[${audioIn[i]}]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${d},asetpts=PTS-STARTPTS[a${i}]`;
   });
-  const starts = [0];
+  const head = Number(pad?.head) || 0, tail = Number(pad?.tail) || 0;
+  // With a pad the join ends in [vj]/[aj] and the pad step writes [v]/[a].
+  const vOut = head || tail ? 'vj' : 'v', aOut = head || tail ? 'aj' : 'a';
+  const starts = [head];
   const graph = [];
   let end = parts[0].duration;
   if (joins.every((j) => !j.overlap)) {
-    for (const p of parts.slice(1)) { starts.push(round(end)); end += p.duration; }
-    graph.push(`${parts.map((_, i) => `[v${i}][a${i}]`).join('')}concat=n=${parts.length}:v=1:a=1[v][a]`);
+    for (const p of parts.slice(1)) { starts.push(round(head + end)); end += p.duration; }
+    graph.push(`${parts.map((_, i) => `[v${i}][a${i}]`).join('')}concat=n=${parts.length}:v=1:a=1[${vOut}][${aOut}]`);
   } else {
     let v = 'v0', a = 'a0';
     for (let i = 1; i < parts.length; i++) {
       const { preset, overlap } = joins[i - 1];
       const last = i === parts.length - 1;
-      const vo = last ? 'v' : `vx${i}`, ao = last ? 'a' : `ax${i}`;
+      const vo = last ? vOut : `vx${i}`, ao = last ? aOut : `ax${i}`;
       const offset = round(end - overlap);
       if (overlap) {
         graph.push(`[${v}][v${i}]xfade=${xfadeOf(preset)}:duration=${overlap}:offset=${offset}[${vo}]`, `[${a}][a${i}]acrossfade=d=${overlap}[${ao}]`);
       } else {
         graph.push(`[${v}][v${i}]concat=n=2:v=1:a=0,settb=AVTB[${vo}]`, `[${a}][a${i}]concat=n=2:v=0:a=1[${ao}]`);
       }
-      starts.push(offset);
+      starts.push(round(head + offset));
       v = vo; a = ao;
       end = offset + parts[i].duration;
     }
   }
+  if (head || tail) {
+    // Black and silence either side, the picture fading in from and out to it; the parts' own sound stops with it.
+    const total = round(head + end + tail).toFixed(3), fadeAt = Math.max(head, head + end - PAD_FADE).toFixed(3);
+    graph.push(`[vj]tpad=start_duration=${head}:stop_duration=${tail}:color=black${head ? `,fade=t=in:st=${head}:d=${PAD_FADE}` : ''}${tail ? `,fade=t=out:st=${fadeAt}:d=${PAD_FADE}` : ''}[v]`,
+      `[aj]${head ? `adelay=${Math.round(head * 1000)}:all=1,` : ''}apad,atrim=0:${total}${tail ? `,afade=t=out:st=${fadeAt}:d=${PAD_FADE}` : ''}[a]`);
+  }
   args.push('-filter_complex', [...chains, ...graph].join(';'), '-map', '[v]', '-map', '[a]',
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', String(crf), '-preset', 'medium', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', out);
-  return { args, starts, duration: round(end), transitions: joins.map((j) => j.id) };
+  return { args, starts, duration: round(head + end + tail), transitions: joins.map((j) => j.id), pad: { head, tail } };
 }
 
 /**
@@ -488,7 +503,7 @@ export function loopMusic(input, seconds, duration, cycle = 0) {
  * with `duck`, faded in and out once, then loudness-normalised. `sfx` ({ file, start }, like `speech`): each
  * part's cut sounds and the sounds at the joins, mixed after the duck. Needs speech, cut sounds or music.
  */
-export function musicBedPlan({ video, speech, sfx = [], music = null, musicSeconds = 0, cycle = 0, duration, gainDb, duck = false, out }) {
+export function musicBedPlan({ video, speech, sfx = [], music = null, musicSeconds = 0, cycle = 0, duration, gainDb, duck = false, out, pad = null }) {
   const args = ['-y', '-i', video];
   for (const s of [...speech, ...sfx]) args.push('-i', s.file);
   const loop = music && musicSeconds ? loopMusic(speech.length + sfx.length + 1, musicSeconds, duration, cycle) : null;
@@ -496,6 +511,7 @@ export function musicBedPlan({ video, speech, sfx = [], music = null, musicSecon
   const filter = mixFilter({
     speech: speech.length, sfx: sfx.length, sfxOffsets: sfx.length ? sfx.map((s) => s.start) : null, music: Boolean(music), duration, gainDb, duck,
     offsets: speech.map((s) => s.start), fadeIn: BED_FADE_IN, fadeOut: BED_FADE_OUT, loopGraph: loop?.graph || null,
+    musicFrom: Number(pad?.head) || 0, musicTo: duration - (Number(pad?.tail) || 0),
   });
   args.push('-filter_complex', filter, '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
     '-t', duration.toFixed(3), '-movflags', '+faststart', out);
@@ -521,7 +537,7 @@ async function layMusicBed(project, parts, plan, joined, out, timeoutMs) {
     const musicSeconds = music ? (await probeMedia(music)).duration : 0;
     const name = brand.music?.file;
     const cycle = isLibraryMusic(name) ? MUSIC.find((m) => m.id === name.slice(8))?.cycle || 0 : 0;
-    await ffmpeg(musicBedPlan({ video: joined, speech, sfx, music, musicSeconds, cycle, duration: plan.duration, gainDb: brand.music?.gainDb, duck: brand.music?.duck === true, out }), { timeoutMs: Math.max(1000, stopAt - Date.now()) });
+    await ffmpeg(musicBedPlan({ video: joined, speech, sfx, music, musicSeconds, cycle, duration: plan.duration, gainDb: brand.music?.gainDb, duck: brand.music?.duck === true, out, pad: plan.pad }), { timeoutMs: Math.max(1000, stopAt - Date.now()) });
     return true;
   } finally {
     fs.rmSync(joinsFile, { force: true });
@@ -621,7 +637,7 @@ export async function previewSequence(project, id, by = 'engine') {
     const size = { width: even(full.width), height: even(full.height) };
     const parts = await probedParts(project, seq);
     const { plan } = await runJoin(project, seq, parts, (out) => {
-      const p = sequencePlan({ parts, transition: seq.transition, transitions: seq.transitions, fps: cfg.render.fps, crf: 30, size, out });
+      const p = sequencePlan({ parts, transition: seq.transition, transitions: seq.transitions, fps: cfg.render.fps, crf: 30, size, out, pad: seq.pad });
       p.args[p.args.indexOf('-preset') + 1] = 'veryfast';
       return p;
     }, tmp, cfg);
@@ -651,7 +667,7 @@ export async function renderSequence(project, id, by = 'engine') {
     const size = formatSize(seq.format);
     const parts = await probedParts(project, seq);
     const fps = cfg.render.fps;
-    const { plan, bed } = await runJoin(project, seq, parts, (out) => sequencePlan({ parts, transition: seq.transition, transitions: seq.transitions, fps, crf: cfg.render.crf, size, out }), tmp, cfg);
+    const { plan, bed } = await runJoin(project, seq, parts, (out) => sequencePlan({ parts, transition: seq.transition, transitions: seq.transitions, fps, crf: cfg.render.crf, size, out, pad: seq.pad }), tmp, cfg);
     const { file: final, version } = nextVersionFile(dir, versionBase(seq), floor);
     fs.renameSync(tmp, within(dir, final));
     const srt = joinCaptions(parts.map((p, i) => ({ srt: p.captions ? fs.readFileSync(p.captions, 'utf8') : '', start: plan.starts[i], duration: p.duration })));
@@ -663,7 +679,7 @@ export async function renderSequence(project, id, by = 'engine') {
       status: 'done', lastVersion: version,
       outputs: {
         final, version, captions: srt ? 'captions.srt' : null, width: size.width, height: size.height, fps, duration: plan.duration,
-        transition: seq.transition, transitions: plan.transitions, ...(bed ? { musicBed: true } : {}), parts: parts.map((p, i) => ({ id: p.id, template: p.template, start: plan.starts[i], duration: round(p.duration), transition: i ? plan.transitions[i - 1] : null })), renderSeconds: secs, qa,
+        transition: seq.transition, transitions: plan.transitions, ...(bed ? { musicBed: true } : {}), ...(plan.pad.head || plan.pad.tail ? { pad: plan.pad } : {}), parts: parts.map((p, i) => ({ id: p.id, template: p.template, start: plan.starts[i], duration: round(p.duration), transition: i ? plan.transitions[i - 1] : null })), renderSeconds: secs, qa,
       },
     }, `${final} written in ${secs}s, QA ${qa.passed ? 'passed' : 'failed'}`, by);
   } catch (err) {

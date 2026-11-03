@@ -102,6 +102,26 @@ const PARTS_BASELINE = {
 const HASH_BRAND = { name: 'Hash Co', logoText: 'Hash', colors: { primary: '#1e293b', primary2: '#4f46e5', secondary: '#f59e0b', bg: '#f8fafc', ink: '#0f172a', muted: '#64748b', onPrimary: '#ffffff' }, fonts: { display: 'Inter', body: 'Inter' } };
 const HASH_TIMING = { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, tailOut: 0.4, lastSceneHold: 1.2 };
 
+// A flash scene may carry footage behind its words (2026-11-03): the clip full frame, blurred and shaded under the
+// items; a flash without one writes none of that, so its page stays as before.
+test('explainer: a flash scene with video puts the clip behind the words, blurred and shaded; without video nothing is added', async () => {
+  const { dir, beats } = loadTemplate('explainer');
+  const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
+  const page = (extra) => {
+    const script = sampleScript(beats);
+    Object.assign(script.scenes.find((s) => s.kind === 'flash'), extra);
+    const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
+    return build({ brief: { format: '16:9' }, brand: HASH_BRAND, script, timing, size: sizeFor(beats, '16:9') });
+  };
+  const plain = page({});
+  assert.ok(!plain.includes('class="fbg"') && !plain.includes('.fbg'), 'no footage layer without a video');
+  const html = page({ video: 'flow.mp4', in: 0, out: 12 });
+  const m = /<div class="fbg" id="([^"]+)-win"><video data-clip="\1" data-start="[\d.]+" data-end="[\d.]+" src="clips\/\1\.mp4" muted playsinline preload="auto"><\/video><\/div><div class="fshade"><\/div><div class="flash">/.exec(html);
+  assert.ok(m, 'the clip sits full frame before the flash words, with a shade over it');
+  assert.match(html, /\.fbg video\{[^}]*object-fit:contain;filter:blur\([\d.]+px\)/);
+  assert.match(html, /\.fshade\{[^}]*rgba\(0,0,0,\.45\)/);
+});
+
 // The explainer page from before the video kind existed: a script without a video scene must still build it exactly.
 test('explainer: a script without a video scene builds the same page as before the video kind', async () => {
   const { dir, beats } = loadTemplate('explainer');

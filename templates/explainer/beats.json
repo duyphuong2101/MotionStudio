@@ -17,6 +17,7 @@
       "step.icon": "An icon for this step. One icon morphs from step to step.",
       "flash.items": "JSON list of 2-12 words or short phrases, each at most 40 characters (a long one wraps to two lines), e.g. [\"Strategy\", \"Design\", \"Build\"]. Say them in this order in the voice line. An item that starts with a word of the voice line flashes as that word is spoken.",
       "flash.title": "Lands after the last item and holds to the end of the scene, e.g. \"One partnership.\" Say it last.",
+      "flash.video": "Optional footage behind the words, full frame, blurred and dimmed (e.g. a screen recording of the flow the items describe). Muted; it plays from the scene start and holds its last frame.",
       "video": "The video clip (.mp4, .webm or .mov) from the project assets.",
       "in": "Where the clip starts in the file, in seconds.",
       "out": "Where it ends, in seconds (at most 120 s of clip).",
@@ -177,7 +178,10 @@
         "kicker",
         "theme",
         "pace",
-        "sfx"
+        "sfx",
+        "video",
+        "in",
+        "out"
       ]
     },
     "video": {

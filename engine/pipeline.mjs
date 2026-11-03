@@ -975,7 +975,7 @@ const DUCK = 'sidechaincompress=threshold=0.03:ratio=6:attack=20:release=350:mak
  * `sfx` cut-sound tracks (inputs after the speech, before the music; `sfxOffsets` delays them) join after the duck:
  * they never dip the music, and their level is the brand's `sfx.gainDb`, set when sfx.wav was made.
  */
-export function mixFilter({ speech = 0, sfx = 0, sfxOffsets = null, music = false, duration, gainDb, duck = false, offsets = null, fadeIn = 0, fadeOut = 1.5, loopGraph = null }) {
+export function mixFilter({ speech = 0, sfx = 0, sfxOffsets = null, music = false, duration, gainDb, duck = false, offsets = null, fadeIn = 0, fadeOut = 1.5, loopGraph = null, musicFrom = 0, musicTo = null }) {
   const dur = duration.toFixed(3);
   const parts = [];
   let n = 1;
@@ -992,10 +992,13 @@ export function mixFilter({ speech = 0, sfx = 0, sfxOffsets = null, music = fals
   const fx = sfx ? '[fx]' : '', more = sfx ? 1 : 0;
   if (music) {
     const gain = +(Number(gainDb ?? -18) + MUSIC_LIFT_DB).toFixed(2);
-    const fadeAt = Math.max(0, duration - fadeOut).toFixed(3);
-    const fin = fadeIn ? `afade=t=in:st=0:d=${fadeIn},` : '';
+    // The music runs from musicFrom to musicTo (a padded sequence keeps its black lead-in and tail silent).
+    const stop = musicTo ?? duration;
+    const fadeAt = Math.max(musicFrom, stop - fadeOut).toFixed(3);
+    const fin = fadeIn ? `afade=t=in:st=${musicFrom}:d=${fadeIn},` : '';
+    const delay = musicFrom ? `adelay=${Math.round(musicFrom * 1000)}:all=1,` : '';
     if (loopGraph) parts.push(loopGraph);
-    parts.push(`[${loopGraph ? 'loop' : `${n}:a`}]aresample=48000,${MUSIC_STEREO},apad,atrim=0:${dur},volume=${gain}dB,${fin}afade=t=out:st=${fadeAt}:d=${fadeOut}[m]`);
+    parts.push(`[${loopGraph ? 'loop' : `${n}:a`}]aresample=48000,${MUSIC_STEREO},${delay}apad,atrim=0:${dur},volume=${gain}dB,${fin}afade=t=out:st=${fadeAt}:d=${fadeOut}[m]`);
   }
   if (speech && music && duck) return `${parts.join(';')};[v]asplit=2[vm][vk];[m][vk]${DUCK}[md];[vm][md]${fx}amix=inputs=${2 + more}:duration=first:normalize=0,${LOUDNORM}[a]`;
   if (speech && music) return `${parts.join(';')};[v][m]${fx}amix=inputs=${2 + more}:duration=first:normalize=0,${LOUDNORM}[a]`;
