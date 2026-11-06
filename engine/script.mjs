@@ -4,6 +4,7 @@ import { splitKind } from './mix.mjs';
 import { MARK_FIELDS, stripMarks, hasMarkup, markErrors } from './marks.mjs';
 import { PART_RE, DECAL_SIZE } from './model-rules.mjs';
 import { lookProblem, effectsProblems } from './looks.mjs';
+import { directionProblems } from './direction.mjs';
 
 const wordsOf = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
 export const SCENE_ID_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -103,7 +104,7 @@ export function validateScript(script, beats,{ assets = [], icons = ICON_NAMES, 
       const v = s[f];
       if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) errors.push(`${s.id}: ${f} is required`);
     }
-    const allowed = new Set(['id', 'kind', 'draft', 'speaker', 'stress', 'hold', ...spec.required, ...spec.optional]);
+    const allowed = new Set(['id', 'kind', 'draft', 'speaker', 'stress', 'hold', 'cut', 'camera', 'grade', 'drop', 'cutout', ...spec.required, ...spec.optional]);
     for (const k of Object.keys(s)) if (!allowed.has(k)) warnings.push(`${s.id}: field "${k}" is ignored by this template`);
     for (const [f, max] of Object.entries(L)) {
       if (f === 'voWords') continue;
@@ -153,6 +154,9 @@ export function validateScript(script, beats,{ assets = [], icons = ICON_NAMES, 
     if (s.stress !== undefined) errors.push(...stressErrors(s));
     if (s.logo !== undefined && typeof s.logo !== 'boolean') errors.push(`${s.id}: logo must be true or false`);
     if (s.hold !== undefined && s.hold !== '' && !holdOk(s.hold)) errors.push(`${s.id}: hold must be 0 to ${MAX_HOLD} seconds`);
+    const direction = directionProblems(s, { first: s === scenes[0] });
+    errors.push(...direction.errors);
+    warnings.push(...direction.warnings);
     if (s.video && s.sound === true && wordsOf(s.vo).length) warnings.push(`${s.id}: the clip plays its own sound under the voice line; if the voice runs longer than the clip, the scene holds the clip's last frame until the voice ends`);
     if (s.shots !== undefined) errors.push(...validateShots(s, rules, assets));
     if (rules.data?.[kind]) errors.push(...validateData(s, kind, rules.data[kind], icons));
@@ -162,6 +166,9 @@ export function validateScript(script, beats,{ assets = [], icons = ICON_NAMES, 
     const first = scenes.find((s) => s.model !== undefined)?.model;
     for (const s of scenes) if (s.model !== undefined && s.model !== first) errors.push(`${s.id}: model must be ${first}, the one model the whole video shows (or leave it out)`);
   }
+  // The music has one drop to place.
+  const drops = scenes.filter((s) => s?.drop === true).map((s) => s.id);
+  if (drops.length > 1) errors.push(`only one scene can take the music's drop; ${drops.join(', ')} all set drop`);
   return { errors, warnings };
 }
 
@@ -259,6 +266,11 @@ export function validateData(s, kind, d, icons = ICON_NAMES) {
     const I = s.items;
     if (!Array.isArray(I) || I.length < d.items[0] || I.length > d.items[1]) errs.push(`${s.id}: items must list ${d.items[0]}-${d.items[1]} words or short phrases`);
     else I.forEach((x, i) => { if (!shortText(x, d.chars)) errs.push(`${s.id}.items[${i}]: text is required, at most ${d.chars} characters`); });
+  }
+  // explainer video tags: two labels over a split-screen clip, left then right.
+  if (kind === 'video' && s.tags !== undefined && d?.tags) {
+    const T = s.tags;
+    if (!Array.isArray(T) || T.length !== d.tags || !T.every((x) => shortText(x, d.tagChars))) errs.push(`${s.id}: tags must list ${d.tags} labels, each at most ${d.tagChars} characters, e.g. ["Old", "New"]`);
   }
   // logo-reveal notes: optional silent lines under the tagline (end notes).
   if (kind === 'reveal' && s.notes !== undefined) {

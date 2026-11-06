@@ -199,6 +199,11 @@
     "toleranceDb": 1,
     "maxGainDb": 12
   },
+  "matte": {
+    "model": "models/matte/matte.onnx",
+    "size": 320,
+    "maxPerJob": 12
+  },
   "voiceTake": {
     "minMatch": 0.7,
     "padding": 0.12,

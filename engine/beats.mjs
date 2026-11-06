@@ -84,19 +84,103 @@ export function beatGrid(env, dt, center = 0) {
   return { period: round(period, 4), offset: round(offset, 4), bpm: round(60 / period, 1), confidence: round(confidence, 2) };
 }
 
-/** Decodes the start of a music file to mono and finds its beat grid. */
-export async function detectBeats(file) {
+/** The start of a music file (MAX_SECONDS) as mono samples at RATE. */
+async function decodeMusic(file) {
   const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ms-beat-')), 'm.raw');
   try {
     await ffmpeg(['-y', '-i', file, '-t', String(MAX_SECONDS), '-ac', '1', '-ar', String(RATE), '-f', 's16le', tmp], { timeoutMs: 60000 });
     const buf = fs.readFileSync(tmp);
     const samples = new Float32Array(buf.length / 2);
     for (let i = 0; i < samples.length; i++) samples[i] = buf.readInt16LE(i * 2) / 32768;
-    const grid = beatGrid(onsetEnvelope(samples), HOP / RATE, WIN / 2 / RATE);
-    return grid && { ...grid, source: 'detected' };
+    return samples;
   } finally {
     fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
   }
+}
+
+/** Decodes the start of a music file to mono and finds its beat grid. */
+export async function detectBeats(file) {
+  const grid = beatGrid(onsetEnvelope(await decodeMusic(file)), HOP / RATE, WIN / 2 / RATE);
+  return grid && { ...grid, source: 'detected' };
+}
+
+// A drop: the music's loudness over the next DROP_WINDOW seconds is at least DROP_RISE dB above the loudness of the
+// window before, and the loud side is at least as loud as the track's median. Frames of DROP_FRAME seconds.
+export const DROP_FRAME = 0.1, DROP_WINDOW = 3, DROP_RISE = 5, DROP_GAP = 8, DROP_MAX = 3;
+
+/**
+ * The drops of a track as [{ at, rise }] (seconds, dB), strongest first, at most DROP_MAX, DROP_GAP apart. With a beat
+ * grid each lands on the nearest beat. Pure, for tests.
+ */
+export function findDrops(samples, rate = RATE, grid = null) {
+  const per = Math.round(rate * DROP_FRAME);
+  const n = Math.floor(samples.length / per);
+  const pow = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let e = 0;
+    for (let j = i * per; j < (i + 1) * per; j++) e += samples[j] * samples[j];
+    pow[i] = e / per;
+  }
+  const db = (p) => 10 * Math.log10(p + 1e-12);
+  const median = db([...pow].sort((a, b) => a - b)[Math.floor(n / 2)] || 0);
+  const w = Math.round(DROP_WINDOW / DROP_FRAME);
+  const mean = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += pow[i]; return s / (b - a); };
+  const found = [];
+  for (let i = w; i + w <= n; i++) {
+    const after = db(mean(i, i + w)), rise = after - db(mean(i - w, i));
+    if (rise >= DROP_RISE && after >= median) found.push({ at: i * DROP_FRAME, rise });
+  }
+  const snap = (t) => {
+    if (!grid) return t;
+    const k = Math.round((t - grid.offset) / grid.period);
+    return grid.offset + Math.max(0, k) * grid.period;
+  };
+  const out = [];
+  for (const d of found.sort((a, b) => b.rise - a.rise)) {
+    if (out.length >= DROP_MAX) break;
+    if (out.some((o) => Math.abs(o.at - d.at) < DROP_GAP)) continue;
+    out.push(d);
+  }
+  return out.map((d) => ({ at: round(snap(d.at), 3), rise: round(d.rise, 1) }));
+}
+
+/** The beat grid and drops of a music file, from one decode. */
+export async function analyseMusic(file, knownGrid = null) {
+  const samples = await decodeMusic(file);
+  const found = knownGrid ? null : beatGrid(onsetEnvelope(samples), HOP / RATE, WIN / 2 / RATE);
+  const grid = knownGrid || (found && { ...found, source: 'detected' });
+  return { grid, drops: findDrops(samples, RATE, grid) };
+}
+
+// A drop earlier in the track than its scene can still land by starting the music late, by at most this much.
+export const DROP_MAX_DELAY = 3;
+
+/**
+ * How far to move the music so a drop lands at `sceneStart`: the strongest drop that needs the track to play from
+ * later on (shift >= 0, short of its end), else the strongest one a short late start reaches. null when none fits.
+ */
+export function dropShift(drops, sceneStart, musicSeconds) {
+  const fits = drops.map((d) => ({ at: d.at, shift: round(d.at - sceneStart, 3) }));
+  return fits.find((f) => f.shift >= 0 && f.shift < musicSeconds - 2)
+    || fits.find((f) => f.shift < 0 && f.shift >= -DROP_MAX_DELAY) || null;
+}
+
+/**
+ * The page's beat pulse in video time: `beats` (every `step`-th beat, at least PULSE_GAP apart, so a fast track does
+ * not shake the frame) and `hits` (the drops). `shift` is how far the music is moved: positive plays it from later
+ * in the track, negative starts it after the video starts.
+ */
+export const PULSE_GAP = 0.9;
+export function pulseTimes(grid, drops, duration, shift = 0) {
+  const hits = drops.map((d) => round(d.at - shift, 3)).filter((t) => t >= 0 && t < duration - 0.05).sort((a, b) => a - b);
+  if (!grid) return { beats: [], hits };
+  const step = Math.max(1, Math.ceil(PULSE_GAP / grid.period - 1e-9));
+  const P = grid.period * step;
+  const first = ((((grid.offset - shift) % P) + P) % P);
+  const beats = [];
+  // Before a delayed music start there is no beat to pulse on.
+  for (let t = first; t < duration - 0.05; t += P) if (t >= Math.max(0.05, -shift)) beats.push(round(t, 3));
+  return { beats, hits };
 }
 
 /**

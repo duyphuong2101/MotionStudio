@@ -11,6 +11,7 @@ import { REVIEW_DEFAULTS } from './review.mjs';
 import { notesForDirector } from './notes.mjs';
 import { assetRhythms } from './footage.mjs';
 import { quickRules } from './quick.mjs';
+import { CUT_KINDS, CAMERA_MOVES, SCENE_GRADES } from './direction.mjs';
 
 /** Stored transcripts of the project's footage, as timed segments, for picking clips and quoting them exactly. */
 function transcriptsOf(project) {
@@ -24,6 +25,9 @@ function transcriptsOf(project) {
 
 const marksIn = (beats) => beats.marks === true || Object.values(beats.sources || {}).some((b) => b.marks === true);
 const MARKS_RULE = `On-screen text may mark the one word or number the scene is about: [[circle:40%]] (a number or a word, at most ${MARK_CHARS.circle} characters), [[underline:faster]], [[strike:old way]] (what the product replaces) or [[mark:one team]] (a highlighter band). Only in ${MARK_FIELDS.join(', ')}, at most ${MARKS_PER_FIELD} per field, never in a voice line; the marked words count toward the limit without the brackets. The mark is drawn when the voice says its first word, so say that word in the scene's voice line. Use one or two in a video, where the point is a contrast or a key number; a scene of a template without "marks": true takes none.`;
+
+// Per-scene direction (engine/direction.mjs): optional, every scene of every template.
+const DIRECTION_RULE = `Optional on any scene: cut (its entrance: ${CUT_KINDS.join(', ')}), camera (a slow move over its full-frame picture or clip: ${Object.keys(CAMERA_MOVES).join(', ')}) and grade (${SCENE_GRADES.join(', ')}), drop: true on one scene (the brand music's drop lands as it starts, for a reveal), and cutout: true on a scene with a full-frame photo of a person or product (the subject stands in front of the heading). Leave them out unless the brief or a person's note asks for a look; when used, change them at moments that matter (a reveal, a shift in the story), not on every scene. Never change one a person locked.`;
 
 const LAYOUT_RULE = `Vary the layout: never give ${REVIEW_DEFAULTS.sameKindRun} scenes in a row the same kind and theme (video and clip scenes aside, their footage differs; where a kind takes a theme, switching light, dark and accent counts as a new layout). Where the facts allow, alternate a stat, a list, a chart and a picture, and change the scale from one big number to a full screen of detail. The pacing table flags a run as "same layout".`;
 
@@ -85,6 +89,7 @@ export function directorContext(project, job) {
     assets, template: beats,
     ...(marksIn(beats) ? { marksRule: MARKS_RULE } : {}),
     layoutRule: LAYOUT_RULE,
+    directionRule: DIRECTION_RULE,
     ...(notes.length ? { notes, notesRule: NOTES_RULE } : {}),
     ...(rhythms.length ? { referenceRhythm: rhythms, rhythmRule: RHYTHM_RULE } : {}),
     ...transcriptsOf(project),

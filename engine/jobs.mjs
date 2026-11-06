@@ -173,7 +173,7 @@ export function deleteJob(project, id) {
 export function listAssets(project) {
   const dir = path.join(profileDir(project), 'assets');
   if (!exists(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => /\.(png|jpe?g|webp|svg|wav|mp3|m4a|mp4|webm|mov|glb|json)$/i.test(f)).sort();
+  return fs.readdirSync(dir).filter((f) => /\.(png|jpe?g|webp|svg|wav|mp3|m4a|mp4|webm|mov|glb|json|cube)$/i.test(f)).sort();
 }
 
 export function assetPath(project, name) {
@@ -274,6 +274,7 @@ export function validateBrief(input, { providers } = {}) {
     if (!VOICE_TAKE_RE.test(String(b.voiceTake))) errors.push('voiceTake must be a .wav, .mp3 or .m4a asset');
   }
   if (b.cutOnBeat !== undefined && typeof b.cutOnBeat !== 'boolean') errors.push('cutOnBeat must be true or false');
+  if (b.beatPulse !== undefined && typeof b.beatPulse !== 'boolean') errors.push('beatPulse must be true or false');
   if (b.motionBlur !== undefined && typeof b.motionBlur !== 'boolean') errors.push('motionBlur must be true or false');
   // Quick mode (engine/quick.mjs): the Director writes an outline that the template's `quick` block expands.
   if (b.quick !== undefined && typeof b.quick !== 'boolean') errors.push('quick must be true or false');
@@ -297,7 +298,7 @@ export function validateBrief(input, { providers } = {}) {
     id: b.id, project: b.project, template: b.template, mix: b.mix, format: b.format, duration: b.duration,
     platform: b.platform || '', director: b.director, url: b.url || '', subject: b.subject || '', message: b.message,
     lang: b.lang || '', voice: b.voice || '', ...(b.voiceTake ? { voiceTake: b.voiceTake } : {}),
-    alsoFormats: b.alsoFormats || [], cutOnBeat: b.cutOnBeat === true, motionBlur: b.motionBlur === true, ...(b.quick === true ? { quick: true } : {}),
+    alsoFormats: b.alsoFormats || [], cutOnBeat: b.cutOnBeat === true, ...(b.beatPulse === true ? { beatPulse: true } : {}), motionBlur: b.motionBlur === true, ...(b.quick === true ? { quick: true } : {}),
     facts: b.facts || '', cta: b.cta || '', notes: b.notes || '', createdBy: b.createdBy || 'ui', createdAt: b.createdAt || nowIso(),
   };
 }
@@ -320,14 +321,14 @@ export function saveBrief(brief) {
   return brief;
 }
 
-const BRIEF_FIELDS = ['template', 'mix', 'format', 'duration', 'platform', 'director', 'url', 'subject', 'message', 'facts', 'cta', 'notes', 'lang', 'voice', 'voiceTake', 'alsoFormats', 'cutOnBeat', 'motionBlur', 'quick'];
+const BRIEF_FIELDS = ['template', 'mix', 'format', 'duration', 'platform', 'director', 'url', 'subject', 'message', 'facts', 'cta', 'notes', 'lang', 'voice', 'voiceTake', 'alsoFormats', 'cutOnBeat', 'beatPulse', 'motionBlur', 'quick'];
 // Yes/no fields: absent and false are the same choice.
-const BRIEF_FLAGS = ['cutOnBeat', 'motionBlur', 'quick'];
+const BRIEF_FLAGS = ['cutOnBeat', 'beatPulse', 'motionBlur', 'quick'];
 // Changing any of these needs a new script under other rules: a template, a mix, or an outline instead of a script.
 const NEW_SCRIPT = ['template', 'mix', 'quick'];
 // Changing only these needs a new storyboard (prepare), not a new script from the Director. A script does not
 // depend on the frame size: beats.json has no per-format rule and alsoFormats renders one script at other sizes.
-const PREPARE_ONLY = ['voice', 'voiceTake', 'alsoFormats', 'cutOnBeat', 'format'];
+const PREPARE_ONLY = ['voice', 'voiceTake', 'alsoFormats', 'cutOnBeat', 'beatPulse', 'format'];
 // Changing only these redoes nothing and keeps the approval: motionBlur touches the render alone, platform is read
 // fresh by the render's QA (expect.platformFormats), director picks the backend of the next run.
 const NO_STEP = ['motionBlur', 'platform', 'director'];

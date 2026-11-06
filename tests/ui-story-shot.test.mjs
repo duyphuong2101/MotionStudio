@@ -202,3 +202,18 @@ test('a tilted shot turns the window in depth, then toward flat; the next scene 
     assert.equal(Math.round(await turn(f.start + 1)), 0, 'the next scene is flat');
   } finally { await opened.browser.close(); }
 });
+
+// With a brand safe area (2026-11-03) the app window fits between the logo bug and the subtitles, centred, in an
+// #appfit wrapper scaled by CSS (GSAP animates #app itself); without one the window and its markup are unchanged.
+test('a brand safe area fits the ui-story window under the logo bug', async () => {
+  const { parts } = await import('../templates/ui-story/template.mjs');
+  const { validateBrand } = await import('../engine/brand.mjs');
+  const base = { name: 'N', logo: 'a.svg', logoBug: true, colors: { primary: '#262524', primary2: '#3a3937', secondary: '#ffd400', bg: '#ffffff', ink: '#262524', muted: '#5c5b58', onPrimary: '#ffffff' }, fonts: { display: 'Arial', body: 'Arial' } };
+  const args = { script: { scenes: [{ id: 'a', kind: 'ui' }] }, icons: {} };
+  const fit = parts({ ...args, brand: validateBrand({ ...base, safeArea: 7 }) });
+  assert.match(fit.css, /#appfit\{position:absolute;left:335px;top:138px;width:1500px;height:878px;transform:scale\(0\.834\);transform-origin:0 0\}\n#app\{[^}]*left:0px;top:0px;/);
+  assert.ok(fit.body.includes('<div id="appfit"><div id="app">'));
+  const plain = parts({ ...args, brand: validateBrand(base) });
+  assert.ok(!plain.css.includes('#appfit') && !plain.body.includes('appfit'));
+  assert.match(plain.css, /#app\{[^}]*left:270px;top:30px;/);
+});

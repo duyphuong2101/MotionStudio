@@ -1,6 +1,6 @@
 import { iconSet, TICK, DECOR } from '../../motion-kit/icons.mjs';
 import { logoHtml } from '../shared.mjs';
-import { page, h, asset, camera, hasLogoBug } from '../kit.mjs';
+import { page, h, asset, camera, hasLogoBug, contentArea, geometry } from '../kit.mjs';
 import { motionProfile } from '../../engine/brand.mjs';
 
 // Raw 1920×1080 px: the template lists only 16:9, where the kit's unit U is 1.
@@ -26,6 +26,16 @@ const PUSH_LIFT = (k) => ` + Math.ceil((sub.offsetTop - D.H / 2) * ${k})`;
 const BAND = 1080 - APP.y - APP.h - APP.bar + 10;
 // With the brand's corner logo the app window moves right so the logo area stays clear.
 const BUG_CLEAR = 60;
+const BUG_GAP = 16;
+// With a brand safe area the whole window fits between the logo bug and the subtitles, centred (#appfit).
+const appFit = (brand) => {
+  if (!brand.safeArea || !hasLogoBug(brand)) return null;
+  const A = contentArea(brand, geometry({ width: 1920, height: 1080 }));
+  // The window starts a small gap under the logo bug (its top at safeArea %, 46 px tall), not a whole bug height.
+  const y = Math.round(1080 * brand.safeArea / 100) + 46 + BUG_GAP;
+  const s = Math.min(1, (1080 - y - A.bottom) / (APP.h + APP.bar));
+  return { s: Math.round(s * 1000) / 1000, x: Math.round((1920 - APP.w * s) / 2), y };
+};
 
 const TONES = {
   brand: ['#2563eb', '#e8efff'], warn: ['#8a4f00', '#fdf1df'], bad: ['#b8002a', '#fde7ec'],
@@ -311,6 +321,7 @@ const TILTS = { left: 1, right: -1 };
 
 /** Kit page parts: the app window, the beat layer, one group per scene and the shared icon layer. */
 export function parts({ brand, script, icons }) {
+  const fit = appFit(brand);
   const MK = iconSet(icons);
   const M = motionProfile(brand), lift = Math.round((M.push - 1) * 1000) / 1000;
   const app = script.app || {};
@@ -363,7 +374,7 @@ export function parts({ brand, script, icons }) {
 #rail .logo{display:flex;align-items:center;gap:10px}.raillogo{height:28px;max-width:60px;object-fit:contain}
 .full .lg .brandlogo{height:76px;max-width:520px;object-fit:contain;object-position:left center}
 #stage{background:radial-gradient(1400px 900px at 50% 35%,#ffffff,var(--bg))}
-#app{--line:#e6e8ec;--page:#f6f8fb;position:absolute;left:${APP.x + (brand.logoBug ? BUG_CLEAR : 0)}px;top:${APP.y}px;width:${APP.w}px;height:${APP.h + APP.bar}px;border-radius:16px;overflow:hidden;background:var(--page);
+${fit ? `#appfit{position:absolute;left:${fit.x}px;top:${fit.y}px;width:${APP.w}px;height:${APP.h + APP.bar}px;transform:scale(${fit.s});transform-origin:0 0}\n` : ''}#app{--line:#e6e8ec;--page:#f6f8fb;position:absolute;left:${fit ? 0 : APP.x + (brand.logoBug ? BUG_CLEAR : 0)}px;top:${fit ? 0 : APP.y}px;width:${APP.w}px;height:${APP.h + APP.bar}px;border-radius:16px;overflow:hidden;background:var(--page);
   box-shadow:0 40px 90px rgba(15,23,42,.25),0 0 0 1px rgba(15,23,42,.08);transform-origin:50% 50%}
 #wbar{height:${APP.bar}px;background:#eef1f5;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid #e1e5ea}
 #wbar i{width:11px;height:11px;border-radius:50%}#wbar i:nth-child(1){background:#f26d5f}#wbar i:nth-child(2){background:#f5bd4f}#wbar i:nth-child(3){background:#5dc466}
@@ -489,8 +500,9 @@ ${hasShots ? `#shots{position:absolute;left:0;top:${APP.bar}px;width:${APP.w}px;
 #shcursor{position:absolute;left:0;top:0;width:${SHOT_CURSOR.w}px;height:${SHOT_CURSOR.h}px;opacity:0;transform-origin:0 0;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
 ` : ''}`;
 
+  const fitOpen = fit ? '<div id="appfit">' : '', fitClose = fit ? '</div>' : '';
   const body = `
-  <div id="app">
+  ${fitOpen}<div id="app">
     <div id="wbar"><i></i><i></i><i></i></div>
     <div id="ui">
       <div id="rail"><div class="logo">${logoHtml(brand, { onDark: true, cls: 'raillogo', fallbackText: false })}<span>${h(app.name || brand.name)}</span></div><div id="navbox" style="position:relative"><div id="navhl"></div>${navHtml}</div></div>
@@ -502,7 +514,7 @@ ${hasShots ? `#shots{position:absolute;left:0;top:${APP.bar}px;width:${APP.w}px;
     </div>
     <div id="ring"></div>
     <svg id="cursor" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26 L17 40 L23 37 L17 24 L29 24 Z" fill="#111" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg>${shotLayer}
-  </div>
+  </div>${fitClose}
   <div id="beat">${beatScenes.map(beatHtml).join('')}</div>
   ${script.scenes.map(group).join('\n  ')}
   <div id="iconlayer"><svg id="bicon" viewBox="0 0 100 112" aria-hidden="true"><path id="bshape" d="${firstIcon}"/><path id="bfill" d="${firstIcon}"/><path id="btick" d="${TICK}"/></svg></div>`;

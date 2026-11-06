@@ -5,7 +5,10 @@ import { paletteCss } from './shared.mjs';
 import { SUBTITLE_STYLES, SUBTITLE_FONTS, REVEALS, brandEase, motionProfile } from '../engine/brand.mjs';
 import { marksToHtml, stripMarks } from '../engine/marks.mjs';
 import { glLayers, glBackdropHtml, glWipeHtml, glCss, glData, glJs, cutWindows } from './gl.mjs';
-import { blendOf, blendData, blendHtml, BLEND_CSS, blendCut, blendJs } from './blend.mjs';
+import { blendOf, blendData, blendHtml, BLEND_CSS, blendCut, blendJs, cutPlan, cutPlanData, cutPlanHtml, cutPlanJs } from './blend.mjs';
+import { cameraData, CAM_JS } from './camera.mjs';
+import { pulseOn, PULSE_CSS, PULSE_HTML, PULSE_JS } from './pulse.mjs';
+import { cutoutData, CUTOUT_CSS, CUTOUT_JS } from './cutout.mjs';
 import { hasModels, hasModelLook, MODEL_HEAD, MODEL_WAIT, MODEL_JS, MODEL_POST_JS } from './model3d.mjs';
 import { hasLotties, LOTTIE_WAIT, LOTTIE_JS } from './lottie.mjs';
 
@@ -722,9 +725,17 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
   const leaks = !!brand.leaks && !transparent && scenes.length > 1;
   // brand.blend mixes both scenes over every cut (templates/blend.mjs) in place of the profile's cut. validateBrand
   // refuses a wipe with it, so only a look can add one: the person's blend wins and the look's wipe is dropped.
-  const blend = blendOf(brand, transparent, scenes.length);
+  // A scene's own `cut` puts every cut of the page through the blend machinery (cutPlan in templates/blend.mjs): the
+  // brand's wipe then draws only over the cuts that keep it.
+  const plan = cutPlan(brand, script, scenes, transparent);
+  const blend = plan ? 'plan' : blendOf(brand, transparent, scenes.length);
   // A WebGL backdrop replaces the floating particles; see templates/gl.mjs.
-  const GLL = glLayers(blend ? { ...brand, wipe: null } : brand, transparent, scenes.length);
+  const GLL = glLayers(blend && !plan?.includes('wipe') ? { ...brand, wipe: null } : brand, transparent, scenes.length);
+  const cams = cameraData(script, scenes);
+  // The beat pulse prepare timed (templates/pulse.mjs); never on an overlay.
+  const pulse = !transparent && pulseOn(timing);
+  // Subjects prepare cut out of a scene's main picture (templates/cutout.mjs), drawn over the scene's text.
+  const cutouts = cutoutData(script, scenes);
   if (GLL?.backdrop) particles = false;
   // A 3D model scene loads three.js as a module; build() waits for every model (templates/model3d.mjs).
   const models = hasModels(body);
@@ -783,7 +794,7 @@ export function page({ brand, script, timing, size, title, css = '', body = '', 
     if (caps) return caps[s.id].map(([a, b], k) => `<div class="subt${dark.has(s.id) ? ' subdark' : ''}" id="sub-${s.id}-${k}" data-lint><div class="sw">${P?.style === 'pill' ? '<i class="pl"></i>' : ''}${ws.slice(a, b + 1).map((w, i) => span(w, a + i)).join(' ')}</div></div>`).join('');
     return ws.length ? `<div class="subt${dark.has(s.id) ? ' subdark' : ''}" id="sub-${s.id}" data-lint><div class="sw">${ws.map(span).join(' ')}</div></div>` : '';
   }).join('') : '';
-  const data = { duration: timing.duration, W, H, U: g.U, land: g.land, port: g.port, scenes: sceneData, words: timing.words, stills, ink: c.ink, particle: rgb(c.primary2), ...(S ? { subs: { lit: S.lit, darkLit: S.darkLit } } : {}), ...(caps ? { caps } : {}), ...(GLL ? { gl: glData(GLL, c, cuts) } : {}), ...(leaks ? { leaks: cutWindows(cuts, LEAK_BEFORE, LEAK_AFTER) } : {}), ...(panel ? { cutPanel: cutWindows(cuts, PANEL_BEFORE, PANEL_AFTER).map((w, k) => [...w, scenes[k + 1].dark ? 1 : 0]) } : {}), ...(reveal ? { reveal } : {}), ...(ease ? { ease } : {}), ...(confetti ? { confetti: [c.secondary, c.primary, c.primary2] } : {}), ...(blend ? { blend: blendData(blend, cuts) } : {}), ...extra };
+  const data = { duration: timing.duration, W, H, U: g.U, land: g.land, port: g.port, scenes: sceneData, words: timing.words, stills, ink: c.ink, particle: rgb(c.primary2), ...(S ? { subs: { lit: S.lit, darkLit: S.darkLit } } : {}), ...(caps ? { caps } : {}), ...(GLL ? { gl: glData(GLL, c, plan ? cuts.filter((_, k) => plan[k] === 'wipe') : cuts) } : {}), ...(leaks ? { leaks: cutWindows(cuts, LEAK_BEFORE, LEAK_AFTER) } : {}), ...(panel ? { cutPanel: cutWindows(cuts, PANEL_BEFORE, PANEL_AFTER).map((w, k) => [...w, scenes[k + 1].dark ? 1 : 0]) } : {}), ...(reveal ? { reveal } : {}), ...(ease ? { ease } : {}), ...(confetti ? { confetti: [c.secondary, c.primary, c.primary2] } : {}), ...(blend ? { blend: plan ? cutPlanData(plan, cuts) : blendData(blend, cuts) } : {}), ...(cams ? { cams } : {}), ...(pulse ? { pulse: timing.pulse } : {}), ...(cutouts ? { cutouts } : {}), ...extra };
   // Pages with <video data-clip data-start data-end> (footage inside a motion scene) seek each clip with the page clock.
   // Written only when such a clip exists, so every other page stays byte for byte the same.
   const clipJs = /<video[^>]* data-clip/.test(body) ? `
@@ -853,7 +864,7 @@ ${BS.lit ? `.sw span.hl{color:${BS.lit}}` : `.sw span{opacity:.5}.sw span.hl{bac
 .subt{left:${padX(70)};right:${padX(70)};bottom:${px(70)}}
 .sw,.subdark .sw{font-size:${px(g.port ? 50 : 40)};font-weight:700;color:rgba(255,255,255,.7);background:rgba(15,23,42,.72)}` : ''}${M.caps === 'lines' && !BS ? `
 .sw{line-height:1.25;border-radius:${px(10)};padding:${px(8)} ${px(24)} ${px(10)}}
-.sw span{color:#ffffff;opacity:.7}.sw span.hl{color:var(--secondary)}` : ''}${brand.safeArea ? safeAreaCss(brand.safeArea, g, bug) : ''}${marks ? MARK_CSS : ''}${shines ? SHINE_CSS : ''}${confetti ? CONFETTI_CSS : ''}${reveal === 'lines' ? REVEAL_CSS : ''}${leaks ? `
+.sw span{color:#ffffff;opacity:.7}.sw span.hl{color:var(--secondary)}` : ''}${brand.safeArea ? safeAreaCss(brand.safeArea, g, bug) : ''}${marks ? MARK_CSS : ''}${shines ? SHINE_CSS : ''}${confetti ? CONFETTI_CSS : ''}${reveal === 'lines' ? REVEAL_CSS : ''}${pulse ? PULSE_CSS : ''}${cutouts ? CUTOUT_CSS : ''}${leaks ? `
 #leak{position:absolute;inset:0;z-index:20;pointer-events:none;opacity:0;overflow:hidden}
 #leak i{position:absolute;left:50%;top:50%;width:${px(1500)};height:${px(1500)};margin:${px(-750)} 0 0 ${px(-750)};border-radius:50%}
 #leak i:first-child{background:radial-gradient(circle,rgba(255,170,90,.62) 0%,rgba(255,122,60,.3) 34%,rgba(255,96,64,0) 68%)}
@@ -862,8 +873,8 @@ ${BS.lit ? `.sw span.hl{color:${BS.lit}}` : `.sw span{opacity:.5}.sw span.hl{bac
 </head>
 <body>
 <div id="stage">
-  <canvas id="bgc" width="${W}" height="${H}"></canvas>${GLL ? glBackdropHtml(GLL, W, H) : ''}${blend ? blendHtml(blend, g.U) : ''}
-  ${body}${leaks ? '\n  <div id="leak" aria-hidden="true"><i></i><i></i></div>' : ''}${panel ? '\n  <div id="cutpanel" class="cp" aria-hidden="true"></div>' : ''}${veil ? '\n  <div id="cutveil" aria-hidden="true"></div>' : ''}${carry ? '\n  <div id="carrier" aria-hidden="true"></div>' : ''}${GLL ? glWipeHtml(GLL, W, H) : ''}${film ? `\n  <div id="vig"></div><canvas id="grain" width="${Math.round(W / 2)}" height="${Math.round(H / 2)}"></canvas>` : ''}
+  <canvas id="bgc" width="${W}" height="${H}"></canvas>${GLL ? glBackdropHtml(GLL, W, H) : ''}${blend ? (plan ? cutPlanHtml(plan, g.U) : blendHtml(blend, g.U)) : ''}
+  ${body}${leaks ? '\n  <div id="leak" aria-hidden="true"><i></i><i></i></div>' : ''}${panel ? '\n  <div id="cutpanel" class="cp" aria-hidden="true"></div>' : ''}${veil ? '\n  <div id="cutveil" aria-hidden="true"></div>' : ''}${carry ? '\n  <div id="carrier" aria-hidden="true"></div>' : ''}${pulse ? PULSE_HTML : ''}${GLL ? glWipeHtml(GLL, W, H) : ''}${film ? `\n  <div id="vig"></div><canvas id="grain" width="${Math.round(W / 2)}" height="${Math.round(H / 2)}"></canvas>` : ''}
   ${subHtml}${bug ? '\n  ' + bug : ''}
 </div>
 <script src="vendor/gsap.min.js"></script>
@@ -885,7 +896,7 @@ ${reveal ? revealHelpers(helpersFor(M)) : helpersFor(M)}
 // A character count tween, not GSAP's TextPlugin: TextPlugin sets innerHTML, so any "<" in brief, script
 // or brand text (a code sample, a size like Vec<String>) is parsed as markup instead of shown as typed.
 const typeText = (el, at, dur) => { if (!el) return; const text = el.dataset.text; el.textContent = ''; const c = { n: 0 }; tl.fromTo(c, { n: 0 }, { n: text.length, duration: dur, ease: 'none', immediateRender: false, onUpdate: () => { el.textContent = text.slice(0, Math.round(c.n)); } }, at); };
-const draw = (els, at, dur = 1, o = {}) => { if (!els || (els.length === 0)) return; tl.fromTo(els, { drawSVG: '0%' }, { drawSVG: '100%', duration: dur, stagger: o.stagger ?? 0, ease: o.ease || 'power2.inOut', immediateRender: false }, at); };${marks || shines || confetti ? SHOWN_JS : ''}${marks ? MARK_JS : ''}${shines ? SHINE_JS : ''}${confetti ? CONFETTI_JS : ''}${leaks ? LEAK_JS : ''}${panel ? PANEL_JS : ''}${veil ? VEIL_JS : ''}${carry ? CARRY_JS : ''}${drift ? LAYER_JS : ''}${bug ? SURFACE_JS : ''}${GLL ? glJs(GLL) : ''}${blend ? blendJs(blend) : ''}
+const draw = (els, at, dur = 1, o = {}) => { if (!els || (els.length === 0)) return; tl.fromTo(els, { drawSVG: '0%' }, { drawSVG: '100%', duration: dur, stagger: o.stagger ?? 0, ease: o.ease || 'power2.inOut', immediateRender: false }, at); };${marks || shines || confetti ? SHOWN_JS : ''}${marks ? MARK_JS : ''}${shines ? SHINE_JS : ''}${confetti ? CONFETTI_JS : ''}${leaks ? LEAK_JS : ''}${panel ? PANEL_JS : ''}${veil ? VEIL_JS : ''}${carry ? CARRY_JS : ''}${drift ? LAYER_JS : ''}${bug ? SURFACE_JS : ''}${GLL ? glJs(GLL) : ''}${blend ? (plan ? cutPlanJs(plan) : blendJs(blend)) : ''}${cams ? CAM_JS : ''}${pulse ? PULSE_JS : ''}${cutouts ? CUTOUT_JS : ''}
 
 ${js}
 
@@ -930,7 +941,7 @@ for (const m of ['to', 'from', 'fromTo', 'set']) {
   tl[m] = (...a) => { if (typeof a[at] === 'number' && a[at] < 0) a[at] = 0; return orig.apply(tl, a); };
 }
 
-function build() {${blend ? '\n  blendWrap();' : ''}${carry ? '\n  carryCuts();' : ''}
+function build() {${blend ? '\n  blendWrap();' : ''}${carry ? '\n  carryCuts();' : ''}${cams ? '\n  camFind();' : ''}
   D.scenes.forEach((sc, i) => {
     const s = sc.start, e = sc.end, last = i === D.scenes.length - 1, first = i === 0;
     const g = $('g-' + sc.id);
@@ -994,7 +1005,7 @@ ${bug ? `    // Corner logo: the dark-surface logo on a dark scene, the light-su
     if (g) confetti(g, s, e);` : ''}${drift ? `
     if (g) layerDrift(g, s, e);` : ''}
     if (g) preset(g, ${blend ? 's - blendPre(i)' : 's'});
-  });${leaks ? '\n  lightLeaks();' : ''}${panel ? '\n  panelCuts();' : ''}${veil ? '\n  veilCuts();' : ''}
+  });${cutouts ? '\n  // After every scene\'s tweens, so none of them (a parallax drift on img) takes the cut-out along.\n  cutFind();' : ''}${leaks ? '\n  lightLeaks();' : ''}${panel ? '\n  panelCuts();' : ''}${veil ? '\n  veilCuts();' : ''}
   tl.set({}, {}, D.duration);
 }
 
@@ -1016,7 +1027,7 @@ function drawBg(t) {
 }
 let afterSeek = null;${clipJs}${models ? MODEL_WAIT : ''}${lotties ? LOTTIE_WAIT : ''}${film ? GRAIN_JS : ''}
 // GSAP skips a seek to the time it already sits at, so the first frame (t = 0, where the timeline starts) is forced.
-window.seek = (t) => { t = Math.min(Math.max(+t || 0, 0), D.duration); if (t === 0) tl.render(0, false, true); else tl.seek(t, false);${particles ? ' drawBg(t);' : ''}${film ? ' drawGrain(t);' : ''}${GLL ? ' GL.draw(t);' : ''}${blend ? ' drawBlend(t);' : ''}${models ? ' if (window.__drawModels) window.__drawModels(t);' : ''}${lotties ? ' if (window.__drawLotties) window.__drawLotties(t);' : ''} ${clipJs ? 'const r = afterSeek ? afterSeek(t) : t; return Promise.resolve(r).then(() => seekClips(t)).then(() => r);' : 'return afterSeek ? afterSeek(t) : t;'} };
+window.seek = (t) => { t = Math.min(Math.max(+t || 0, 0), D.duration); if (t === 0) tl.render(0, false, true); else tl.seek(t, false);${particles ? ' drawBg(t);' : ''}${film ? ' drawGrain(t);' : ''}${GLL ? ' GL.draw(t);' : ''}${blend ? ' drawBlend(t);' : ''}${cams ? ' drawCam(t);' : ''}${pulse ? ' drawPulse(t);' : ''}${cutouts ? ' drawCutout();' : ''}${models ? ' if (window.__drawModels) window.__drawModels(t);' : ''}${lotties ? ' if (window.__drawLotties) window.__drawLotties(t);' : ''} ${clipJs ? 'const r = afterSeek ? afterSeek(t) : t; return Promise.resolve(r).then(() => seekClips(t)).then(() => r);' : 'return afterSeek ? afterSeek(t) : t;'} };
 window.__studio = { duration: D.duration, width: D.W, height: D.H, scenes: ${studioScenes}, stills: D.stills${blend ? ', blends: D.blend.cuts.map(([c, a, b]) => [c - a, c + b])' : ''} };
 const imgs = [...document.images].map((im) => (im.decode ? im.decode().catch(() => {}) : null));
 Promise.all([document.fonts.ready, ...imgs${clipJs ? ', ...clipsLoaded' : ''}${models ? ', modelsLoaded' : ''}${lotties ? ', lottiesLoaded' : ''}]).then(async () => { build(); if (window.__prepare) await window.__prepare(); await window.seek(0); window.__ready = true; });

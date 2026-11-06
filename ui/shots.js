@@ -119,6 +119,11 @@ export const MOTION_OPTIONS = [
 /** The option for a stored motion name; absent or unknown is Standard, as the engine reads it. */
 export const motionOpt = (id) => MOTION_OPTIONS.find((o) => o.id === id) || MOTION_OPTIONS[0];
 
+// A scene's direction choices (engine/direction.mjs CUT_KINDS, CAMERA_MOVES, SCENE_GRADES; a test keeps them in step).
+export const CUT_OPTIONS = [['whip', 'Whip pan'], ['zoom', 'Zoom through'], ['warp', 'Cross warp'], ['split', 'Colour split'], ['fade', 'Crossfade'], ['cut', 'Hard cut']];
+export const CAMERA_OPTIONS = [['push-in', 'Push in'], ['pull-out', 'Pull out'], ['pan-left', 'Pan left'], ['pan-right', 'Pan right'], ['rise', 'Rise'], ['fall', 'Fall']];
+export const SCENE_GRADE_OPTIONS = [['none', 'No grade (true colours)'], ['warm', 'Warm'], ['cool', 'Cool'], ['teal-orange', 'Teal and orange'], ['mono', 'Black and white'], ['faded', 'Faded film'], ['vivid', 'Vivid']];
+
 // A scene script's lines as engine/scenescript.mjs reads them: a scene starts at SCENE n and ends at the next SCENE,
 // at End card or at a capital section label with nothing after its colon.
 const SCENE_LINE_RE = /^\s*(?:SCENE|Scene|Cảnh|CẢNH)\s+(\d{1,3})\b/;

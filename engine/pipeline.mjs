@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  ROOT, StudioError, readJson, writeJson, exists, loadStudioConfig, round,
+  ROOT, StudioError, readJson, writeJson, exists, loadStudioConfig, round, within,
 } from './core.mjs';
 import {
   loadBrief, loadBrand, loadBriefTemplate, listAssets, assetPath, getStatus, setStatus, jobDir, jobFile,
@@ -20,7 +20,7 @@ import { buildMixed } from './mix.mjs';
 import { ttsProvider, speakScript, voiceFor, voiceProblem, sapiCulture, sameLanguage, kokoroWords } from './tts.mjs';
 import { brandAssets } from '../templates/shared.mjs';
 import { ensureMusic, musicPath, isLibraryMusic, MUSIC } from './library.mjs';
-import { detectBeats, beatSnap } from './beats.mjs';
+import { detectBeats, beatSnap, analyseMusic, dropShift, pulseTimes } from './beats.mjs';
 import { ffmpeg, openComposition, lintInPage, probeMedia, mediaTimeoutMs, BT709_VF, BT709_TAGS } from './media.mjs';
 import { renderFrames, renderWorkers, openWorkers, cutClipFrames, CLIP_FPS, CLIP_FRAMES_DIR } from './frames.mjs';
 import { playCheck, freshLoad, PLAY_DEFAULTS } from './playcheck.mjs';
@@ -33,6 +33,9 @@ import { voicedPauses } from './tts/kokoro.mjs';
 import { clipGains } from './loudness.mjs';
 import { recordedVoice } from './voicetake.mjs';
 import { jobSfx, SFX_FILE } from './sfx.mjs';
+import { videoGradeVf, imageGradeArgs, GRADABLE_IMAGE } from './grade.mjs';
+import { pictureCopies, cutoutPicture } from './direction.mjs';
+import { matteConfig, matteStatus, makeCutout } from './matte.mjs';
 import { copyThree, copyLottie, copyGsap } from './vendor.mjs';
 // sequences.mjs imports this module too; loopMusic is only called at run time, so the cycle is safe.
 import { loopMusic } from './sequences.mjs';
@@ -200,9 +203,15 @@ export async function prepare(project, id, by = 'engine') {
       if (STALE_RE.test(f)) fs.unlinkSync(path.join(dir0, f));
     }
     fs.rmSync(path.join(dir0, REVIEW_DIR), { recursive: true, force: true });
+    // An editor export (engine/export.mjs EXPORT_DIR) is cut from the old render.
+    fs.rmSync(path.join(dir0, 'export'), { recursive: true, force: true });
     const size = sizeFor(beats, brief.format);
     const footage = beats.audio === 'footage';
     const clips = footage ? await footageClips(project, script, beats.footage || 'video') : await sceneVideos(project, script, beats);
+    const grade = brandGrade(project, brand);
+    // A scene's own grade wins over the brand's for its clip: none, or a preset.
+    const ownGrade = Object.fromEntries(script.scenes.filter((sc) => sc.grade !== undefined).map((sc) => [sc.id, sc.grade]));
+    const clipGrade = (cid) => (!Object.hasOwn(ownGrade, cid) ? grade : ownGrade[cid] === 'none' ? null : { grade: { look: ownGrade[cid] }, lutFile: null });
     // A clip with sound and no typed text gets its words from local speech recognition, with real timings.
     // Motion scenes do the same for a clip that plays its own sound with no voice line over it.
     const heard = sttStatus().available ? clips.filter((c) => c.hasAudio && !c.text && (footage || c.caption)) : [];
@@ -236,8 +245,12 @@ export async function prepare(project, id, by = 'engine') {
     // A scene's `hold` comes on top in the timing (engine/timing.mjs `sceneHold`), after the clip or the line, whichever ends later.
     const fixed = timed.length ? Object.fromEntries(timed.map((c) => [c.id, c.seconds])) : null;
     const tts = ttsProvider(brand);
-    const beat = brief.cutOnBeat ? await musicBeat(project, brand) : null;
-    const snap = beat?.grid ? beatSnap(beat.grid) : null;
+    // The music: its beat grid for cuts on the beat and the pulse, its drops for the pulse and a scene's `drop`.
+    const dropScene = script.scenes.find((sc) => sc.drop === true);
+    const beat = brief.cutOnBeat || brief.beatPulse || dropScene ? await musicInfo(project, brand, { drops: Boolean(brief.beatPulse || dropScene) }) : null;
+    // The grid in video time once the music is moved by `sh` seconds (see beats.mjs pulseTimes).
+    const gridAt = (sh) => beat?.grid && { ...beat.grid, offset: round((((beat.grid.offset - sh) % beat.grid.period) + beat.grid.period) % beat.grid.period, 4) };
+    let snap = brief.cutOnBeat && beat?.grid ? beatSnap(beat.grid) : null;
     // A tight motion profile (cinematic and others) cuts close around each line instead of leaving a pause on both sides.
     const tight = motionProfile(brand).tight;
     const take = brief.voiceTake ? await recordedVoice(project, jobDir(project, id), brief.voiceTake, script, { lang: brand.voice.lang, opts: { ...cfg.voiceTake, cleanup: brand.voice.cleanup === true } }) : null;
@@ -248,7 +261,21 @@ export async function prepare(project, id, by = 'engine') {
     // A motion clip with sound and a voice line: when the line outlasts the clip, the scene holds the clip's last frame.
     const held = footage ? null : voiceHolds(timing, fixed, script, { cfg: cfg.timing, pace: beats.pace || null, tight });
     if (held) timing = await timeScript(held);
-    if (beat?.grid) timing.beat = beat.grid;
+    // A scene's `drop`: the music moves so its drop lands on that scene's start. Cuts on the beat are timed again on
+    // the moved grid, which can move the scene; the drop then follows it (the drop wins over a beat).
+    let drop = null;
+    if (dropScene && beat?.drops?.length) {
+      const startOf = () => timing.scenes.find((s) => s.id === dropScene.id).start;
+      drop = dropShift(beat.drops, startOf(), beat.seconds);
+      if (drop && snap) {
+        snap = beatSnap(gridAt(drop.shift));
+        timing = await timeScript(held || fixed);
+        drop = dropShift([{ at: drop.at }], startOf(), beat.seconds);
+      }
+    }
+    if (brief.cutOnBeat && beat?.grid) timing.beat = gridAt(drop?.shift || 0);
+    if (drop) { timing.music = { shift: drop.shift }; timing.drop = { scene: dropScene.id, at: drop.at }; }
+    if (brief.beatPulse && (beat?.grid || beat?.drops?.length)) timing.pulse = pulseTimes(beat.grid, beat.drops, timing.duration, drop?.shift || 0);
     if (clips.length) {
       const voiceWords = timing.words.slice();
       if (footage) captionClips(timing, clips);
@@ -257,7 +284,7 @@ export async function prepare(project, id, by = 'engine') {
         heardWords(timing, clips.filter((c) => c.caption && c.words?.length));
       }
       await matchLoudness(jobDir(project, id), clips, timing, voiceWords, cfg.loudness);
-      await cutClips(jobDir(project, id), clips, timing, size);
+      await cutClips(jobDir(project, id), clips, timing, size, clipGrade);
       if (beats.levels) await clipLevels(clips, timing);
     }
     const sfx = await jobSfx(jobDir(project, id), script, timing, brand.sfx);
@@ -272,19 +299,34 @@ export async function prepare(project, id, by = 'engine') {
     const dir = jobDir(project, id);
     copyGsap(dir);
     fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
-    const used = new Set(brandAssets(brand));
-    for (const sc of script.scenes) {
-      if (sc.asset) used.add(sc.asset);
-      if (sc.image) used.add(sc.image);
-      if (sc.model) used.add(sc.model);
-      if (sc.lottie) used.add(sc.lottie);
-      for (const sh of sc.shots || []) used.add(sh.asset);
-      for (const p of Array.isArray(sc.photos) ? sc.photos : []) if (p?.asset) used.add(p.asset);
+    // Footage is cut into clips/ above; the source files stay out of the job folder. Scene pictures carry the brand's
+    // colour grade, or their scene's own (a renamed copy the page reads through pageScript); brand assets, app
+    // screens, models and Lottie files are copied as they are.
+    let { pageScript, copies } = pictureCopies(script, { brandOwn: new Set(brandAssets(brand)) });
+    for (const [dest, { src, grade: kind }] of copies) {
+      const to = within(path.join(dir, 'assets'), dest);
+      const g = kind === 'brand' ? grade : kind === 'none' ? null : { grade: { look: kind }, lutFile: null };
+      if (g && GRADABLE_IMAGE.test(src)) await ffmpeg(imageGradeArgs(assetPath(project, src), to, g.grade, g.lutFile), { timeoutMs: GRADE_IMAGE_TIMEOUT_MS });
+      else fs.copyFileSync(assetPath(project, src), to);
     }
-    // Footage is cut into clips/ above; the source files stay out of the job folder.
-    for (const a of used) if (!VIDEO_RE.test(a) && !AUDIO_RE.test(a)) fs.copyFileSync(assetPath(project, a), path.join(dir, 'assets', a));
+    // Cut-outs (a scene's `cutout`): the subject of the scene's picture, as the job holds it (graded), on a clear ground.
+    const cutNotes = [];
+    if (pageScript.scenes.some((sc) => sc.cutout === true)) {
+      const mopts = matteConfig(cfg);
+      const st = matteStatus(mopts);
+      let made = 0;
+      pageScript = { ...pageScript, scenes: pageScript.scenes.map((sc) => (sc.cutout === true ? { ...sc } : sc)) };
+      for (const sc of pageScript.scenes.filter((x) => x.cutout === true)) {
+        if (!st.available) { cutNotes.push(`${sc.id}: no cut-out, ${st.reason}`); continue; }
+        if (made >= mopts.maxPerJob) { cutNotes.push(`${sc.id}: no cut-out, a job makes at most ${mopts.maxPerJob}`); continue; }
+        const file = `cut-${sc.id}.png`;
+        await makeCutout(within(path.join(dir, 'assets'), cutoutPicture(sc)), within(path.join(dir, 'assets'), file), { opts: mopts });
+        sc.cutoutFile = file;
+        made++;
+      }
+    }
     const page = async (format, sz) => {
-      const args = { brief: { ...brief, format }, brand, script, timing, size: sz, icons };
+      const args = { brief: { ...brief, format }, brand, script: pageScript, timing, size: sz, icons };
       return beats.mixed ? buildMixed(args, beats) : (await import(pathToFileURL(path.join(tplDir, 'template.mjs')).href)).build(args);
     };
     fs.writeFileSync(path.join(dir, 'index.html'), await page(brief.format, size), 'utf8');
@@ -302,7 +344,10 @@ export async function prepare(project, id, by = 'engine') {
     const findings = warnings.map((w) => ({ level: 'warning', el: 'script', msg: w }));
     if (!take && !tts.available) findings.push({ level: 'warning', el: 'voice', msg: `No voice-over: ${tts.reason}. Timing is estimated from word count.` });
     for (const f of timing.footage || []) if (f.heard) findings.push({ level: 'warning', el: 'captions', scene: f.id, msg: 'captions come from speech recognition: read them before you approve, or type the clip text to replace them' });
-    if (beat && !beat.grid) findings.push({ level: 'warning', el: 'music', msg: `Cut on the beat is on, but ${beat.reason}; scenes keep their own length` });
+    if (brief.cutOnBeat && beat && !beat.grid) findings.push({ level: 'warning', el: 'music', msg: `Cut on the beat is on, but ${beat.reason}; scenes keep their own length` });
+    for (const note of cutNotes) findings.push({ level: 'warning', el: 'cutout', scene: note.split(':')[0], msg: note });
+    if (brief.beatPulse && !timing.pulse) findings.push({ level: 'warning', el: 'music', msg: `Pulse on the beat is on, but ${beat?.reason || 'the music has no steady beat and no drop'}; the picture does not pulse` });
+    if (dropScene && !drop) findings.push({ level: 'warning', el: 'music', scene: dropScene.id, msg: `${dropScene.id} asks for the music's drop, but ${beat?.seconds ? (beat.drops.length ? 'no drop in the track can land there' : 'no drop was found in the track') : beat?.reason || 'there is no music'}; the music plays from its start` });
     if (!take && tts.available && tts.name === 'sapi') {
       const culture = await sapiCulture(timing.voice);
       if (culture && !sameLanguage(culture, brand.voice.lang)) findings.push({ level: 'warning', el: 'voice', msg: `Voice ${timing.voice} speaks ${culture}, the video language is ${brand.voice.lang}` });
@@ -362,15 +407,24 @@ export function voiceHolds(timing, fixed, script, { cfg, pace = null, tight = fa
 }
 
 /** The brand track's beat grid for cutting on the beat: known for built-in tracks, detected for uploads. */
-async function musicBeat(project, brand) {
+/**
+ * The brand music's beat grid and, with `drops`, its drops and length. A built-in track knows its tempo; an upload
+ * is analysed. `reason` says why there is no grid.
+ */
+async function musicInfo(project, brand, { drops = false } = {}) {
   const file = brand.music?.file;
-  if (!file) return { grid: null, reason: 'the brand has no background music' };
-  if (isLibraryMusic(file)) {
-    const m = MUSIC.find((x) => x.id === file.slice(8));
-    return m?.beat ? { grid: { period: m.beat, offset: 0, bpm: Math.round(60 / m.beat), source: 'built-in' } } : { grid: null, reason: `${file} has no beat` };
+  if (!file) return { grid: null, drops: [], reason: 'the brand has no background music' };
+  const lib = isLibraryMusic(file) ? MUSIC.find((x) => x.id === file.slice(8)) : null;
+  const known = lib?.beat ? { period: lib.beat, offset: 0, bpm: Math.round(60 / lib.beat), source: 'built-in' } : null;
+  const noGrid = lib ? `${file} has no beat` : `no steady beat was found in ${file}`;
+  if (!drops) {
+    if (lib) return known ? { grid: known, drops: [] } : { grid: null, drops: [], reason: noGrid };
+    const grid = await detectBeats(assetPath(project, file));
+    return grid ? { grid, drops: [] } : { grid: null, drops: [], reason: noGrid };
   }
-  const grid = await detectBeats(assetPath(project, file));
-  return grid ? { grid } : { grid: null, reason: `no steady beat was found in ${file}` };
+  const music = await brandMusic(project, brand);
+  const found = await analyseMusic(music, known);
+  return { ...found, seconds: (await probeMedia(music)).duration, ...(found.grid ? {} : { reason: noGrid }) };
 }
 // Files an earlier storyboard or render left: the next render must not hand them out as current.
 const STALE_RE = /^(video|final)(-\d+x\d+)?\.mp4$|^(voice|footage|sfx)\.wav$|^index-\d+x\d+\.html$|^qa(-\d+x\d+)?\.json$|^video\.html$|^alpha(-\d+x\d+)?\.mov$/;
@@ -620,14 +674,28 @@ function captionClips(timing, clips) {
   timing.footage = clips.map(({ id, seconds, hasAudio, words }) => ({ id, seconds, hasAudio, ...(words ? { heard: true } : {}) }));
 }
 
+const GRADE_IMAGE_TIMEOUT_MS = 60000;
+
+/** The brand's colour grade with its LUT file resolved, or null. A missing LUT fails prepare by name. */
+export function brandGrade(project, brand) {
+  const g = brand?.grade;
+  if (!g) return null;
+  if (!g.lut) return { grade: g, lutFile: null };
+  try { return { grade: g, lutFile: assetPath(project, g.lut) }; } catch {
+    throw new StudioError(`The colour LUT ${g.lut} is not in this brand's assets. Upload it on the Brand tab, or pick another grade.`, 400);
+  }
+}
+
 /** Each clip becomes a frame-sized, keyframe-dense mp4 (fast exact seeks), and clip sound becomes footage.wav. */
-async function cutClips(dir, clips, timing, { width, height }) {
+async function cutClips(dir, clips, timing, { width, height }, gradeOf = () => null) {
   fs.mkdirSync(path.join(dir, 'clips'), { recursive: true });
   for (const c of clips.filter((x) => x.hasVideo)) {
     const scale = c.fit === 'contain'
       ? `scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2`
       : `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
-    await ffmpeg(['-y', '-ss', String(c.from), '-t', String(c.seconds), '-i', c.file, '-an', '-vf', `${scale},fps=${CLIP_FPS}`,
+    const g = gradeOf(c.id);
+    const gradeVf = g ? videoGradeVf(g.grade, g.lutFile) : '';
+    await ffmpeg(['-y', '-ss', String(c.from), '-t', String(c.seconds), '-i', c.file, '-an', '-vf', `${scale},fps=${CLIP_FPS}${gradeVf ? `,${gradeVf}` : ''}`,
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...BT709_TAGS, '-crf', '18', '-g', '6', '-preset', 'veryfast', '-movflags', '+faststart', path.join(dir, 'clips', `${c.id}.mp4`)],
     { timeoutMs: mediaTimeoutMs(c.seconds) });
   }
@@ -1024,11 +1092,41 @@ export async function brandMusic(project, brand) {
 const musicCycle = (name) => (isLibraryMusic(name) ? MUSIC.find((m) => m.id === name.slice(8))?.cycle || 0 : 0);
 
 /**
+ * ffmpeg args for the music stem of an export (engine/export.mjs): the brand track as the final mix places it
+ * (moved, looped, at the brand level, faded out) but alone and not loudness-normalised. Input 0 is a silent stand-in
+ * for the video, so mixFilter's input numbering holds.
+ */
+export async function musicStemArgs(project, brand, { duration, musicShift = 0, out }) {
+  const music = await brandMusic(project, brand);
+  if (!music) return null;
+  const src = musicSource({ music, musicSeconds: (await probeMedia(music)).duration, cycle: musicCycle(brand.music?.file), duration, musicShift, input: 1 });
+  const filter = mixFilter({ music: true, duration, gainDb: brand.music?.gainDb, loopGraph: src.loopGraph, ...(src.late ? { musicFrom: src.late, fadeIn: 0.2 } : {}) })
+    .replace(`[m]${LOUDNORM}[a]`, '[m]anull[a]');
+  return ['-y', '-f', 'lavfi', '-t', '0.1', '-i', 'anullsrc=r=48000:cl=stereo', ...src.inputs, '-filter_complex', filter, '-map', '[a]', '-ar', '48000', '-c:a', 'pcm_s16le', out];
+}
+
+/**
+ * The music's ffmpeg inputs (`input` is its first input index) and loop graph for a video `duration` long.
+ * timing.music.shift (a scene's `drop`): a positive shift plays the track from that far in, a negative one starts it
+ * that late (`late`, for mixFilter's musicFrom). A shift the track cannot give is ignored. A looped track is seeked
+ * inside the graph, on its first copy only, so later copies still loop the whole track.
+ */
+export function musicSource({ music, musicSeconds = 0, cycle = 0, duration, musicShift = 0, input }) {
+  const seek = musicShift > 0 && (!musicSeconds || musicShift < musicSeconds - 1) ? musicShift : 0;
+  const late = musicShift < 0 ? Math.min(-musicShift, duration / 2) : 0;
+  const loop = musicSeconds ? loopMusic(input, musicSeconds, duration + seek - late, cycle) : null;
+  const inputs = [];
+  for (let i = 0; i < (loop?.copies || 1); i++) inputs.push(...(seek && !loop && i === 0 ? ['-ss', String(seek)] : []), '-i', music);
+  const loopGraph = loop && seek ? loop.graph.replace(/atrim=0:([\d.]+)\[c0\]/, `atrim=start=${seek}:end=$1,asetpts=PTS-STARTPTS[c0]`) : loop?.graph || null;
+  return { inputs, loopGraph, late };
+}
+
+/**
  * The final mux: the rendered `video` with its sound from `speech` files, `sfx` files (cut sounds) and `music`
  * (a file or null) at the brand's music settings. Music `musicSeconds` long, shorter than the video, loops by
  * crossfade (`loopMusic`, one input per copy; `cycle` as there). `label` names what is heard ('silent' when nothing is).
  */
-export function finalMixArgs({ video, final, speech = [], sfx = [], music = null, musicSeconds = 0, cycle = 0, brand, duration }) {
+export function finalMixArgs({ video, final, speech = [], sfx = [], music = null, musicSeconds = 0, cycle = 0, brand, duration, musicShift = 0 }) {
   const dur = duration.toFixed(3);
   const args = ['-y', '-i', video];
   if (!speech.length && !music && !sfx.length) {
@@ -1037,9 +1135,9 @@ export function finalMixArgs({ video, final, speech = [], sfx = [], music = null
     return { args, label: 'silent' };
   }
   for (const f of [...speech, ...sfx]) args.push('-i', f);
-  const loop = music && musicSeconds ? loopMusic(1 + speech.length + sfx.length, musicSeconds, duration, cycle) : null;
-  if (music) for (let i = 0; i < (loop?.copies || 1); i++) args.push('-i', music);
-  const filter = mixFilter({ speech: speech.length, sfx: sfx.length, music: Boolean(music), duration, gainDb: brand.music?.gainDb, duck: brand.music?.duck === true, loopGraph: loop?.graph || null });
+  const src = music ? musicSource({ music, musicSeconds, cycle, duration, musicShift, input: 1 + speech.length + sfx.length }) : null;
+  if (src) args.push(...src.inputs);
+  const filter = mixFilter({ speech: speech.length, sfx: sfx.length, music: Boolean(music), duration, gainDb: brand.music?.gainDb, duck: brand.music?.duck === true, loopGraph: src?.loopGraph || null, ...(src?.late ? { musicFrom: src.late, fadeIn: 0.2 } : {}) });
   args.push('-filter_complex', filter, '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-t', dur, '-movflags', '+faststart', final);
   return { args, label: [...speech, ...sfx].map((f) => path.basename(f, '.wav')).concat(music ? ['music'] : []).join('+') };
 }
@@ -1057,6 +1155,7 @@ async function exportFinal(project, dir, brand, duration, names = { video: 'vide
     speech: SPEECH_FILES.map((f) => path.join(dir, f)).filter(exists),
     sfx: [path.join(dir, SFX_FILE)].filter(exists),
     music, musicSeconds: music ? (await probeMedia(music)).duration : 0, cycle: musicCycle(brand.music?.file),
+    musicShift: readJson(path.join(dir, 'timing.json'), null)?.music?.shift || 0,
   });
   await ffmpeg(args, { timeoutMs: mediaTimeoutMs(duration, engine) });
   return label;

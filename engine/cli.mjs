@@ -14,6 +14,7 @@ import { makePackGlb, DEPTH_RANGE, FINISHES } from './pack-glb.mjs';
 import { nodeProblem } from './runtime.mjs';
 import { importRemotion } from './remotion.mjs';
 import { importSceneScript, readScriptFile } from './scenescript.mjs';
+import { exportJob } from './export.mjs';
 
 const USAGE = `Motion Studio engine
 
@@ -40,6 +41,7 @@ const USAGE = `Motion Studio engine
         [--gain <dB>] [--mute] [--speed <x>] [--smooth blend|motion|none] [--size 1920x1080] [--replace]   cut a new brand asset from a video asset
         (a slower clip blends neighbouring frames by default; motion follows the movement, up to 20 s out, and is slow to make)
   node engine/cli.mjs qa      <project> <job>       check a done job's final.mp4 again: loudness, black/frozen picture, size, captions
+  node engine/cli.mjs export  <project> <job>       a done job for an editor: one clip per scene, sound stems, captions and timeline.xml (Premiere, Resolve) in export/
   node engine/cli.mjs sequence <project> <sequence>  join the parts' final.mp4 files into out/<project>/<sequence>/final.mp4
   node engine/cli.mjs sequence-preview <project> <sequence>  a quick low-resolution preview.mp4 of the same joins
   node engine/cli.mjs evidence git <repo> [--since 2026-01-01] [--until 2026-09-30] [--tickets OP-1,OP-2] [--grep "<text>"] [--json]
@@ -258,6 +260,11 @@ async function main(argv) {
     case 'clip': {
       const r = await makeClip(project, id, clipOptions(args), { by });
       console.log(`${r.name}: ${round(r.sidecar.out - r.sidecar.in, 3)}s from ${r.sidecar.source} (${r.sidecar.in} → ${r.sidecar.out}), ${r.sidecar.width}x${r.sidecar.height}, ${r.sidecar.fill}${r.sidecar.sound ? `, sound ${r.sidecar.gainDb} dB` : ', no sound'}, ${Math.round(r.bytes / 1024)} KB`);
+      return;
+    }
+    case 'export': {
+      const { export: ex } = (await exportJob(project, id, by)).outputs;
+      console.log(`Exported to out/${project}/${id}/${ex.dir}/: ${ex.scenes} scene clip(s), stems ${ex.stems.join(', ') || 'none'}, ${ex.timeline}`);
       return;
     }
     case 'qa': {

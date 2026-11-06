@@ -4,6 +4,7 @@ import { StudioError, FILE_RE, within, exists } from './core.mjs';
 import { profileDir } from './jobs.mjs';
 import { glbJson, glbOutsideUri } from './glb.mjs';
 import { isLottie, assertSafeLottie } from './lottie.mjs';
+import { isCube } from './grade.mjs';
 
 const extOf = (name) => path.extname(name).slice(1).toLowerCase();
 
@@ -14,6 +15,7 @@ export const ASSET_TYPES = {
   woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf',
   glb: 'model/gltf-binary',
   json: 'application/json',
+  cube: 'text/plain; charset=utf-8',
 };
 export const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
 export const VIDEO_EXT = ['mp4', 'webm', 'mov'];
@@ -44,6 +46,11 @@ const SVG_BLOCK = [
   /<\?xml-stylesheet/i, /@import/i,
 ];
 
+const CONTENT_HINT = {
+  json: (name) => `${name} is not a Lottie animation (a .json export from After Effects or LottieFiles with v, fr and layers)`,
+  cube: (name) => `${name} is not a 3D colour LUT (a .cube file with LUT_3D_SIZE 2-65 and that many cubed rows of three numbers)`,
+};
+
 function checkContent(name, buf) {
   const ext = extOf(name);
   const head = buf.subarray(0, 16);
@@ -66,8 +73,9 @@ function checkContent(name, buf) {
     otf: () => ascii(0, 4) === 'OTTO',
     glb: () => glbJson(buf) !== null,
     json: () => isLottie(buf),
+    cube: () => isCube(buf),
   }[ext];
-  if (!ok || !ok()) throw new StudioError(ext === 'json' ? `${name} is not a Lottie animation (a .json export from After Effects or LottieFiles with v, fr and layers)` : `${name} does not look like a real .${ext} file`, 400);
+  if (!ok || !ok()) throw new StudioError(CONTENT_HINT[ext]?.(name) || `${name} does not look like a real .${ext} file`, 400);
   if (ext === 'svg') assertSafeSvg(name, buf.toString('utf8'));
   if (ext === 'json') assertSafeLottie(name, buf);
   if (ext === 'glb') {

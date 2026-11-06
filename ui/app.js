@@ -1,4 +1,4 @@
-import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, assetPick, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt, insertClip } from './shots.js';
+import { SHOT_RE, bulletShot, shotField, shotAction, applyShot, assetKind, assetPick, uploadProblem, parseNum, parseSay, sayText, paletteProblems, guessFont, MOTION_OPTIONS, motionOpt, insertClip, CUT_OPTIONS, CAMERA_OPTIONS, SCENE_GRADE_OPTIONS } from './shots.js';
 import { mountAssistant } from './assistant.js';
 import { mountSettings } from './settings.js';
 import { HOLD_MAX, HOLD_STEP, CUE_LEAD, roundHold, fmtSec, sceneSpans, totalOf, moveItem, dropIndex, cueWord, snapWord, stepWord, shotTimes, cueRange, sfxOptions, takesCue, editScript } from './timeline.js';
@@ -632,6 +632,8 @@ function banner() {
          <a class="btn" href="${base}/captions.srt" download="${esc(S.sel)}.srt">Download captions</a>
          ${o.alpha ? `<a class="btn" href="${fileUrl(base, o.alpha)}" download="${esc(S.sel)}-alpha.mov" title="ProRes 4444 with transparency, to lay over footage in an editor">Download with transparency (.mov)</a>` : ''}
          ${o.html?.file ? `<a class="btn" href="${base}/video.html" download="${esc(S.sel)}.html" title="One file that plays in any browser, no server needed (${esc(o.html.mb)} MB)">Download HTML video</a>` : ''}${btn('render', 'Render again')}`)
+        + `<div class="banner"><p>${o.export ? `Exported for an editor: <code>out/${esc(S.project)}/${esc(S.sel)}/${esc(o.export.dir)}/</code> holds ${esc(o.export.scenes)} scene clip(s), the stems (${esc(o.export.stems.join(', ') || 'none')}), the captions and <code>${esc(o.export.timeline)}</code>, which Premiere Pro and DaVinci Resolve open as a timeline. CapCut takes the clips and stems.`
+          : 'Finish it in an editor: Export writes one clip per scene, the voice, music and sound stems, the captions and a timeline for Premiere Pro or DaVinci Resolve.'}${s.exportError ? ` <span class="bad">Last export failed: ${esc(s.exportError)}</span>` : ''}</p>${btn('export', o.export ? 'Export again' : 'Export for editor')}</div>`
         + qaHtml(o.qa, base, (o.cuts || []).length ? d.brief.format : '')
         + (o.cuts || []).map((c) => qaHtml(c.qa, base, c.format)).join('');
     }
@@ -1006,6 +1008,21 @@ function paneScript(pane) {
     return `<div class="f">${label}<input ${attrs} value="${esc(s[f] ?? '')}"${max}>${tip}</div>`;
   };
 
+  // A scene's direction: its entrance, a camera move over its main picture or clip, its own colour grade.
+  const directionHtml = (s, i) => {
+    const sid = esc(s.id), id = (f) => esc(`sc-${s.id}-${f}`);
+    const opts = (list, cur, none) => `<option value="">${none}</option>${list.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}`;
+    const set = [s.cut, s.camera, s.grade, s.drop, s.cutout].filter((v) => v !== undefined).length;
+    const custom = s.camera && typeof s.camera === 'object';
+    return `<details class="more"><summary>Direction <span class="muted">· ${set ? `${set} set` : 'as the brand'}</span></summary><div class="grid2">
+      ${i === 0 ? '' : `<div class="f"><label for="${id('cut')}">Cut into this scene</label><select id="${id('cut')}" data-s="${sid}" data-f="cut">${opts(CUT_OPTIONS, s.cut, "The brand's cut")}</select></div>`}
+      <div class="f"><label for="${id('camera')}">Camera</label><select id="${id('camera')}" data-s="${sid}" data-f="camera">${custom ? '<option value="" disabled selected>Custom (from script.json)</option>' : ''}${opts(CAMERA_OPTIONS, s.camera, 'Still')}</select></div>
+      <div class="f"><label for="${id('grade')}">Colour grade</label><select id="${id('grade')}" data-s="${sid}" data-f="grade">${opts(SCENE_GRADE_OPTIONS, s.grade, "The brand's grade")}</select></div>
+      <div class="f"><label class="chk"><input type="checkbox" id="${id('drop')}" data-s="${sid}" data-f="drop" ${s.drop === true ? 'checked' : ''}> The music's drop lands here</label>
+        <label class="chk"><input type="checkbox" id="${id('cutout')}" data-s="${sid}" data-f="cutout" ${s.cutout === true ? 'checked' : ''}> Subject in front of the text</label></div></div>
+      <span class="hint muted">The camera moves over the scene's main picture or clip, the one that fills most of the frame. The grade applies to this scene's pictures and clips. The drop moves the brand music so its drop (where it gets loud) starts with this scene; one scene per video. Subject in front of the text cuts the person or product out of the scene's picture and puts it over the heading (needs a segmentation model in models/matte/). Applies when the storyboard is rebuilt.</span></details>`;
+  };
+
   const draftHtml = (s, fields) => `<div class="draftbox">
       <p>The Director writes this scene from your request on its next run. Its kind, position and claim source stay as you set them.</p>
       <div class="f"><label for="sc-${esc(s.id)}-note">Request for the Director</label>
@@ -1098,7 +1115,7 @@ function paneScript(pane) {
         </span></div>
         ${help.kinds[s.kind] ? `<p class="muted kindhelp">${esc(help.kinds[s.kind])}</p>` : ''}
         ${s.draft ? '' : mediaStrip(s, spec)}
-        ${s.draft ? draftHtml(s, fields) : `<div class="grid2">${fields.map((f) => fieldHtml(s, f)).join('')}</div>`}</div>${addRow(i + 1)}`;
+        ${s.draft ? draftHtml(s, fields) : `<div class="grid2">${fields.map((f) => fieldHtml(s, f)).join('')}</div>${directionHtml(s, i)}`}</div>${addRow(i + 1)}`;
     }).join('');
     drawChecks();
   };
@@ -1167,6 +1184,7 @@ function paneScript(pane) {
     else if (f === 'stat.unit') s.stat = { ...(s.stat || {}), unit: el.value };
     else if (f === 'check') { if (el.checked) s.check = true; else delete s.check; }
     else if (f === 'sound') { if (el.checked) s.sound = true; else delete s.sound; }
+    else if (f === 'drop' || f === 'cutout') { if (el.checked) s[f] = true; else delete s[f]; }
     else if (f === 'shadow') s.shadow = el.checked;
     else if (f === 'in' || f === 'out') { if (el.value === '') delete s[f]; else s[f] = Number(el.value); }
     else if (f === 'icon') {
@@ -1444,13 +1462,16 @@ function panePreView(pane) {
     : Object.assign(new Audio(`${base}/${f}?v=${stamp}`), { preload: 'auto' })));
   const soundOn = () => sounds.length && $('#snd')?.checked;
   $('#snd')?.addEventListener('change', () => { S.sound = $('#snd').checked; if (!soundOn()) sounds.forEach((a) => a.pause()); else if (playing) syncSound(+rng.value, true); });
+  // A scene's `drop` moves the music (timing.music.shift): positive plays it from later in the track, negative starts it late.
+  const offs = tracks.map((f) => (f === 'music' ? Number(d.timing?.music?.shift) || 0 : 0));
   const syncSound = (t, force) => {
     if (!soundOn()) return;
-    for (const a of sounds) {
-      if (Number.isFinite(a.duration) && t >= a.duration) { a.pause(); continue; }
-      if (force || Math.abs(a.currentTime - t) > 0.15) a.currentTime = t;
+    sounds.forEach((a, i) => {
+      const at = t + offs[i];
+      if (at < 0 || (Number.isFinite(a.duration) && at >= a.duration)) { a.pause(); return; }
+      if (force || Math.abs(a.currentTime - at) > 0.15) a.currentTime = at;
       if (playing && a.paused) a.play().catch(() => {});
-    }
+    });
   };
   const seek = (t) => {
     const w = frame.contentWindow;
@@ -1839,7 +1860,7 @@ const briefBody = () => ({
   duration: parseNum($('#bf-dur').value), url: $('#bf-url').value.trim(),
   subject: $('#bf-subj').value.trim(), message: $('#bf-msg').value.trim(), facts: $('#bf-facts').value.trim(),
   cta: $('#bf-cta').value.trim(), notes: $('#bf-notes').value.trim(), lang: $('#bf-lang').value, voice: $('#bf-voice').value, voiceTake: $('#bf-take').value,
-  alsoFormats: $$('#bf-alsolist input:checked').map((x) => x.value), cutOnBeat: $('#bf-beat').checked, motionBlur: $('#bf-blur').checked,
+  alsoFormats: $$('#bf-alsolist input:checked').map((x) => x.value), cutOnBeat: $('#bf-beat').checked, beatPulse: $('#bf-pulse').checked, motionBlur: $('#bf-blur').checked,
   quick: $('#bf-quick').checked,
 });
 // A new brief counts as unsaved once it has a message; an edit once any field differs from the stored brief.
@@ -1860,7 +1881,7 @@ function renderBriefForm(pre) {
   const heading = pre.edit ? 'Edit brief' : pre.from ? `Duplicate of ${esc(pre.from)}` : 'New brief';
   // A new brief starts in quick mode where the template has one; an edit or a duplicate keeps what the brief says.
   const quickInit = pre.quick ?? (!pre.edit && !pre.from);
-  const moreOpen = Boolean(pre.mix?.length || pre.alsoFormats?.length || pre.voiceTake || pre.cutOnBeat || pre.motionBlur);
+  const moreOpen = Boolean(pre.mix?.length || pre.alsoFormats?.length || pre.voiceTake || pre.cutOnBeat || pre.beatPulse || pre.motionBlur);
   const editNote = !pre.edit ? ''
     : pre.started ? '<div class="banner warn"><p>The Director already worked on this job. Saving a change sends it back to the Director: the next Director run redoes the source and script. Fields you edited in the Script and Source tabs stay locked.</p></div>'
       : '<p class="muted" style="margin:0">The Director has not run yet. Saving only updates the brief file.</p>';
@@ -1904,6 +1925,8 @@ function renderBriefForm(pre) {
         : '<input id="bf-id" maxlength="64" placeholder="auto from name + format">'}</div>
       <div class="f" style="grid-column:1/-1"><label class="chk"><input type="checkbox" id="bf-beat" ${pre.cutOnBeat ? 'checked' : ''} aria-describedby="bf-beathint"> Cut scenes on the music beat</label>
         <span class="muted hint" id="bf-beathint"></span>
+        <label class="chk"><input type="checkbox" id="bf-pulse" ${pre.beatPulse ? 'checked' : ''} aria-describedby="bf-pulsehint"> Pulse on the beat</label>
+        <span class="muted hint" id="bf-pulsehint">The picture punches in a little on the beat, and harder with a short flash on the music's drop. A scene's Direction can ask for the drop to land on it.</span>
         <label class="chk"><input type="checkbox" id="bf-blur" ${pre.motionBlur ? 'checked' : ''} aria-describedby="bf-blurhint"> Motion blur on fast moves</label>
         <span class="muted hint" id="bf-blurhint">Softens fast movement like a camera shutter. Rendering takes about 4 times as long; the storyboard does not change.</span></div>
     </div></details>
@@ -2042,6 +2065,7 @@ function renderBriefForm(pre) {
   $('#bf-beathint').textContent = music ? `Each scene stretches a little so it ends on a beat of ${music.replace(/^library:/, '')}. Works best with music that has a steady beat.`
     : 'The brand has no background music yet: set one on the Brand tab first.';
   $('#bf-beat').disabled = !music && !pre.cutOnBeat;
+  $('#bf-pulse').disabled = !music && !pre.beatPulse;
   fillVoices(S.options);
   if (!S.options) api('/options').then((o) => { S.options = o; if ($('#bf-voice')) fillVoices(o); }).catch(() => {});
   // Recorded takes are the project's audio assets; a take no longer in the assets stays listed so the brief keeps it.
@@ -3195,6 +3219,20 @@ async function renderBrand() {
       .map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('');
   };
   const BACKDROP_NAMES = { mesh: 'Mesh gradient', aurora: 'Aurora', flow: 'Contour lines', shapes: '3D shapes' };
+  // The grade select's value: "look:<id>" or "lut:<file.cube>".
+  const gradeOptions = (g) => {
+    const cur = g?.look ? `look:${g.look}` : g?.lut ? `lut:${g.lut}` : '';
+    const luts = assets.filter((a) => /\.cube$/i.test(a));
+    return `<option value="">None</option>
+      <optgroup label="Built-in looks">${(opts.grades || []).map((x) => `<option value="look:${esc(x.id)}"${cur === `look:${x.id}` ? ' selected' : ''}>${esc(x.label)}</option>`).join('')}</optgroup>
+      <optgroup label="Your LUTs (.cube)">${luts.map((a) => `<option value="lut:${esc(a)}"${cur === `lut:${a}` ? ' selected' : ''}>${esc(a)}</option>`).join('') || '<option disabled>No .cube uploaded</option>'}</optgroup>`;
+  };
+  const gradeValue = (v, pct) => {
+    if (!v) return undefined;
+    const [kind, name] = [v.slice(0, v.indexOf(':')), v.slice(v.indexOf(':') + 1)];
+    const amount = pct < 100 ? pct / 100 : undefined;
+    return kind === 'lut' ? { lut: name, amount } : { look: name, amount };
+  };
   const bn = opts.banner;
   const subValue = (s, style, font) => style === 'custom' ? s : style ? { ...(s?.style ? s : {}), style, font } : undefined;
   const musicOptions = (sel) => `<option value="">(none)</option>
@@ -3263,6 +3301,9 @@ async function renderBrand() {
     <div class="f" style="max-width:360px"><label for="br-blend">Cut blend</label><select id="br-blend" aria-describedby="br-blendhint">${[['', 'None'], ['whip', 'Whip pan'], ['zoom', 'Zoom through'], ['warp', 'Cross warp'], ['split', 'Colour split']].map(([v, l]) => `<option value="${v}"${(b.blend || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
       <span class="muted hint" id="br-blendhint">Both scenes show for half a second around every scene change and are mixed: they slide past with a motion blur, zoom through, bend into each other, or split into colours. It replaces the cut wipe, so picking one sets the other to None. Applies when the storyboard is rebuilt.</span></div>
     </details>
+    <div class="grid2"><div class="f"><label for="br-grade">Colour grade</label><select id="br-grade" aria-describedby="br-gradehint">${gradeOptions(b.grade)}</select></div>
+      <div class="f"><label for="br-gradeamt">Grade strength (%)</label><input id="br-gradeamt" type="number" min="10" max="100" step="5" value="${Math.round((b.grade?.amount ?? 1) * 100)}" aria-describedby="br-gradehint"></div></div>
+    <span class="muted hint" id="br-gradehint">One colour look over every clip and photo in the video, so footage from different cameras looks like one film. Upload your own .cube LUT as an asset to use it here. Logos, app screens and the brand colours of text and shapes keep their true colours. Applies when the storyboard is rebuilt.</span>
     <div class="grid2"><div class="f"><label for="br-substyle">Subtitles</label><select id="br-substyle" aria-describedby="br-subhint">${subOptions(b.subtitles)}</select></div>
       <div class="f"><label for="br-subfont">Subtitle font</label><select id="br-subfont">${['Roboto', 'Montserrat', 'Inter', 'brand'].map((x) => `<option value="${x}"${(b.subtitles?.font || 'Roboto') === x ? ' selected' : ''}>${x === 'brand' ? 'Brand body font' : x}</option>`).join('')}</select></div></div>
     <span class="muted hint" id="br-subhint">One look for every clip of this brand. Classic: white words on a light blurred box. Highlighter: the same, with a marker sweeping across the spoken word. Minimal: white words with a dark halo, fading softly. Pill: a pill in the marker colour slides from word to word. Pop: larger words pop in one by one as they are spoken. Each shows a few words at a time, sized for a phone and kept clear of player controls. Applies when the storyboard is rebuilt.</span>
@@ -3811,6 +3852,7 @@ async function renderBrand() {
         backdrop: $('#br-backdrop').value || undefined,
         wipe: $('#br-wipe').value || undefined,
         blend: $('#br-blend').value || undefined,
+        grade: gradeValue($('#br-grade').value, num('#br-gradeamt', 'Grade strength (%)', 10, 100)),
         subtitles: subValue(b.subtitles, $('#br-substyle').value, $('#br-subfont').value),
         music: { file: $('#br-music').value || null, gainDb: num('#br-gain', 'Music level (dB)', -40, 0), duck: $('#br-duck').checked },
         sfx: sfxOn ? { cut: $('#br-sfx').value, gainDb: num('#br-sfxgain', 'Cut sound level (dB)', -30, 0) } : undefined,

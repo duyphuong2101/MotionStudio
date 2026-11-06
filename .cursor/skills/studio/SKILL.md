@@ -141,6 +141,7 @@ Write the script draft following the template rules exactly:
 Then commit the script. The commit keeps every field a person locked; if it reports fields it kept locked, do not try to change those fields. It also repairs mechanical slips and lists each one (an unknown icon swapped for the nearest, an off-list value removed, scenes past a template's maximum dropped, a missing or bad scene id replaced); it never changes words. Write the next draft without those slips.
 
 When the pacing flags a scene "same layout", give it another kind the template allows (the context's `layoutRule`), within the one extra round.
+A scene's `cut`, `camera`, `grade`, `drop` and `cutout` are optional; the context's `directionRule` says when to set them.
 
 ## Mixed briefs
 

@@ -270,3 +270,28 @@ test('a nested stat object is only required where the template declares it', () 
   const s = { scenes: [{ id: 's', kind: 'stat', vo: 'Up.', value: 12, text: 'orders', source: 'x' }] };
   assert.deepEqual(validateScript(s, ds).errors, []);
 });
+
+// explainer video tags (2026-11-03): two labels over a split-screen clip, left then right; a bad list is refused.
+test('explainer: video tags put one label over each half of the clip; without tags nothing is added', async () => {
+  const { dir, beats } = loadTemplate('explainer');
+  const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
+  const { validateScript } = await import('../engine/script.mjs');
+  const page = (extra) => {
+    const script = sampleScript(beats);
+    const v = script.scenes.find((s) => s.kind === 'video') || Object.assign(script.scenes[1], { kind: 'video', title: 'Platform', video: 'a.mp4', source: 'x' });
+    Object.assign(v, extra);
+    const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
+    return build({ brief: { format: '16:9' }, brand: HASH_BRAND, script, timing, size: sizeFor(beats, '16:9') });
+  };
+  assert.ok(!page({}).includes('vtag'), 'no tag markup, CSS or JS without the field');
+  const html = page({ tags: ['Old', 'New'] });
+  assert.match(html, /<div class="vtag l" id="([^"]+)-tag0" data-lint>Old<\/div><div class="vtag r" id="\1-tag1" data-lint>New<\/div>/);
+  assert.match(html, /\.vtag\.l\{left:25%\}\.vtag\.r\{left:75%\}/);
+  assert.ok(html.includes('const tagPops = ') && html.includes('tagPops(sc, s);'));
+  const script = sampleScript(beats);
+  const v = script.scenes.find((s) => s.kind === 'video');
+  if (v) {
+    const bad = (tags) => validateScript({ ...script, scenes: script.scenes.map((s) => (s === v ? { ...s, tags } : s)) }, beats, { assets: ['a.mp4', v.video], icons: [] }).errors.some((e) => /tags must list 2 labels/.test(e));
+    assert.ok(bad(['Old']) && bad(['Old', 'A label that is far too long']) && !bad(['Old', 'New']));
+  }
+});

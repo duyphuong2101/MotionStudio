@@ -25,6 +25,7 @@ import {
 } from '../engine/sequences.mjs';
 import { validateScript, validateSource, assertNoDrafts } from '../engine/script.mjs';
 import { validateBrand } from '../engine/brand.mjs';
+import { GRADE_NAMES } from '../engine/grade.mjs';
 import { LOOK_NAMES, lookBrand, lookProblem, scriptBrand } from '../engine/looks.mjs';
 import { saveAsset, deleteAsset, maxBytesFor, MAX_ASSET_BYTES, MAX_VIDEO_BYTES, ASSET_TYPES } from '../engine/assets.mjs';
 import { listVoices, previewVoice, voiceFor, voiceProblem } from '../engine/tts.mjs';
@@ -155,7 +156,8 @@ function runEngine(action, project, id) {
     killTree(child);
     // A preview that stops leaves the sequence status alone; only its preview slot records the error.
     // A stopped render keeps the approval: `failed: 'render'` lets the person render again without a new prepare.
-    fail(project, id, action === 'sequence-preview' ? { preview: { file: null, error } } : { status: 'error', error, ...(action === 'render' ? { failed: 'render' } : {}) }, event, 'server');
+    // A stopped export leaves the finished job as it is and records why in exportError.
+    fail(project, id, action === 'sequence-preview' ? { preview: { file: null, error } } : action === 'export' ? { exportError: error } : { status: 'error', error, ...(action === 'render' ? { failed: 'render' } : {}) }, event, 'server');
   };
   const timer = setTimeout(() => stop(`${action} timed out after ${cfg.engine.runTimeoutMinutes} min`, `${action} timed out`), cfg.engine.runTimeoutMinutes * 60000);
   hold(key, { action, startedAt: Date.now() }, child, { kind: action.startsWith('sequence') ? 'sequence' : 'job', action, project, id });
@@ -639,6 +641,7 @@ async function api(req, res, url, review = false) {
       sfx: SFX.map(({ id, label }) => ({ id, label, url: `/api/sfx/${id}` })),
       assetTypes: Object.keys(ASSET_TYPES), maxAssetMB: MAX_ASSET_BYTES / 1024 / 1024, maxVideoMB: MAX_VIDEO_BYTES / 1024 / 1024,
       banner: { backdrops: BANNER_BACKDROPS, sizes: BANNER_SIZES, limits: BANNER_LIMITS },
+      grades: Object.entries(GRADE_NAMES).map(([id, label]) => ({ id, label })),
     });
   }
   if (m === 'GET' && parts[0] === 'tts' && parts[1] === 'preview') {
@@ -737,7 +740,12 @@ async function api(req, res, url, review = false) {
     if (m === 'POST' && action === 'run') {
       if (directorHas(project, id)) throw new StudioError('The Director is working on this job. Wait for it to finish.', 409);
       const what = body.action;
-      if (!['prepare', 'render'].includes(what)) throw new StudioError('action must be prepare or render', 400);
+      if (!['prepare', 'render', 'export'].includes(what)) throw new StudioError('action must be prepare, render or export', 400);
+      // Export for an editor (engine/export.mjs): cut from a finished render, the job's status stays done.
+      if (what === 'export') {
+        if (st.status !== 'done') throw new StudioError('Render the video first: the export is cut from the rendered video', 409);
+        return send(res, 202, { started: runEngine('export', project, id).started });
+      }
       if (voiceCloudHas(project, id)) throw new StudioError('Cloud voice lines are being made for this job. Wait for them to finish.', 409);
       assertNoDrafts(readJson(jobFile(project, id, 'script.json'), null));
       if (what === 'prepare' && (st.dirty_from || 99) < 5) {

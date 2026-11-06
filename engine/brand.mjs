@@ -1,5 +1,6 @@
 import { StudioError } from './core.mjs';
 import { cloudVoice } from './cloudvoice.mjs';
+import { gradeOf } from './grade.mjs';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const FONT = /^[A-Za-z0-9 ]{1,40}$/;
@@ -234,6 +235,7 @@ export function validateBrand(input) {
   const subtitles = subtitleStyle(b.subtitles, errors);
   const sfx = cutSfx(b.sfx, errors);
   const clip = clipDefaults(b, errors);
+  const grade = gradeOf(b.grade, errors);
   if (b.logoBug != null && typeof b.logoBug !== 'boolean') errors.push('logoBug must be true or false');
   // Broadcast safe area: the logo bug and the subtitles keep this far from the frame edge, in percent of the frame.
   const safeArea = b.safeArea == null || b.safeArea === '' ? null : Number(b.safeArea);
@@ -281,6 +283,7 @@ export function validateBrand(input) {
     ...(BACKDROPS.includes(b.backdrop) ? { backdrop: b.backdrop } : {}),
     ...(WIPES.includes(b.wipe) ? { wipe: b.wipe } : {}),
     ...(BLENDS.includes(b.blend) ? { blend: b.blend } : {}),
+    ...(grade ? { grade } : {}),
     voice: {
       tts: String(b.voice?.tts || 'kokoro').slice(0, 20), voice: String(b.voice?.voice || '').slice(0, 40),
       speed: Math.min(1.5, Math.max(0.6, Number(b.voice?.speed) || 1)), lang: String(b.voice?.lang || 'en').slice(0, 8),

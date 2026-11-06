@@ -1,0 +1,45 @@
+{
+  "id": "type-film",
+  "label": "Type film",
+  "marks": true,
+  "help": {
+    "kinds": {
+      "title": "Opening card: the film's title in large type.",
+      "line": "One voice line shown as large moving type, each word appearing as the voice says it.",
+      "cta": "Closing card: the one action viewers should take, with a button."
+    },
+    "fields": {
+      "line.vo": "The words on screen are this line, word for word, timed to the voice (or to a recorded take).",
+      "line.style": "punch: one word or short phrase at a time, filling the frame. stack: short lines pile up as they are said. build: the whole sentence builds word by word.",
+      "line.accent": "Up to 3 words of the voice line, separated by spaces, shown in the accent colour.",
+      "line.theme": "light, dark (brand primary) or accent (brand secondary) background."
+    }
+  },
+  "description": "Kinetic typography: every voice line becomes large moving type, each word landing as the voice says it, one word at a time, in stacked lines or building a sentence. Best with a recorded voice or a strong voice-over and little footage.",
+  "formats": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
+  "sizes": { "9:16": [1080, 1920], "1:1": [1080, 1080], "16:9": [1920, 1080], "4:5": [1080, 1350], "2:3": [1080, 1620], "21:9": [2520, 1080] },
+  "durations": [10, 90],
+  "directors": ["seat", "claude", "gemini"],
+  "sequence": [
+    { "kind": ["title"], "min": 0, "max": 1 },
+    { "kind": ["line"], "min": 1, "max": 12 },
+    { "kind": ["cta"], "min": 0, "max": 1 }
+  ],
+  "fields": {
+    "title": { "required": ["vo", "title"], "optional": ["kicker", "source", "pace", "sfx"] },
+    "line": { "required": ["vo"], "optional": ["style", "accent", "theme", "source", "pace", "sfx"] },
+    "cta": { "required": ["vo", "title", "button"], "optional": ["kicker", "url", "source", "pace", "sfx"] }
+  },
+  "limits": { "title": 40, "kicker": 24, "accent": 60, "button": 24, "url": 40, "voWords": 24 },
+  "enums": { "pace": ["quick", "normal", "focus"], "style": ["punch", "stack", "build"], "theme": ["light", "dark", "accent"], "sfx": ["whoosh", "hit", "riser", "click", "none"] },
+  "defaults": {
+    "title": { "title": "Say it out loud", "kicker": "A short film" },
+    "line": { "vo": "Every word you say lands on screen the moment you say it.", "style": "stack", "accent": "every word" },
+    "cta": { "title": "Start writing", "button": "Try it free" }
+  },
+  "pace": {
+    "quick": { "perShot": 1.6, "minScene": 1.8, "tail": 0.2 },
+    "normal": { "perShot": 2.4, "minScene": 2.6, "tail": 0.35 },
+    "focus": { "perShot": 3.4, "minScene": 3.6, "tail": 0.8 }
+  }
+}

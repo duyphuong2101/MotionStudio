@@ -86,6 +86,7 @@
 | `social-teaser` | extends `product-demo`; its own `quick` block (one point, 14 voice words) |
 | `talking-head` | own (footage clips) |
 | `testimonial` | own, `parts()`, mixable |
+| `type-film` | own, `parts()`, not mixable, no subtitles (the words are on screen): `line` scenes show their voice line as large type timed to the voice, `style` punch (`punchGroups`), stack (`stackLines`, the column rises) or build (`buildSize` wraps the sentence to fit), `accent` words in the brand secondary |
 | `ui-story` | own on the kit, `parts()`, mixable, lead subtitle style (animated UI redrawn as HTML/SVG, raw 1920×1080 px); `shot` scenes take screenshots, a shot may `cue` a spoken word |
 | `blend.mjs` | `brand.blend` (whip, zoom, warp, split): both scenes in `.blw` wrappers around each cut, mixed by CSS transforms, opacity and SVG filters from `seek(t)` (`drawBlend`, `blendCut`) |
 | `gl.mjs` | WebGL layers for `page`: `brand.backdrop` (mesh, aurora, flow, 3D shapes) behind the scenes and `brand.wipe` (liquid, iris, burn, glitch, flash; `WIPE_WINDOW`) over the cuts, each a pure function of `seek(t)` |

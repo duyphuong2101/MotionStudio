@@ -99,16 +99,18 @@ export function parts({ brand, script, timing, size, icons, brief }) {
       // Footage in a window: prepare cut it to clips/<id>.mp4; the kit seeks it with the page clock.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
       const clip = `<video data-clip="${id}" data-start="${t.start}" data-end="${t.end}" src="clips/${encodeURIComponent(id)}.mp4" muted playsinline preload="auto"></video>`;
+      // Two labels over a split-screen clip (e.g. Old / New), one per half.
+      const tags = Array.isArray(sc.tags) && sc.tags.length === 2 ? sc.tags.map((x, k) => `<div class="vtag ${k ? 'r' : 'l'}" id="${id}-tag${k}" data-lint>${h(x)}</div>`).join('') : '';
       if (stage || reel) {
         // Full frame: the footage, a shade for the type, and the title as a lower third (a reel clip without text keeps a clean frame).
         const typed = sc.title || sc.kicker || sc.text;
-        blocks.push(`<div class="sc fill dark vfull" id="g-${id}"><div class="vbg" id="${id}-win">${clip}</div>${typed ? `<div class="vshade"></div>
+        blocks.push(`<div class="sc fill dark vfull" id="g-${id}"><div class="vbg" id="${id}-win">${clip}${tags}</div>${typed ? `<div class="vshade"></div>
         <div class="vcap">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}${sc.title ? `<div class="hd vt" data-lint>${h(sc.title)}</div>` : ''}${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div>` : ''}</div>`);
         scenes.push({ id, kind: 'video', dark: true });
         continue;
       }
       blocks.push(`<div class="sc fill" id="g-${id}"><div class="vid">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd vt" data-lint>${h(sc.title)}</div>
-        <div class="vwin" id="${id}-win">${clip}</div>
+        <div class="vwin" id="${id}-win">${clip}${tags}</div>
         ${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
       scenes.push({ id, kind: 'video' });
     } else if (sc.kind === 'model') {
@@ -134,6 +136,7 @@ export function parts({ brand, script, timing, size, icons, brief }) {
     }
   }
   const hasVideo = scenes.some((s) => s.kind === 'video');
+  const hasTags = script.scenes.some((s) => s.kind === 'video' && Array.isArray(s.tags) && s.tags.length === 2);
   const hasDarkTitle = scenes.some((s) => s.kind === 'title' && s.dark);
   const hasFlash = scenes.some((s) => s.kind === 'flash');
   const hasFlashBg = scenes.some((s) => s.kind === 'flash' && s.footage);
@@ -220,11 +223,14 @@ export function parts({ brand, script, timing, size, icons, brief }) {
 .vbg{position:absolute;inset:0;overflow:hidden}.vbg video{display:block;width:100%;height:100%;object-fit:cover}
 .vshade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.38) 0%,rgba(0,0,0,0) 24%,rgba(0,0,0,0) 46%,rgba(0,0,0,.72) 100%)}
 .vcap{position:absolute;left:${padX(110)};right:${padX(110)};bottom:${px(port ? 300 : 200)};display:flex;flex-direction:column;gap:${px(14)}}
-.vcap .vt{font-size:${px(port ? 86 : 80)};color:#fff}.vcap .stx{color:rgba(255,255,255,.85);max-width:${px(1100)}}` : ''}`;
+.vcap .vt{font-size:${px(port ? 86 : 80)};color:#fff}.vcap .stx{color:rgba(255,255,255,.85);max-width:${px(1100)}}` : ''}${hasTags ? `
+.vtag{position:absolute;top:${px(A.top)};transform:translateX(-50%);background:var(--secondary);color:var(--ink);font-weight:700;font-size:${px(34)};letter-spacing:.04em;text-transform:uppercase;padding:${px(10)} ${px(28)};border-radius:999px;opacity:0;white-space:nowrap;box-shadow:0 ${px(4)} ${px(18)} rgba(0,0,0,.25)}
+.vtag.l{left:25%}.vtag.r{left:75%}` : ''}`;
   const firstIcon = scenes.find((s) => s.icon)?.icon || ICONS.circle;
   const body = blocks.join('\n') +`<svg id="xicon" viewBox="0 0 100 112" aria-hidden="true"><path id="xshape" d="${firstIcon}"/><path id="xfill" d="${firstIcon}"/></svg>`;
   const js = `
-let iconOn = false, iconShown = false;
+let iconOn = false, iconShown = false;${hasTags ? `
+const tagPops = (sc, s) => { [0, 1].forEach((k) => { const el = $(sc.id + '-tag' + k); if (!el) return; const at = s + 0.5 + k * 0.6; pop(el, at, { from: 0.6, d: 0.4 }); tl.to(el, { scale: 1.08, duration: 0.18, yoyo: true, repeat: 3, ease: 'sine.inOut' }, at + 0.5); }); };` : ''}
 const KINDS = {
   title(sc, s) {
     const g = $('g-' + sc.id);
@@ -302,12 +308,14 @@ ${hasFlash ? `  flash(sc, s, e) {
   },
 ` : ''}${hasVideo && (stage || reel) ? `  video(sc, s) {
     const g = $('g-' + sc.id);
-    fadeUp(g.querySelector('.kick'), s + 0.35); fadeUp(g.querySelector('.vt'), s + 0.45, { d: 0.7 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.5));
+    fadeUp(g.querySelector('.kick'), s + 0.35); fadeUp(g.querySelector('.vt'), s + 0.45, { d: 0.7 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.5));${hasTags ? `
+    tagPops(sc, s);` : ''}
   },
 ` : hasVideo ? `  video(sc, s) {
     const g = $('g-' + sc.id);
     fadeUp(g.querySelector('.kick'), s + 0.05); fadeUp(g.querySelector('.vt'), s + 0.1, { d: 0.6 });
-    pop($(sc.id + '-win'), s + 0.2, { from: 0.92 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.6));
+    pop($(sc.id + '-win'), s + 0.2, { from: 0.92 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.6));${hasTags ? `
+    tagPops(sc, s);` : ''}
   },
 ` : ''}${hasModel ? `  anim(sc, s) { KINDS.model(sc, s); },
   model(sc, s) {

@@ -3,7 +3,8 @@
 // which seek(t) calls. The scenes are never captured into a texture: what shows is the live DOM, with its own fonts and
 // clips. Each scene group sits in a wrapper (.blw) that only drawBlend styles, so a blend never fights the scene's own
 // tweens (a camera push, a renderer's moves). A page without brand.blend gets none of this code.
-import { BLENDS } from '../engine/brand.mjs';
+import { BLENDS, WIPES } from '../engine/brand.mjs';
+import { CUT_KINDS } from '../engine/direction.mjs';
 import { cutWindows } from './gl.mjs';
 
 // Seconds before and after each cut that both scenes show; cutWindows shortens them between close cuts.
@@ -84,7 +85,9 @@ const DRAW = {
 };
 
 /** The page script: blendWrap() (build() calls it first), blendPre(i) and drawBlend(t), which seek(t) calls. */
-export const blendJs = (type) => String.raw`
+export const blendJs = (type) => blendScript(DRAW[type]);
+
+const blendScript = (draw) => String.raw`
 let BLW = [];
 // Each scene group goes into its own wrapper, which takes over the group's z-index so the paint order stays.
 function blendWrap() {
@@ -110,6 +113,44 @@ function drawBlend(t) {
   if (k >= 0) {
     const [c, a, b] = D.blend.cuts[k], o = BLW[k], n = BLW[k + 1], r2 = (x) => Math.round(x * 100) / 100;
     const u = (t - c) / (t < c ? a : b), p = (t - c + a) / (a + b), s = 1 - blendStep(0, 1, Math.abs(u));
-    const fin = blendStep(-0.5, 0.3, u), fout = 1 - blendStep(-0.3, 0.5, u);${DRAW[type]}
+    const fin = blendStep(-0.5, 0.3, u), fout = 1 - blendStep(-0.3, 0.5, u);${draw}
   }
 }`;
+
+// Per-scene cuts (a scene's `cut`, plan .ai/plans/art-direction.md E2): the scene's entrance, one of the blends, a
+// plain crossfade or a hard cut. A page where any scene sets one runs every cut through the blend machinery: each cut
+// takes its scene's own, else the brand's blend, else the brand's wipe (drawn by the WebGL layer over a hard switch),
+// else a crossfade. A page where no scene sets one is unchanged.
+
+/** Each cut's kind (cut k leads into scene k + 1), or null when no scene of the page sets its own. */
+export function cutPlan(brand, script, scenes, transparent) {
+  if (transparent || scenes.length < 2) return null;
+  const byId = new Map((script?.scenes || []).map((sc) => [sc.id, sc]));
+  const own = scenes.slice(1).map((sc) => byId.get(sc.id)?.cut);
+  if (!own.some((c) => CUT_KINDS.includes(c))) return null;
+  const base = BLENDS.includes(brand.blend) ? brand.blend : WIPES.includes(brand.wipe) ? 'wipe' : 'fade';
+  return own.map((c) => (CUT_KINDS.includes(c) ? c : base));
+}
+
+/** Page data for a plan: [cut, before, after, kind]; a hard cut and a wipe's cut have no window (both scenes never show). */
+export const cutPlanData = (plan, cuts) => ({
+  type: 'plan', cuts: cutWindows(cuts, BLEND_BEFORE, BLEND_AFTER).map(([c, a, b], k) => (plan[k] === 'cut' || plan[k] === 'wipe' ? [c, 0, 0, plan[k]] : [c, a, b, plan[k]])),
+});
+
+// Each kind's filters and drawing get their own ids, so two kinds on one page never share a filter.
+const ownIds = (type, text) => text.replace(/blf-([oi])\b/g, `blf-${type}-$1`);
+const DRAW_PLAN = { ...DRAW, fade: `
+    blendSet(o, '', fout.toFixed(3), ''); blendSet(n, '', fin.toFixed(3), '');` };
+
+/** The SVG with the filters of every kind the plan uses. */
+export const cutPlanHtml = (plan, U) => {
+  const defs = [...new Set(plan)].filter((t) => FILTER[t]).map((t) => FILTER[t](`${t}-o`, U) + FILTER[t](`${t}-i`, U)).join('');
+  return defs ? `
+  <svg class="blsvg" width="0" height="0" aria-hidden="true"><defs>${defs}</defs></svg>` : '';
+};
+
+/** The page script for a plan: drawBlend picks the drawing by the cut's kind. */
+export const cutPlanJs = (plan) => blendScript(`
+    const T = D.blend.cuts[k][3];
+    ${[...new Set(plan)].filter((t) => DRAW_PLAN[t]).map((t) => `if (T === '${t}') {${ownIds(t, DRAW_PLAN[t])}
+    }`).join(' else ')}`);
