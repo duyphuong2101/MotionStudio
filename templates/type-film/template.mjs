@@ -116,7 +116,7 @@ export function parts({ brand, script, timing, size }) {
           const text = ws.slice(a, b + 1).map((x) => x.w).join(' ');
           const fs = Math.max(56, Math.min(MAX, Math.floor(AW / emOf(text))));
           const row = `<div class="sl" id="${id}-l${j}" style="font-size:${px(fs)};top:${px(y)}" data-lint>${ws.slice(a, b + 1).map((_, i) => word(a + i)).join(' ')}</div>`;
-          groups[j] = [a, b, Math.round(y + (fs * LINE_H) / 2)];
+          groups[j] = [a, b, Math.round(y + (fs * LINE_H) / 2), Math.round(y + fs * LINE_H)];
           y += fs * LINE_H + 18;
           return row;
         });
@@ -128,7 +128,7 @@ export function parts({ brand, script, timing, size }) {
         groups = null;
       }
       blocks.push(`<div class="sc fill${tc}" id="g-${id}"><div class="tf tf-${style}">${inner}</div></div>`);
-      scenes.push({ id, kind: 'line', style, n: ws.length, ...(groups ? { groups } : {}), ...(dark ? { dark: true } : {}) });
+      scenes.push({ id, kind: 'line', style, n: ws.length, ...(groups ? { groups } : {}), ...(style === 'stack' ? { area: Math.round(AH) } : {}), ...(dark ? { dark: true } : {}) });
     } else if (sc.kind === 'cta') {
       const logo = hasLogoBug(brand) ? '' : logoHtml(brand, { onDark: true });
       blocks.push(`<div class="sc fill dark" id="g-${id}"><div class="tfc">${logo ? `<div class="clogo">${logo}</div>` : ''}
@@ -147,7 +147,7 @@ export function parts({ brand, script, timing, size }) {
 .tw{display:inline-block}.tw.ac{color:var(--secondary)}.acc .tw.ac{color:var(--primary)}
 .tf-punch .pg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:0.28em;white-space:nowrap;overflow:hidden;opacity:0}
 .tf-stack{overflow:hidden}.stk{position:absolute;left:0;right:0;top:50%}
-.sl{position:absolute;left:0;right:0;text-align:${port ? 'center' : 'left'};white-space:nowrap;overflow:hidden}
+.sl{position:absolute;left:0;right:0;text-align:${port ? 'center' : 'left'};white-space:nowrap;overflow:hidden;opacity:0}
 .tf-build{display:flex;align-items:center;justify-content:${port ? 'center' : 'flex-start'}}
 .bp{width:100%;max-height:100%;overflow:hidden;text-align:${port ? 'center' : 'left'}}`;
   const js = `
@@ -174,12 +174,19 @@ const KINDS = {
       });
     } else if (sc.style === 'stack') {
       const stk = $(sc.id + '-stk');
+      // A line shows from its first word; once the column has carried it above the area it is gone, so no line
+      // waits below the frame or lingers above it.
       sc.groups.forEach(([a, b, mid], j) => {
-        const t0 = Math.max(s, at(a) - 0.06);
+        const t0 = Math.max(s, at(a) - 0.06), line = $(sc.id + '-l' + j);
         if (j) tl.to(stk, { y: -mid * U, duration: 0.35, ease: 'power3.inOut' }, Math.max(s, t0 - 0.1));
         else tl.set(stk, { y: -mid * U }, s);
+        tl.fromTo(line, { opacity: 0 }, { opacity: 1, duration: 0.01, immediateRender: false }, Math.max(s, t0 - 0.02));
         for (let k = a; k <= b; k++) tl.fromTo(w(k), { opacity: 0, y: 30 * U }, { opacity: 1, y: 0, duration: 0.18, ease: 'power3.out', immediateRender: false }, Math.max(s, at(k) - 0.04));
         if (j) tl.to($(sc.id + '-l' + (j - 1)), { opacity: 0.22, duration: 0.3 }, t0);
+        for (let i = 0; i < j - 1; i++) {
+          // Gone as soon as its top would reach the area's edge, so no line shows cut in half.
+          if (2 * sc.groups[i][2] - sc.groups[i][3] - mid < -sc.area / 2 + 20) tl.to($(sc.id + '-l' + i), { opacity: 0, duration: 0.2 }, Math.max(s, t0 - 0.1));
+        }
       });
     } else {
       for (let k = 0; k < sc.n; k++) {

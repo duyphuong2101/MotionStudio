@@ -63,15 +63,22 @@ export function beatGrid(env, dt, center = 0) {
   // Refine: find the real onset near each expected beat, then fit beat number → time with a straight line.
   // Autocorrelation alone is flat around its peak, and a 1 % period error drifts a whole beat over a long track.
   let P = best.lag, A = phase;
-  for (let pass = 0; pass < 2; pass++) {
+  // Only clear onsets steer the fit: in a quiet intro or a pad without beats the strongest point near an expected
+  // beat is noise, and fitting to it bends the tempo (a 30 s pad before a 120 BPM drop read as 118).
+  const floor = 0.2 * Math.max(...env);
+  // Start at the first clear onset and widen the fit in steps (8 beats, 32, then the whole track), so a small period
+  // error is corrected before it drifts outside the search window.
+  const i0 = env.findIndex((v) => v > floor);
+  if (i0 > A) A += Math.round((i0 - A) / P) * P;
+  for (const horizon of [8, 32, Infinity, Infinity]) {
     const pts = [];
-    for (let k = 0; A + k * P < env.length; k++) {
+    for (let k = 0; k <= horizon && A + k * P < env.length; k++) {
       const e = A + k * P, from = Math.max(0, Math.round(e - P / 4)), to = Math.min(env.length - 1, Math.round(e + P / 4));
       let m = from;
       for (let i = from; i <= to; i++) if (env[i] > env[m]) m = i;
-      if (env[m] > 0) pts.push([k, m]);
+      if (env[m] > floor) pts.push([k, m]);
     }
-    if (pts.length < 4) break;
+    if (pts.length < 4) continue;
     const n = pts.length, sk = pts.reduce((a, p) => a + p[0], 0), si = pts.reduce((a, p) => a + p[1], 0);
     const skk = pts.reduce((a, p) => a + p[0] * p[0], 0), ski = pts.reduce((a, p) => a + p[0] * p[1], 0);
     const b = (n * ski - sk * si) / (n * skk - sk * sk);

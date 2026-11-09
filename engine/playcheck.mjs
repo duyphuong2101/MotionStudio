@@ -237,6 +237,8 @@ function install(o) {
         out.push(...probe(f.i, f.t));
         if (f.j === undefined) continue;
         played[f.j] = { t: f.t, s: state() };
+        // Inside a blend window both scenes move on purpose (a whip slides one in from outside the frame).
+        if ((S.blends || []).some(([a, b]) => f.t > a && f.t < b)) continue;
         for (const x of lint(o.safeArea)) {
           out.push({ k: 'lint', i: f.j, key: `lint|${x.el}|${x.msg.replace(/-?\d+(\.\d+)?/g, '#')}`, scene: sceneAt(f.t), el: String(x.el), what: x.msg });
         }

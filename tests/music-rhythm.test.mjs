@@ -131,3 +131,15 @@ test('a page pulses only when prepare timed a pulse; in Chrome a beat and a drop
     assert.deepEqual(await at(2), ['1.0450', '1.0450', flash].map((v, i) => (i < 2 ? String(+v) : v)), 'the same from the end');
   } finally { await browser.close(); }
 });
+
+test('a long quiet intro before the beat still reads the right tempo', async () => {
+  const { beatGrid, onsetEnvelope } = await import('../engine/beats.mjs');
+  // 30 s of a soft pad, then a 120 BPM kick: the fit starts at the first clear onset and widens step by step.
+  const n = 50 * RATE, s = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / RATE;
+    s[i] = 0.05 * Math.sin(2 * Math.PI * 220 * t) + (t >= 30 ? 0.75 * Math.sin(2 * Math.PI * 55 * t) * Math.exp(-14 * (t % 0.5)) : 0);
+  }
+  const g = beatGrid(onsetEnvelope(s), 256 / RATE, 128 / RATE);
+  assert.ok(g && Math.abs(g.bpm - 120) < 0.3, `tempo ${g?.bpm}`);
+});
