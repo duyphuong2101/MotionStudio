@@ -95,12 +95,13 @@ function args(pulse) {
   return {
     brand: BRAND, script: { scenes: ids.map((id) => ({ id, kind: 'x', vo: 'Hello' })) }, size: { width: 640, height: 360 }, title: 't',
     timing: { duration: 4, lang: 'en', scenes: ids.map((id, i) => ({ id, start: i * 2, end: i * 2 + 2 })), words: [], ...(pulse ? { pulse } : {}) }, js: 'const KINDS = {};',
-    body: ids.map((id) => `<div class="sc fill" id="g-${id}"><div style="position:absolute;left:60px;top:120px;font-size:64px">Scene ${id}</div></div>`).join(''),
+    // Scene b holds a full-frame picture: it takes the drops only.
+    body: ids.map((id) => `<div class="sc fill" id="g-${id}">${id === 'b' ? '<img alt="" style="position:absolute;inset:0;width:640px;height:360px">' : ''}<div style="position:absolute;left:60px;top:120px;font-size:64px">Scene ${id}</div></div>`).join(''),
     scenes: ids.map((id) => ({ id, kind: 'x' })),
   };
 }
 
-test('a page pulses only when prepare timed a pulse; in Chrome a beat and a drop punch in and fade', { timeout: 240000 }, async (t) => {
+test('a page pulses only when prepare timed a pulse; in Chrome a beat swells softly, a picture scene takes only the drop', { timeout: 240000 }, async (t) => {
   const plain = page(args(null));
   assert.equal(page(args({ beats: [], hits: [] })), plain);
   for (const w of ['drawPulse', 'pulsefx']) assert.ok(!plain.includes(w));
@@ -122,13 +123,14 @@ test('a page pulses only when prepare timed a pulse; in Chrome a beat and a drop
   const { browser, page: pg } = opened;
   try {
     const at = (x) => pg.evaluate(async (s) => { await window.seek(s); return [document.getElementById('g-a').style.scale, document.getElementById('g-b').style.scale, +getComputedStyle(document.getElementById('pulsefx')).opacity]; }, x);
-    assert.deepEqual(await at(1), [String(1 + PULSE.beat), String(1 + PULSE.beat), 0], 'a beat punches in without a flash');
+    assert.deepEqual(await at(1), [String(1 + PULSE.beat), '', 0], 'a beat peaks on its time, without a flash, and never on a picture');
+    assert.deepEqual(await at(1 - PULSE.beatUp / 2), [String(1 + PULSE.beat / 2), '', 0], 'it rises over a few frames, no jump');
     assert.deepEqual(await at(1.6), ['', '', 0], 'and is gone before the next');
     const [, b, flash] = await at(2);
-    assert.equal(b, String(1 + PULSE.hit));
+    assert.equal(b, String(1 + PULSE.hit), 'the drop reaches the picture scene too');
     assert.ok(Math.abs(flash - PULSE.flash) < 0.01, `the drop flashes: ${flash}`);
     await at(3.9);
-    assert.deepEqual(await at(2), ['1.0450', '1.0450', flash].map((v, i) => (i < 2 ? String(+v) : v)), 'the same from the end');
+    assert.deepEqual(await at(2), [(1 + PULSE.hit).toFixed(4), (1 + PULSE.hit).toFixed(4), flash].map((v, i) => (i < 2 ? String(+v) : v)), 'the same from the end');
   } finally { await browser.close(); }
 });
 

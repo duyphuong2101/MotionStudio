@@ -941,7 +941,7 @@ for (const m of ['to', 'from', 'fromTo', 'set']) {
   tl[m] = (...a) => { if (typeof a[at] === 'number' && a[at] < 0) a[at] = 0; return orig.apply(tl, a); };
 }
 
-function build() {${blend ? '\n  blendWrap();' : ''}${carry ? '\n  carryCuts();' : ''}${cams ? '\n  camFind();' : ''}
+function build() {${blend ? '\n  blendWrap();' : ''}${carry ? '\n  carryCuts();' : ''}${cams ? '\n  camFind();' : ''}${pulse ? '\n  pulseFind();' : ''}
   D.scenes.forEach((sc, i) => {
     const s = sc.start, e = sc.end, last = i === D.scenes.length - 1, first = i === 0;
     const g = $('g-' + sc.id);
