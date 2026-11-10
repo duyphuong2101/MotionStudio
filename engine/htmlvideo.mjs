@@ -16,9 +16,9 @@ const dataUri = (file, body = fs.readFileSync(file)) => `data:${TYPES[path.extna
 // Inlined code must not close the <script> it sits in.
 const safeScript = (code) => code.replace(/<\/script/gi, '<\\/script');
 
-// A file the page points at: in a src, href or data-model attribute, or a css url(). Text, and the JSON of `const D`,
+// A file the page points at: in a src, href, data-model or data-swap attribute, or a css url(). Text, and the JSON of `const D`,
 // are left as they are, so a path in a code listing or a caption is never mistaken for one.
-const FILE_REF = /(\s(?:src|href|poster|data-model)=["']|url\(["']?)(assets|clips)\/([A-Za-z0-9%._-]+)/g;
+const FILE_REF = /(\s(?:src|href|poster|data-model|data-swap)=["']|url\(["']?)(assets|clips)\/([A-Za-z0-9%._-]+)/g;
 // A flat vendor module and the specifiers that import one: `from './x.js'`, `import './x.js'`, `import('./x.js')`.
 const VENDOR_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*\.js$/;
 const MODULE_IMPORT = /(\bfrom\s*|\bimport\s*\(?\s*)(["'])\.\/((?:vendor\/)?[A-Za-z0-9][A-Za-z0-9._-]*\.js)\2/g;

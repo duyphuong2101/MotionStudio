@@ -7,6 +7,7 @@ import { loadTemplate } from '../engine/jobs.mjs';
 import { estimateTiming } from '../engine/timing.mjs';
 import { sizeFor } from '../engine/pipeline.mjs';
 import { sampleScript } from '../engine/template-preview.mjs';
+import { THREE_KINDS } from '../engine/model-rules.mjs';
 import { openComposition, lintInPage } from '../engine/media.mjs';
 import { MOTION_PROFILES, MOTIONS, motionProfile, validateBrand } from '../engine/brand.mjs';
 import { MOTION_OPTIONS, motionOpt } from '../ui/shots.js';
@@ -18,7 +19,8 @@ const TIMING = { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, t
 /** The sample page of template `tid` with the brand's motion, timed the way prepare times it (tight gaps or not). */
 async function samplePage(tid, brand, format = '16:9') {
   const { dir, beats } = loadTemplate(tid);
-  const sc = sampleScript(beats);
+  // The 3D kinds other than model stay out: these checks are about motion, and each WebGL canvas costs seconds on SwiftShader.
+  const sc = sampleScript({ ...beats, sequence: beats.sequence.map((sl) => ({ ...sl, kind: sl.kind.filter((k) => k === 'model' || !THREE_KINDS.includes(k)) })) });
   const timing = estimateTiming(sc, TIMING, 'en', beats.pace || null, null, null, motionProfile(brand).tight);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   return build({ brief: { format }, brand, script: sc, timing, size: sizeFor(beats, format), icons: {} });

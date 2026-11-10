@@ -1,5 +1,6 @@
 import { page, geometry, h } from '../kit.mjs';
 import { logoHtml, logoFile } from '../shared.mjs';
+import { m3Canvas } from '../model3d.mjs';
 
 export function build({ brand, script, timing, size }) {
   const g = geometry(size);
@@ -13,7 +14,13 @@ export function build({ brand, script, timing, size }) {
   const letters = [...text];
   // End notes: silent small lines under the tagline. A sting without them builds exactly as before.
   const notes = Array.isArray(sc.notes) ? sc.notes.filter((n) => typeof n === 'string' && n.trim()) : [];
-  const logo = file
+  // style "3d": the logo (or the brand name) as a lit solid in its own canvas, its pieces assembling
+  // (templates/m3subjects.mjs); the reveal's rings and rays stay out of it.
+  const solid = style === '3d';
+  const t3 = timing?.scenes?.find((x) => x.id === id) || { start: 0, end: 0 };
+  const logo = solid
+    ? `<div class="lg3">${m3Canvas('logo', id, { start: Math.round((t3.start + 0.2) * 100) / 100, end: t3.end }, { shadow: false, data: { word: text || 'Logo', color: dark ? brand.colors.secondary : brand.colors.primary, weight: brand.fonts?.headingWeight || 800 }, pics: file ? [file] : [] })}</div>`
+    : file
     ? logoHtml(brand, { onDark: dark, cls: 'lg-img', fallbackText: false })
     : `<div class="lg-txt" data-lint>${letters.map((ch, k) => `<span id="${id}-c${k}">${ch === ' ' ? '&nbsp;' : h(ch)}</span>`).join('')}</div>`;
   const rays = Array.from({ length: 16 }, (_, k) => {
@@ -41,7 +48,8 @@ export function build({ brand, script, timing, size }) {
 .rays path{stroke:var(--secondary);stroke-width:7;stroke-linecap:round}
 .mark{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${px(34)};text-align:center}
 .lg{display:flex;justify-content:center}
-.lg-img{display:block;height:${px(port ? 220 : 170)};width:auto;max-width:${px(port ? 760 : 640)};object-fit:contain}
+.lg-img{display:block;height:${px(port ? 220 : 170)};width:auto;max-width:${px(port ? 760 : 640)};object-fit:contain}${solid ? `
+.lg3{width:${px(port ? 940 : 1200)};height:${px(port ? 520 : 440)};max-width:90vw}.lg3 .m3c{display:block;width:100%;height:100%}` : ''}
 .lg-txt{font-family:var(--display);font-weight:900;letter-spacing:-.02em;font-size:${px(port ? 170 : 150)};line-height:1;white-space:nowrap}.lg-txt span{display:inline-block}
 .line{width:${px(220)};height:${px(8)};border-radius:4px;background:var(--secondary);transform:scaleX(0)}
 .tag{font-size:${px(port ? 52 : 46)};font-weight:600;letter-spacing:.04em;opacity:.92}
@@ -56,7 +64,7 @@ export function build({ brand, script, timing, size }) {
   const cue = sc.notesCue ? said.find((w) => key(w.w) === key(sc.notesCue)) : null;
   const voiceEnd = said.length ? Math.max(...said.map((w) => w.end)) : null;
   const shift = cue ? r2(cue.start - 0.6) : voiceEnd !== null ? r2(voiceEnd + 0.15) : null;
-  const scenes = [{ id, kind: 'reveal', style, n: file ? 0 : letters.length, ...(notes.length ? { notes: notes.length, shift, ...(cue ? { readEnd: r2(voiceEnd) } : {}) } : {}) }];
+  const scenes = [{ id, kind: 'reveal', style, n: file || solid ? 0 : letters.length, ...(notes.length ? { notes: notes.length, shift, ...(cue ? { readEnd: r2(voiceEnd) } : {}) } : {}) }];
   const js = `
 const KINDS = {
   reveal(sc, s, e) {
@@ -67,7 +75,11 @@ const KINDS = {
     const rings = [$(sc.id + '-ring'), $(sc.id + '-ring2')];
     gsap.set(rings, { drawSVG: '0%', rotation: -90, transformOrigin: '50% 50%' });
     let at = s + 0.2;
-    if (sc.style === 'slide') {
+    ${solid ? `if (sc.style === '3d') {
+      // The canvas assembles the logo itself; the rings stay hidden and the line and tagline follow it in.
+      gsap.set(rings, { opacity: 0 });
+      at = s + 0.6;
+    } else ` : ''}if (sc.style === 'slide') {
       tl.fromTo($(sc.id + '-p1'), { xPercent: -101 }, { xPercent: 101, duration: 0.9, ease: XIO, immediateRender: false }, s + 0.05)
         .fromTo($(sc.id + '-p2'), { xPercent: -101 }, { xPercent: 101, duration: 0.9, ease: XIO, immediateRender: false }, s + 0.2);
       at = s + 0.6;

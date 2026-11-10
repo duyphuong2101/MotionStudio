@@ -27,7 +27,8 @@
       "band": "JSON highlight over a span of points, counted from 0: { \"from\": 2, \"to\": 2, \"label\": \"Q3\" }. Label at most 24 characters.",
       "ref": "JSON dashed reference line at one value: { \"value\": 50, \"label\": \"50% target\" }. Label at most 24 characters. On bars (layout \"columns\" only) it is a dashed line across the columns, e.g. { \"value\": 100, \"label\": \"Green zone\" }.",
       "bars.series": "Optional: two names for two bars per item, e.g. [\"Commercial PEX\", \"Delivery PEX\"]; every item then needs \"value2\".",
-      "bars.layout": "Optional: \"columns\" draws upright bars side by side with the value above each and the label below (good for 2-4 items with two series); default rows."
+      "bars.layout": "Optional: \"columns\" draws upright bars side by side with the value above each and the label below (good for 2-4 items with two series); default rows.",
+      "bars.depth": "true: the bars stand as lit 3D columns on a floor, growing one by one with the values counting above them, the camera drifting slowly round; series, tone and ref still apply, layout does not. false (default): flat bars."
     }
   },
   "description": "Numbers told as a story: a title, big headline figures that count up with an up or down change, bar rankings that grow, a bar chart race over time, warming-style color stripes, a line chart that draws itself, a donut that fills in parts, then the call to action.",
@@ -159,7 +160,8 @@
         "tone",
         "series",
         "layout",
-        "ref"
+        "ref",
+        "depth"
       ]
     },
     "race": {
@@ -287,6 +289,10 @@
     "layout": [
       "rows",
       "columns"
+    ],
+    "depth": [
+      true,
+      false
     ]
   },
   "defaults": {

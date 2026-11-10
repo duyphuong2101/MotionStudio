@@ -37,6 +37,7 @@ import { videoGradeVf, imageGradeArgs, GRADABLE_IMAGE } from './grade.mjs';
 import { pictureCopies, cutoutPicture } from './direction.mjs';
 import { matteConfig, matteStatus, makeCutout } from './matte.mjs';
 import { copyThree, copyLottie, copyGsap } from './vendor.mjs';
+import { THREE_CANVAS_RE } from './model-rules.mjs';
 // sequences.mjs imports this module too; loopMusic is only called at run time, so the cycle is safe.
 import { loopMusic } from './sequences.mjs';
 
@@ -330,7 +331,8 @@ export async function prepare(project, id, by = 'engine') {
       return beats.mixed ? buildMixed(args, beats) : (await import(pathToFileURL(path.join(tplDir, 'template.mjs')).href)).build(args);
     };
     fs.writeFileSync(path.join(dir, 'index.html'), await page(brief.format, size), 'utf8');
-    if (script.scenes.some((sc) => sc.model)) copyThree(dir);
+    // three.js for any 3D canvas: a model, the other 3D kinds, 3D bars or a 3D logo (engine/model-rules.mjs).
+    if (THREE_CANVAS_RE.test(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'))) copyThree(dir);
     if (script.scenes.some((sc) => sc.lottie)) copyLottie(dir);
     // Extra cuts: the same script and timing laid out at each other size, one page each.
     const cuts = [];

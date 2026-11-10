@@ -7,7 +7,9 @@
 //   node tests/run.mjs engine/tts.mjs ...   files affected by these source files (every declaration counts as changed)
 //   node tests/run.mjs tests/x.test.mjs     just these test files
 //   add --list to print the selection and why, --heavy <n> / --jobs <n> to change how many run at once, --no-retry to
-//   skip the second, solo run of a file that failed beside others
+//   skip the second, solo run of a file that failed beside others, --play-all to play every page of the slow page
+//   checks again (tests/helpers/page-cache.mjs skips a page that already passed unchanged), --normal-priority to
+//   keep the run at the usual process priority (by default it runs below normal, so the machine stays usable)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,6 +29,11 @@ const num = (name, dflt) => { const i = args.indexOf(name); if (i < 0) return df
 const list = flag('--list');
 const changed = flag('--changed');
 const noRetry = flag('--no-retry');
+if (flag('--play-all')) process.env.STUDIO_PLAY_ALL = '1';
+// Below normal priority: every test process, Chrome and ffmpeg started from here inherits it, so whatever the person
+// is doing gets the CPU first and the run takes what is left.
+const lowPriority = !flag('--normal-priority');
+if (lowPriority) { try { os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed here: run as is */ } }
 const cpus = os.availableParallelism?.() || os.cpus().length;
 const heavyMax = num('--heavy', Math.max(1, Math.min(4, Math.floor(cpus / 4))));
 const jobs = num('--jobs', Math.max(2, cpus - 1));
@@ -78,11 +85,14 @@ function failures(log) {
 
 const { files, why, note } = select();
 const times = readTimes();
-const heavy = (f) => (times[f] !== undefined ? times[f] > HEAVY_SECONDS : OPENS_CHROME.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+// A page sweep (tests/helpers/page-cache.mjs) takes a second when every page is cached and many minutes when a template
+// changed, so its last time says nothing: it always runs in the heavy pool.
+const SWEEP = /\bplayEveryTemplate\s*\(/;
+const heavy = (f) => { const src = fs.readFileSync(path.join(ROOT, f), 'utf8'); return SWEEP.test(src) || (times[f] !== undefined ? times[f] > HEAVY_SECONDS : OPENS_CHROME.test(src)); };
 const guess = (f) => times[f] ?? (heavy(f) ? 120 : 1);
 const queue = [...files].sort((a, b) => guess(b) - guess(a));
 
-console.log(`${note}; up to ${jobs} at once, ${heavyMax} of them heavy`);
+console.log(`${note}; up to ${jobs} at once, ${heavyMax} of them heavy${lowPriority ? ', below normal priority' : ''}${process.env.STUDIO_PLAY_ALL === '1' ? ', every page played' : ''}`);
 if (list) {
   for (const f of queue) console.log(`  ${heavy(f) ? 'heavy' : 'light'} ${String(Math.round(guess(f))).padStart(5)}s  ${f}  ← ${why.get(f)}`);
   process.exit(0);

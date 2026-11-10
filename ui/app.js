@@ -61,6 +61,7 @@ const WHO = { human: 'human', director: 'director', tool: 'tool' };
 const FIELD_LABEL = {
   vo: 'Voice-over', layout: 'Layout', zoom: 'Zoom', nav: 'Nav item', page: 'Page title', data: 'Screen data', assistant: 'Assistant turns', title: 'Title', subtitle: 'Subtitle', kicker: 'Kicker', text: 'Text line', chip: 'Chip',
   stat: 'Number', icon: 'Icon', shots: 'Shots (image, focus, cursor, click)', pace: 'Pace', decor: 'Decor', check: 'Check mark', button: 'CTA button', url: 'URL', asset: 'Image', packLine: 'Pack line', source: 'Claim source',
+  word: '3D word', screen: 'Screenshot', device: 'Device', form: 'Points form', arrange: 'Arrangement', arcs: 'Arcs', clip: 'Model animation', paints: 'Colour changes', swap: 'Second model', material: 'Material', depth: '3D columns',
   video: 'Video clip', sound: 'Sound', image: 'Cover art', model: '3D model', lottie: 'Animation (Lottie)', spin: 'Spin', view: 'Camera pose', path: 'Camera path', explode: 'Exploded parts', gap: 'Part gap', decal: 'Decal', env: 'Lighting', shadow: 'Shadow', loop: 'Loop', fit: 'Fit', name: 'Name', role: 'Role', in: 'Starts at (s)', out: 'Ends at (s)', code: 'Code', before: 'Before', after: 'After', lang: 'Window label', file: 'File name', files: 'Changed files', lines: 'Terminal lines', highlight: 'Lines to light up', periods: 'Periods', series: 'Series (one value per period)', values: 'Values', finish: 'Ends as', top: 'Bars shown', items: 'Items', points: 'Points', parts: 'Parts', labels: 'Axis labels', band: 'Highlight band', ref: 'Reference line', theme: 'Theme',
 };
 
@@ -857,7 +858,7 @@ function paneScript(pane) {
   const pictures = d.assets.filter((a) => /\.(png|jpe?g|webp|svg)$/i.test(a));
   const images = footage ? d.assets.filter((a) => clipRe.test(a)) : pictures;
   const uploadHint = ' Upload… adds a file to the brand assets and picks it here.';
-  const JSON_FIELDS = new Set(['data', 'assistant', 'shots', 'items', 'parts', 'people', 'points', 'labels', 'before', 'after', 'periods', 'series', 'values', 'lines', 'files', 'highlight', 'band', 'ref', 'photos', 'view', 'path', 'explode', 'decal']);
+  const JSON_FIELDS = new Set(['data', 'assistant', 'shots', 'items', 'parts', 'people', 'points', 'labels', 'before', 'after', 'periods', 'series', 'values', 'lines', 'files', 'highlight', 'band', 'ref', 'photos', 'view', 'path', 'explode', 'decal', 'paints', 'swap', 'material']);
   // Code listings keep their line breaks and indentation, so they get a monospace text area.
   const BLOCK_FIELDS = new Set(['code', 'before', 'after']);
 

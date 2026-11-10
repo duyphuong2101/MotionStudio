@@ -2,7 +2,7 @@ import { StudioError, assertFileName } from './core.mjs';
 import { ICON_NAMES } from '../motion-kit/icons.mjs';
 import { splitKind } from './mix.mjs';
 import { MARK_FIELDS, stripMarks, hasMarkup, markErrors } from './marks.mjs';
-import { PART_RE, DECAL_SIZE } from './model-rules.mjs';
+import { PART_RE, DECAL_SIZE, CLIP_RE, PAINT_COLORS, HEX_COLOR_RE, MATERIAL_LOOKS } from './model-rules.mjs';
 import { lookProblem, effectsProblems } from './looks.mjs';
 import { directionProblems } from './direction.mjs';
 
@@ -148,6 +148,11 @@ export function validateScript(script, beats,{ assets = [], icons = ICON_NAMES, 
       if (typeof s.model !== 'string' || !/\.glb$/i.test(s.model)) errors.push(`${s.id}: model must be a .glb file`);
       else if (!assets.includes(s.model)) errors.push(`${s.id}: model "${s.model}" is not in the project assets`);
     }
+    if (typeof s.swap?.model === 'string' && /\.glb$/i.test(s.swap.model) && !assets.includes(s.swap.model)) errors.push(`${s.id}: swap model "${s.swap.model}" is not in the project assets`);
+    if (s.screen !== undefined) {
+      if (typeof s.screen !== 'string' || !/\.(png|jpe?g|webp)$/i.test(s.screen)) errors.push(`${s.id}: screen must be a .png, .jpg or .webp screenshot`);
+      else if (!assets.includes(s.screen)) errors.push(`${s.id}: screen "${s.screen}" is not in the project assets`);
+    }
     for (const f of ['in', 'out']) if (s[f] !== undefined && s[f] !== '' && !(Number(s[f]) >= 0)) errors.push(`${s.id}: ${f} must be a number of seconds`);
     if (s.sound !== undefined && typeof s.sound !== 'boolean') errors.push(`${s.id}: sound must be true or false`);
     if (s.speaker !== undefined && (typeof s.speaker !== 'string' || !/^[a-z][a-z0-9-]{0,19}$/.test(s.speaker))) errors.push(`${s.id}: speaker must name a voice in the brand's voice cast`);
@@ -208,6 +213,7 @@ function sceneMarkErrors(s, supported) {
 }
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+const keyWord = (w) => String(w).toLowerCase().replace(/[^a-z0-9]/g, '');
 const shortText = (v, max) => typeof v === 'string' && v.trim() && v.length <= max;
 
 /**
@@ -248,7 +254,7 @@ export function validateData(s, kind, d, icons = ICON_NAMES) {
   // data-story bars in columns: an optional dashed reference value across the columns.
   if (kind === 'bars' && s.ref !== undefined) {
     const r = s.ref;
-    if (s.layout !== 'columns') errs.push(`${s.id}: ref needs layout "columns" (a dashed line across upright bars)`);
+    if (s.layout !== 'columns' && s.depth !== true) errs.push(`${s.id}: ref needs layout "columns" or depth (a line across upright bars)`);
     else if (!r || typeof r !== 'object' || !finite(r.value) || (r.label !== undefined && !shortText(r.label, d.labelChars))) errs.push(`${s.id}: ref must be { "value": 100, "label": "Green zone" }: a number, label at most ${d.labelChars} characters`);
   }
   // data-story line: an optional highlighted span of points and an optional dashed reference value.
@@ -325,14 +331,52 @@ export function validateData(s, kind, d, icons = ICON_NAMES) {
       }
     }
   }
-  // lifestyle gallery: a few photos dropped as prints, each with an optional short caption.
-  if (kind === 'gallery') {
+  // lifestyle gallery and explainer cards: a few photos as prints, each with an optional short caption.
+  if (kind === 'gallery' || kind === 'cards') {
     const P = s.photos;
     if (!Array.isArray(P) || P.length < d.photos[0] || P.length > d.photos[1]) errs.push(`${s.id}: photos must list ${d.photos[0]}-${d.photos[1]} photos`);
     else P.forEach((p, i) => {
       if (!p || typeof p !== 'object' || typeof p.asset !== 'string' || !p.asset) errs.push(`${s.id}.photos[${i}]: each photo is { "asset": "team.jpg", "caption": "Kick-off day" }`);
       else if (p.caption !== undefined && p.caption !== '' && !shortText(p.caption, d.caption)) errs.push(`${s.id}.photos[${i}]: caption at most ${d.caption} characters`);
     });
+  }
+  // explainer globe: places by latitude and longitude, each with a short label.
+  if (kind === 'globe') {
+    const P = s.points, [lo, hi] = d.points;
+    if (!Array.isArray(P) || P.length < lo || P.length > hi) errs.push(`${s.id}: points must list ${lo}-${hi} places, e.g. [{ "lat": 59.33, "lon": 18.07, "label": "Stockholm" }]`);
+    else P.forEach((p, i) => {
+      if (!p || typeof p !== 'object' || Array.isArray(p)) return errs.push(`${s.id}.points[${i}]: each place is { "lat": 59.33, "lon": 18.07, "label": "Stockholm" }`);
+      if (!(finite(p.lat) && p.lat >= -90 && p.lat <= 90)) errs.push(`${s.id}.points[${i}]: lat must be a number from -90 to 90`);
+      if (!(finite(p.lon) && p.lon >= -180 && p.lon <= 180)) errs.push(`${s.id}.points[${i}]: lon must be a number from -180 to 180`);
+      if (p.label !== undefined && p.label !== '' && !shortText(p.label, d.label)) errs.push(`${s.id}.points[${i}]: label at most ${d.label} characters`);
+    });
+  }
+  // explainer swarm: the form names what it needs.
+  if (kind === 'swarm' && s.form === 'icon' && !s.icon) errs.push(`${s.id}: form icon needs an icon`);
+  // A model scene's extras (data.model.paints, .material): one animation clip, colour changes, a second model, a stock look.
+  if (d.paints) {
+    const cueOk = (w) => w === undefined || (typeof w === 'string' && wordsOf(s.vo).some((x) => keyWord(x) === keyWord(w) && keyWord(w)));
+    if (s.clip !== undefined && !(typeof s.clip === 'string' && CLIP_RE.test(s.clip))) errs.push(`${s.id}: clip must be the name of one animation in the .glb (letters, digits, spaces, _ . | : -)`);
+    if (s.paints !== undefined) {
+      const [lo, hi] = d.paints;
+      if (!Array.isArray(s.paints) || s.paints.length < lo || s.paints.length > hi) errs.push(`${s.id}: paints must list ${lo}-${hi} colour changes, e.g. [{ "color": "secondary", "part": "cap", "cue": "yellow" }]`);
+      else s.paints.forEach((p, i) => {
+        if (!p || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).some((k) => !['color', 'part', 'cue'].includes(k))) return errs.push(`${s.id}.paints[${i}]: each change is { "color": "#e11d48", "part": "cap", "cue": "red" }, color required`);
+        if (!(typeof p.color === 'string' && (HEX_COLOR_RE.test(p.color) || PAINT_COLORS.includes(p.color)))) errs.push(`${s.id}.paints[${i}]: color must be a hex colour such as #e11d48 or one of ${PAINT_COLORS.join(', ')}`);
+        if (p.part !== undefined && !(typeof p.part === 'string' && PART_RE.test(p.part))) errs.push(`${s.id}.paints[${i}]: part must be a part name of the model`);
+        if (!cueOk(p.cue)) errs.push(`${s.id}.paints[${i}]: cue "${p.cue}" is not a word of the voice line`);
+      });
+    }
+    if (s.swap !== undefined) {
+      const w = s.swap;
+      if (!w || typeof w !== 'object' || Array.isArray(w) || Object.keys(w).some((k) => !['model', 'cue'].includes(k)) || typeof w.model !== 'string' || !/\.glb$/i.test(w.model)) errs.push(`${s.id}: swap must be { "model": "pack-new.glb", "cue": "new" }, model a .glb, cue optional`);
+      else if (!cueOk(w.cue)) errs.push(`${s.id}: swap.cue "${w.cue}" is not a word of the voice line`);
+    }
+    if (s.material !== undefined) {
+      const m = typeof s.material === 'string' ? { look: s.material } : s.material, looks = d.material || MATERIAL_LOOKS;
+      if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some((k) => !['look', 'parts'].includes(k)) || !looks.includes(m.look)) errs.push(`${s.id}: material must be { "look": "glass", "parts": ["cap"] } or a look name, look one of ${looks.join(', ')}`);
+      else if (m.parts !== undefined && (!Array.isArray(m.parts) || !m.parts.length || m.parts.length > 6 || m.parts.some((p) => typeof p !== 'string' || !PART_RE.test(p)))) errs.push(`${s.id}: material.parts must list 1-6 part names of the model`);
+    }
   }
   // code-story: listings must fit the panel; lists must hold what the renderer expects.
   const block = (field) => {

@@ -11,6 +11,7 @@ import { estimateTiming } from '../engine/timing.mjs';
 import { sizeFor } from '../engine/pipeline.mjs';
 import { ffmpeg, openComposition } from '../engine/media.mjs';
 import { sampleScript } from '../engine/template-preview.mjs';
+import { THREE_KINDS } from '../engine/model-rules.mjs';
 
 // Real Chrome, frames walked forward as the renderer does: a scene switch never shows two scenes at once, and an
 // element that enters later in its scene is not visible before its entrance (the kit's preset).
@@ -29,8 +30,8 @@ async function chromeOrSkip(t) {
 /** Builds a template's sample page into a temp folder and opens it; `walk(t)` seeks forward frame by frame. */
 async function openSample(t, id, format) {
   const { dir, beats } = loadTemplate(id);
-  // The sample without footage or a 3D model: a clip needs prepare, a model three.js; a photo is drawn here.
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((sl) => ({ ...sl, kind: sl.kind.filter((k) => k !== 'video' && k !== 'model' && k !== 'anim') })) });
+  // The sample without footage or a 3D scene: a clip needs prepare, a 3D kind three.js; a photo is drawn here.
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((sl) => ({ ...sl, kind: sl.kind.filter((k) => k !== 'video' && k !== 'anim' && !THREE_KINDS.includes(k)) })) });
   const timing = estimateTiming(script, TIMING, 'en', beats.pace || null);
   const size = sizeFor(beats, format);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);

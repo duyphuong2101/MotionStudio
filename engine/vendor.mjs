@@ -15,6 +15,8 @@ const THREE_FILES = {
   'SkeletonUtils.js': 'examples/jsm/utils/SkeletonUtils.js',
   // The studio room the model scene's image-based lighting is built from; it imports 'three' only.
   'RoomEnvironment.js': 'examples/jsm/environments/RoomEnvironment.js',
+  // The device subject's phone, tablet and laptop bodies (templates/m3subjects.mjs); it imports 'three' only.
+  'RoundedBoxGeometry.js': 'examples/jsm/geometries/RoundedBoxGeometry.js',
   // A model scene's bloom and focus (templates/model3d.mjs): three's composer, its passes and their shaders.
   'EffectComposer.js': 'examples/jsm/postprocessing/EffectComposer.js',
   'RenderPass.js': 'examples/jsm/postprocessing/RenderPass.js',

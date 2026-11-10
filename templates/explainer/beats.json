@@ -11,7 +11,12 @@
       "video": "Real footage in a window, e.g. a screen recording or research film: it plays under the voice, or with its own sound.",
       "flash": "Kinetic type: 2-12 words flash full frame one at a time on the beat of the voice, then an optional title lands and holds, e.g. nine workstreams ending on \"One partnership.\"",
       "model": "A 3D model of the product (a .glb file) in studio light with a soft shadow, turning slowly on the scene background under a title: for a physical product or device the viewer should see from every side.",
-      "anim": "A Lottie animation (a .json export from After Effects or LottieFiles, uploaded in the Brand tab) playing in a window under a title: for motion a designer authored, e.g. a product icon animation or an animated diagram."
+      "anim": "A Lottie animation (a .json export from After Effects or LottieFiles, uploaded in the Brand tab) playing in a window under a title: for motion a designer authored, e.g. a product icon animation or an animated diagram.",
+      "type3d": "A short word or number as solid 3D letters in the brand display font, rising into place one by one under studio light, e.g. \"2x faster\" or \"Ready.\": a headline moment.",
+      "device": "An app or web screen on a 3D phone, tablet or laptop (the lid opens), turning slowly in studio light; a tall screenshot scrolls from top to bottom while the voice runs.",
+      "swarm": "Thousands of points fly in from all round and settle into a word, an icon or the brand logo: an opening or a reveal.",
+      "cards": "2-6 photos as instant prints in 3D: a row the camera glides along, a fan that opens print by print, or a ring that turns each print to the front in turn.",
+      "globe": "A turning globe in the brand colours: 1-8 places pop up with a label, then arcs join them, e.g. offices, markets or a delivery route."
     },
     "fields": {
       "step.icon": "An icon for this step. One icon morphs from step to step.",
@@ -41,7 +46,42 @@
       "lottie": "The Lottie animation (.json) from the project assets.",
       "anim.loop": "true (default): a short animation repeats until the scene ends; false: it plays once and holds its last frame.",
       "anim.fit": "contain (default): the whole animation fits the window; cover: it fills the window, edges cropped.",
-      "cta.image": "Optional background photo from the project assets (e.g. the pack or a lifestyle shot), faded under the brand colour on the text side so the button still reads."
+      "cta.image": "Optional background photo from the project assets (e.g. the pack or a lifestyle shot), faded under the brand colour on the text side so the button still reads.",
+      "word": "The 3D word or number, at most 16 characters, e.g. \"98%\" or \"Launch day\". Say it in the voice line.",
+      "screen": "The screenshot (.png, .jpg or .webp) from the project assets shown on the device screen. A portrait screenshot suits a phone; a tall one (a whole page) scrolls.",
+      "device": "phone (default), tablet (turns landscape for a wide screenshot) or laptop (its lid opens at the start).",
+      "form": "What the points settle into: word (the word field, or the brand name), icon (the icon field) or logo (the brand logo; the brand name without one).",
+      "swarm.icon": "An icon name from the context's icons list, for form icon.",
+      "swarm.word": "The word for form word, at most 16 characters.",
+      "photos": "JSON list of 2-6 photos from the project assets, each with an optional caption of at most 32 characters: [{\"asset\": \"team.jpg\", \"caption\": \"Kick-off day\"}].",
+      "arrange": "row (default): the camera glides along the prints, resting on each in turn as the voice goes; fan: the prints rise one by one into a fanned hand; ring: the prints stand round a ring that turns each to the front.",
+      "points": "JSON list of 1-8 places: [{\"lat\": 59.33, \"lon\": 18.07, \"label\": \"Stockholm\"}], latitude -90 to 90, longitude -180 to 180, label at most 20 characters. They pop up in this order through the voice line.",
+      "arcs": "hub (default): arcs from the first place to each other one; chain: from each place to the next; none: no arcs.",
+      "model.clip": "Optional: the name of one animation in the .glb to play (e.g. \"Open\"); without it every animation in the file plays.",
+      "model.paints": "Optional colour changes as JSON, 1-4: [{\"color\": \"secondary\", \"part\": \"cap\", \"cue\": \"yellow\"}]. color is a hex colour (#e11d48) or a brand colour (primary, primary2, secondary, ink, bg); part a node of the .glb (whole model without it); cue a word of the voice line where the change starts (spread evenly without it). Reads best on plain parts; a printed texture is tinted.",
+      "model.swap": "Optional second model as JSON: {\"model\": \"pack-new.glb\", \"cue\": \"new\"}: at the cue word (half way without it) the first model spins out and the second spins in, e.g. old pack to new pack. The camera, spin and light carry on; explode, decal, paints and material stay on the first.",
+      "model.material": "Optional stock look as JSON: {\"look\": \"glass\", \"parts\": [\"cap\"]} (look glass, chrome, gold or clay; parts optional, the whole model without them), or just \"chrome\". Glass is clear in the middle with bright edges; chrome and gold read best with studio or brand light.",
+      "type3d.spin": "hero (default): the word sways gently; turn and orbit show its sides; reveal rises it in; detail pushes in.",
+      "device.spin": "hero (default): the device sways gently, its screen toward the viewer; reveal rises it in; detail pushes in on the screen; turn and orbit also show its back.",
+      "type3d.view": "Optional start pose as JSON, each key optional: {\"azimuth\": 30, \"elevation\": 12, \"zoom\": 1}. azimuth -180 to 180 degrees round it, elevation -30 to 60 degrees above it, zoom 0.6 (farther) to 1.6 (closer). Empty keeps the spin's own pose.",
+      "type3d.path": "Optional camera path as JSON: 2-4 poses shaped like view, e.g. [{\"azimuth\": -20, \"zoom\": 1}, {\"azimuth\": 20, \"zoom\": 1.3}]. The camera glides from pose to pose across the scene; replaces the spin's own camera move.",
+      "type3d.env": "studio (default): studio light reflects in it; brand: the same room in the brand colours; none: plain lamps only.",
+      "type3d.bloom": "Optional glow from the letters' bright highlights, 0 to 1 (e.g. 0.4), for a hero moment. Leave it out for a plain, sharp look.",
+      "type3d.focus": "true: the word's centre stays sharp and its nearer and farther letters soften. false (default): all sharp.",
+      "type3d.shadow": "true (default): a soft contact shadow under the word; false drops it.",
+      "device.view": "Optional start pose as JSON, each key optional: {\"azimuth\": 30, \"elevation\": 12, \"zoom\": 1}. azimuth -180 to 180 degrees round it, elevation -30 to 60 degrees above it, zoom 0.6 (farther) to 1.6 (closer). Empty keeps the spin's own pose.",
+      "device.path": "Optional camera path as JSON: 2-4 poses shaped like view, e.g. [{\"azimuth\": -20, \"zoom\": 1}, {\"azimuth\": 20, \"zoom\": 1.3}]. The camera glides from pose to pose across the scene; replaces the spin's own camera move.",
+      "device.env": "studio (default): studio light reflects in it; brand: the same room in the brand colours; none: plain lamps only.",
+      "device.bloom": "Optional glow from the device's bright highlights, 0 to 1 (e.g. 0.4), for a hero moment. Leave it out for a plain, sharp look.",
+      "device.focus": "true: the screen stays sharp and the device's nearer and farther edges soften. false (default): all sharp.",
+      "device.shadow": "true (default): a soft contact shadow under the device; false drops it.",
+      "swarm.spin": "hero (default): the settled shape sways gently; turn and orbit show it from the sides; reveal rises it in; detail pushes in.",
+      "swarm.view": "Optional start pose as JSON, each key optional: {\"azimuth\": 30, \"elevation\": 12, \"zoom\": 1}. azimuth -180 to 180 degrees round it, elevation -30 to 60 degrees above it, zoom 0.6 (farther) to 1.6 (closer). Empty keeps the spin's own pose.",
+      "swarm.path": "Optional camera path as JSON: 2-4 poses shaped like view, e.g. [{\"azimuth\": -20, \"zoom\": 1}, {\"azimuth\": 20, \"zoom\": 1.3}]. The camera glides from pose to pose across the scene; replaces the spin's own camera move.",
+      "swarm.bloom": "Optional glow from the points as they settle, 0 to 1 (e.g. 0.4), for a hero moment. Leave it out for a plain, sharp look.",
+      "cards.env": "studio (default): studio light reflects in it; brand: the same room in the brand colours; none: plain lamps only.",
+      "cards.bloom": "Optional glow from the prints' bright highlights, 0 to 1 (e.g. 0.4), for a hero moment. Leave it out for a plain, sharp look.",
+      "globe.bloom": "Optional glow from the pins, arcs and the globe's rim, 0 to 1 (e.g. 0.4), for a hero moment. Leave it out for a plain, sharp look."
     }
   },
   "description": "Explains how something works: a title, numbered steps where one icon morphs from step to step with a progress bar, flow diagrams whose boxes and arrows draw in order, real footage in a window, a 3D model of the product turning on the scene background, full-frame kinetic type that flashes words on the beat, then the call to action. Body scenes can switch to a dark or accent background.",
@@ -94,7 +134,12 @@
     "video",
     "flash",
     "model",
-    "anim"
+    "anim",
+    "type3d",
+    "device",
+    "swarm",
+    "cards",
+    "globe"
   ],
   "sequence": [
     {
@@ -111,7 +156,12 @@
         "video",
         "flash",
         "model",
-        "anim"
+        "anim",
+        "type3d",
+        "device",
+        "swarm",
+        "cards",
+        "globe"
       ],
       "min": 1,
       "max": 10
@@ -242,7 +292,11 @@
         "focus",
         "theme",
         "pace",
-        "sfx"
+        "sfx",
+        "clip",
+        "paints",
+        "swap",
+        "material"
       ]
     },
     "anim": {
@@ -261,6 +315,106 @@
         "pace",
         "sfx"
       ]
+    },
+    "type3d": {
+      "required": [
+        "vo",
+        "word",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "text",
+        "spin",
+        "view",
+        "path",
+        "env",
+        "bloom",
+        "focus",
+        "shadow",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "device": {
+      "required": [
+        "vo",
+        "title",
+        "screen",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "text",
+        "device",
+        "spin",
+        "view",
+        "path",
+        "env",
+        "bloom",
+        "focus",
+        "shadow",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "swarm": {
+      "required": [
+        "vo",
+        "form",
+        "source"
+      ],
+      "optional": [
+        "title",
+        "kicker",
+        "text",
+        "word",
+        "icon",
+        "spin",
+        "view",
+        "path",
+        "bloom",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "cards": {
+      "required": [
+        "vo",
+        "photos",
+        "source"
+      ],
+      "optional": [
+        "title",
+        "kicker",
+        "text",
+        "arrange",
+        "env",
+        "bloom",
+        "theme",
+        "pace",
+        "sfx"
+      ]
+    },
+    "globe": {
+      "required": [
+        "vo",
+        "title",
+        "points",
+        "source"
+      ],
+      "optional": [
+        "kicker",
+        "text",
+        "arcs",
+        "bloom",
+        "theme",
+        "pace",
+        "sfx"
+      ]
     }
   },
   "limits": {
@@ -271,7 +425,8 @@
     "button": 24,
     "url": 40,
     "voWords": 34,
-    "caption": 160
+    "caption": 160,
+    "word": 16
   },
   "enums": {
     "pace": [
@@ -318,6 +473,26 @@
     "fit": [
       "contain",
       "cover"
+    ],
+    "device": [
+      "phone",
+      "tablet",
+      "laptop"
+    ],
+    "form": [
+      "word",
+      "icon",
+      "logo"
+    ],
+    "arrange": [
+      "row",
+      "fan",
+      "ring"
+    ],
+    "arcs": [
+      "hub",
+      "chain",
+      "none"
     ]
   },
   "data": {
@@ -366,11 +541,115 @@
       "bloom": [
         0,
         1
+      ],
+      "paints": [
+        1,
+        4
+      ],
+      "material": [
+        "glass",
+        "chrome",
+        "gold",
+        "clay"
       ]
     },
     "video": {
       "tags": 2,
       "tagChars": 16
+    },
+    "cards": {
+      "photos": [
+        2,
+        6
+      ],
+      "caption": 32,
+      "bloom": [
+        0,
+        1
+      ]
+    },
+    "globe": {
+      "points": [
+        1,
+        8
+      ],
+      "label": 20,
+      "bloom": [
+        0,
+        1
+      ]
+    },
+    "type3d": {
+      "view": {
+        "azimuth": [
+          -180,
+          180
+        ],
+        "elevation": [
+          -30,
+          60
+        ],
+        "zoom": [
+          0.6,
+          1.6
+        ]
+      },
+      "path": [
+        2,
+        4
+      ],
+      "bloom": [
+        0,
+        1
+      ]
+    },
+    "device": {
+      "view": {
+        "azimuth": [
+          -180,
+          180
+        ],
+        "elevation": [
+          -30,
+          60
+        ],
+        "zoom": [
+          0.6,
+          1.6
+        ]
+      },
+      "path": [
+        2,
+        4
+      ],
+      "bloom": [
+        0,
+        1
+      ]
+    },
+    "swarm": {
+      "view": {
+        "azimuth": [
+          -180,
+          180
+        ],
+        "elevation": [
+          -30,
+          60
+        ],
+        "zoom": [
+          0.6,
+          1.6
+        ]
+      },
+      "path": [
+        2,
+        4
+      ],
+      "bloom": [
+        0,
+        1
+      ]
     }
   },
   "defaults": {
@@ -417,6 +696,43 @@
     "anim": {
       "title": "See it move",
       "text": "One sentence about what the animation shows."
+    },
+    "type3d": {
+      "word": "Ready.",
+      "spin": "hero"
+    },
+    "device": {
+      "title": "Right in your pocket",
+      "device": "phone"
+    },
+    "swarm": {
+      "form": "word",
+      "word": "Hello"
+    },
+    "cards": {
+      "title": "Moments that matter",
+      "arrange": "row"
+    },
+    "globe": {
+      "title": "Where we work",
+      "points": [
+        {
+          "lat": 59.33,
+          "lon": 18.07,
+          "label": "Stockholm"
+        },
+        {
+          "lat": 21.03,
+          "lon": 105.85,
+          "label": "Hanoi"
+        },
+        {
+          "lat": 40.71,
+          "lon": -74.0,
+          "label": "New York"
+        }
+      ],
+      "arcs": "hub"
     }
   },
   "pace": {

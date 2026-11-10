@@ -192,12 +192,17 @@ export async function openComposition(file, { channel, width = 1080, height = 19
   try {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
     const errors = [];
-    page.on('pageerror', (e) => errors.push(e.message));
+    // A script error fails the open at once: the page would be refused for it anyway, and waiting out the 30 s
+    // readiness timeout for a page that threw (a missing 3D part, a bad module) only holds Chrome open.
+    let threw;
+    const thrown = new Promise((resolve) => { threw = resolve; });
+    page.on('pageerror', (e) => { errors.push(e.message); threw(); });
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto(`http://127.0.0.1:${server.address().port}/${path.basename(file)}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {
+    const ready = page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).then(() => true, () => false);
+    if (!(await Promise.race([ready, thrown.then(() => false)]))) {
       throw new StudioError(`Composition never became ready. Page errors: ${errors.join(' | ') || 'none'}`);
-    });
+    }
     if (errors.length) throw new StudioError(`Composition has script errors: ${errors.join(' | ')}`);
     const info = await page.evaluate(() => window.__studio);
     return { browser, page, info, errors };

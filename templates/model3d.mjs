@@ -3,7 +3,8 @@
 // function of seek(t): the turn, the camera, the exploded parts and the model's own animation clips are set from t,
 // then drawn once.
 import { escapeHtml as h } from '../engine/core.mjs';
-import { VIEW_RANGE, PATH_POSES, EXPLODE_PARTS, GAP_RANGE, GAP_DEFAULT, PART_RE, DECAL_SIZE, DECAL_SIZE_DEFAULT, ENVS, BLOOM_RANGE } from '../engine/model-rules.mjs';
+import { VIEW_RANGE, PATH_POSES, EXPLODE_PARTS, GAP_RANGE, GAP_DEFAULT, PART_RE, DECAL_SIZE, DECAL_SIZE_DEFAULT, ENVS, BLOOM_RANGE, CLIP_RE, PAINTS, MATERIAL_LOOKS, PAINT_COLORS, HEX_COLOR_RE, THREE_CANVAS_RE } from '../engine/model-rules.mjs';
+import { M3_LIB_JS, SUBJECT_JS } from './m3subjects.mjs';
 
 export { VIEW_RANGE, PATH_POSES, EXPLODE_PARTS, GAP_RANGE, GAP_DEFAULT, PART_RE, DECAL_SIZE, DECAL_SIZE_DEFAULT, ENVS, BLOOM_RANGE };
 export const SPINS = ['turn', 'orbit', 'hero', 'reveal', 'detail'];
@@ -69,8 +70,68 @@ const envAttrs = (env, colors) => (env === 'none' ? ' data-env="none"'
  * argument is the scene: its view, path, explode, decal, shadow, env, bloom and focus are written only when they differ from
  * the default look. `colors` (the brand's) feed the brand environment.
  */
-export const modelCanvas = (name, t, spin, { view, path, explode, gap, decal, shadow, env, colors, bloom, focus } = {}) =>
-  `<canvas class="m3c" data-gl data-model="${h(`assets/${encodeURIComponent(name)}`)}" data-start="${t.start}" data-end="${t.end}" data-spin="${SPINS.includes(spin) ? spin : 'turn'}"${viewAttrs(view)}${pathAttr(path)}${explodeAttrs(explode, gap)}${decalAttr(decal)}${shadow === false ? ' data-shadow="off"' : ''}${envAttrs(env, colors)}${lookAttrs(bloom, focus)}></canvas>`;
+export const modelCanvas = (name, t, spin, { view, path, explode, gap, decal, shadow, env, colors, bloom, focus, clip, paints, swap, material, words } = {}) =>
+  `<canvas class="m3c" data-gl data-model="${h(`assets/${encodeURIComponent(name)}`)}" data-start="${t.start}" data-end="${t.end}" data-spin="${SPINS.includes(spin) ? spin : 'turn'}"${viewAttrs(view)}${pathAttr(path)}${explodeAttrs(explode, gap)}${decalAttr(decal)}${shadow === false ? ' data-shadow="off"' : ''}${envAttrs(env, colors)}${lookAttrs(bloom, focus)}${extraAttrs({ clip, paints, swap, material }, t, colors, words)}></canvas>`;
+
+const keyOf = (w) => String(w).toLowerCase().replace(/[^a-z0-9]/g, '');
+/**
+ * When a scene's word cue lands: just before the voice says `word` (its first match among the scene's `words`, timing
+ * entries { w, start }), else `frac` of the way through the scene. Rounded to the hundredth of a second.
+ */
+export const cueTime = (words, word, t, frac) => {
+  const k = word ? keyOf(word) : '', hit = k ? (words || []).find((w) => keyOf(w.w) === k) : null;
+  const at = hit ? Math.max(t.start, hit.start - 0.1) : t.start + frac * Math.max(0, t.end - t.start);
+  return Math.round(at * 100) / 100;
+};
+
+// A paint colour as hex: a brand colour by name, a hex colour as it is; anything else is dropped.
+const paintHex = (c, colors) => (HEX_COLOR_RE.test(c) ? c.toLowerCase() : PAINT_COLORS.includes(c) && HEX_COLOR_RE.test(colors?.[c] || '') ? colors[c].toLowerCase() : null);
+const partsOf = (parts) => (Array.isArray(parts) ? parts.filter((p) => typeof p === 'string' && PART_RE.test(p)).slice(0, EXPLODE_PARTS[1]) : []);
+
+// A model's extras, each written only when the scene sets it: one named animation clip, colour changes at their cue
+// times (a paint without a cue spread evenly over the scene), a second model taking over at its cue (or half way), a
+// stock material on named parts or the whole model.
+const extraAttrs = ({ clip, paints, swap, material }, t, colors, words) => {
+  let out = '';
+  if (typeof clip === 'string' && CLIP_RE.test(clip)) out += ` data-clip="${h(clip)}"`;
+  if (Array.isArray(paints) && paints.length >= PAINTS[0]) {
+    const list = paints.slice(0, PAINTS[1]).map((p, i, all) => {
+      const c = paintHex(p?.color, colors);
+      if (!c) return null;
+      const part = typeof p.part === 'string' && PART_RE.test(p.part) ? p.part : undefined;
+      return { t: cueTime(words, p.cue, t, (i + 1) / (all.length + 1)), c, ...(part ? { part } : {}) };
+    }).filter(Boolean).sort((a, b) => a.t - b.t);
+    if (list.length) out += ` data-paints="${h(JSON.stringify(list))}"`;
+  }
+  if (swap && typeof swap === 'object' && typeof swap.model === 'string' && /\.glb$/i.test(swap.model)) {
+    out += ` data-swap="${h(`assets/${encodeURIComponent(swap.model)}`)}" data-swap-t="${cueTime(words, swap.cue, t, 0.5)}"`;
+  }
+  const look = typeof material === 'string' ? material : material?.look;
+  if (MATERIAL_LOOKS.includes(look)) {
+    const parts = partsOf(material?.parts);
+    out += ` data-material="${h(JSON.stringify({ look, ...(parts.length ? { parts } : {}) }))}"`;
+  }
+  return out;
+};
+
+// Each subject's spin when the scene names none; "still" subjects move themselves and take no spin.
+const SUBJECT_SPIN = { type: 'hero', logo: 'hero', device: 'hero', swarm: 'hero', cards: 'still', globe: 'still', bars: 'still' };
+export const SUBJECTS = Object.keys(SUBJECT_SPIN);
+
+/**
+ * A canvas drawn by one of the other 3D subjects (templates/m3subjects.mjs) instead of a .glb: `id` is the scene's,
+ * `data` the subject's own settings (written as JSON), `pics` the asset pictures it reads. Each picture rides as a
+ * hidden <img> beside the canvas, so the page waits for it, the preview and the HTML video find it like any other
+ * picture, and the subject draws it into a texture from the same origin. The camera and look fields work as on a
+ * model scene; a subject that moves itself (cards, globe, bars) takes no spin.
+ */
+export const m3Canvas = (subject, id, t, { spin, view, path, shadow, env, colors, bloom, focus, data = {}, pics = [] } = {}) => {
+  if (!SUBJECTS.includes(subject)) throw new Error(`no 3D subject ${subject}`);
+  const own = SUBJECT_SPIN[subject];
+  const sp = own === 'still' ? 'still' : SPINS.includes(spin) ? spin : own;
+  const imgs = pics.map((p, k) => `<img class="m3src" id="${id}-m3p${k}" src="assets/${encodeURIComponent(p)}" alt="" hidden>`).join('');
+  return `${imgs}<canvas class="m3c" data-gl data-m3="${subject}" data-start="${t.start}" data-end="${t.end}" data-spin="${sp}"${viewAttrs(view)}${pathAttr(path)}${shadow === false ? ' data-shadow="off"' : ''}${envAttrs(env, colors)}${lookAttrs(bloom, focus)}${pics.length ? ` data-pics="${pics.map((_, k) => `${id}-m3p${k}`).join(',')}"` : ''} data-m3d="${h(JSON.stringify(data))}"></canvas>`;
+};
 
 /**
  * One canvas for a whole tour (templates/product-tour): the model stays on screen from `t.start` to `t.end` while
@@ -90,9 +151,19 @@ export const tourCanvas = (name, t, steps, { decal, env, colors, bloom, focus } 
   return `<canvas class="m3c tour" data-gl data-model="${h(`assets/${encodeURIComponent(name)}`)}" data-start="${t.start}" data-end="${t.end}" data-spin="tour" data-steps="${h(JSON.stringify(list))}"${decalAttr(decal)}${envAttrs(env, colors)}${lookAttrs(bloom, focus)}></canvas>`;
 };
 
-export const hasModels = (body) => /<canvas [^>]*data-model=/.test(body);
-/** Whether any model canvas asks for bloom or focus, so the page needs MODEL_POST_JS. */
-export const hasModelLook = (body) => /<canvas [^>]*data-model=[^>]*data-(bloom|focus)=/.test(body);
+export const hasModels = (body) => THREE_CANVAS_RE.test(body);
+/** Whether any 3D canvas asks for bloom or focus, so the page needs MODEL_POST_JS. */
+export const hasModelLook = (body) => /<canvas class="m3c[^>]*data-(bloom|focus)=/.test(body);
+
+/**
+ * Every module script a page with 3D canvases needs, in the order they must run: the shared library and each
+ * subject's builder (only those the page uses), the bloom/focus composer when asked, then MODEL_JS, which builds
+ * every canvas. A page with only .glb models gets exactly what it got before.
+ */
+export function modelScripts(body) {
+  const used = SUBJECTS.filter((s) => body.includes(`data-m3="${s}"`));
+  return `${used.length ? M3_LIB_JS + used.map((s) => SUBJECT_JS[s]).join('') : ''}${hasModelLook(body) ? MODEL_POST_JS : ''}${MODEL_JS}`;
+}
 
 /**
  * bloom and focus through three's own passes in one composer, written before MODEL_JS only into a page that uses
@@ -176,10 +247,29 @@ try {
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
     return tex;
   };
-  const views = await Promise.all([...document.querySelectorAll('canvas[data-model]')].map(async (cv) => {
-    const ds = cv.dataset, file = ds.model, env = ds.env || 'studio', studio = env !== 'none', shadow = ds.shadow !== 'off';
-    const modelName = decodeURIComponent(file.replace(/^assets\//, ''));
-    const gltf = await loader.loadAsync(file).catch((e) => { throw new Error('The 3D model ' + modelName + ' could not be loaded: ' + e.message); });
+  const load = (f) => { const n = decodeURIComponent(f.replace(/^assets\//, '')); return loader.loadAsync(f).catch((e) => { throw new Error('The 3D model ' + n + ' could not be loaded: ' + e.message); }); };
+  // Stock materials a scene may lay over the model's own (data-material).
+  const MATS = {
+    // Glass on a clear canvas: three's transmission would show the empty canvas behind it (nothing), so the glass is
+    // see-through in the middle and solid at the grazing edges (Fresnel), lit by the room's reflections.
+    glass: () => {
+      const m = new THREE.MeshPhysicalMaterial({ color: 0xf4f8ff, metalness: 0, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.8, transparent: true, depthWrite: false });
+      m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n  gl_FragColor.a = clamp(0.14 + 0.82 * pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 2.0), 0.0, 1.0);'); };
+      m.customProgramCacheKey = () => 'studio-glass';
+      return m;
+    },
+    chrome: () => new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.06 }),
+    gold: () => new THREE.MeshStandardMaterial({ color: 0xf2c25b, metalness: 1, roughness: 0.22 }),
+    clay: () => new THREE.MeshStandardMaterial({ color: 0xe9e4da, metalness: 0, roughness: 0.92 }),
+  };
+  const PAINT = 0.6, SWAP = 0.9;
+  const views = await Promise.all([...document.querySelectorAll('canvas.m3c')].map(async (cv) => {
+    const ds = cv.dataset, file = ds.model, env = ds.env || 'studio', studio = env !== 'none';
+    // A subject canvas (data-m3) is built by its own module (templates/m3subjects.mjs) instead of a .glb.
+    const subj = ds.m3 ? (window.__m3 || {})[ds.m3] : null;
+    if (ds.m3 && !subj) throw new Error('The page has no 3D builder for ' + ds.m3);
+    const modelName = file ? decodeURIComponent(file.replace(/^assets\//, '')) : ds.m3;
+    const gltf = subj ? null : await load(file);
     const w = Math.max(2, Math.round(cv.clientWidth)), hgt = Math.max(2, Math.round(cv.clientHeight));
     const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(1); renderer.setSize(w, hgt, false);
@@ -195,9 +285,12 @@ try {
     if (!studio) scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3f4a, 1.4));
     const key = new THREE.DirectionalLight(0xffffff, studio ? 1.2 : 2.4); key.position.set(3, 5, 4); scene.add(key);
     const rim = new THREE.DirectionalLight(0xffffff, studio ? 0.6 : 1.3); rim.position.set(-4, 2, -3); scene.add(rim);
+    const S = subj ? await subj({ cv, ds, THREE, renderer, w, hgt, data: JSON.parse(ds.m3d || '{}'), pics: (ds.pics || '').split(',').filter(Boolean).map((id) => document.getElementById(id)), lib: window.__m3lib }) : null;
+    const shadow = ds.shadow !== 'off' && !(S && S.shadow === false);
     // Centre the model and fit it into a sphere of radius 1.
-    const root = gltf.scene, pivot = new THREE.Group();
-    const box = new THREE.Box3().setFromObject(root), sphere = box.getBoundingSphere(new THREE.Sphere()), fitScale = 1 / (sphere.radius || 1);
+    const root = S ? S.root : gltf.scene, pivot = new THREE.Group();
+    // A subject may name the part to frame (bounds) or its exact sphere (a globe is its own sphere, not its box's).
+    const box = new THREE.Box3().setFromObject((S && S.bounds) || root), sphere = (S && S.sphere) || box.getBoundingSphere(new THREE.Sphere()), fitScale = 1 / (sphere.radius || 1);
     root.position.sub(sphere.center); pivot.add(root); pivot.scale.setScalar(fitScale); scene.add(pivot);
     root.updateWorldMatrix(true, true);
     const centre = root.localToWorld(new THREE.Vector3(0, 0, 0));
@@ -226,6 +319,46 @@ try {
       plane.renderOrder = 2;
       host.add(plane);
     }
+    const node = (name) => { const n = root.getObjectByName(name); if (!n) throw new Error('The 3D model ' + modelName + ' has no part named "' + name + '"'); return n; };
+    if (ds.material) {
+      // A stock look over the named parts (or the whole model); a normal map stays, so the surface keeps its detail.
+      const m = JSON.parse(ds.material);
+      for (const host of m.parts ? m.parts.map(node) : [root]) host.traverse((o) => {
+        if (!o.isMesh) return;
+        o.material = (Array.isArray(o.material) ? o.material : [o.material]).map((old) => { const n = MATS[m.look](); if (old.normalMap) n.normalMap = old.normalMap; n.side = old.side; return n; });
+        if (o.material.length === 1) o.material = o.material[0];
+      });
+    }
+    // Colour changes: each mesh a paint reaches gets its own copy of its materials (a shared material must not change
+    // on other parts), its colours kept as the base; draw() lerps from the base through each paint in time order.
+    const paints = ds.paints ? JSON.parse(ds.paints).map((p) => ({ ...p, col: new THREE.Color(p.c), host: p.part ? node(p.part) : root })) : [];
+    const painted = new Map();
+    for (const p of paints) p.host.traverse((o) => {
+      if (!o.isMesh) return;
+      if (!painted.has(o)) {
+        const mats = (Array.isArray(o.material) ? o.material : [o.material]).map((x) => x.clone());
+        o.material = Array.isArray(o.material) ? mats : mats[0];
+        painted.set(o, { mats, base: mats.map((x) => (x.color ? x.color.clone() : null)), paints: [] });
+      }
+      painted.get(o).paints.push(p);
+    });
+    const tint = new THREE.Color();
+    const paint = (t) => painted.forEach((e) => e.mats.forEach((m, i) => {
+      if (!e.base[i]) return;
+      tint.copy(e.base[i]);
+      for (const p of e.paints) tint.lerp(p.col, smooth((t - p.t) / PAINT));
+      m.color.copy(tint);
+    }));
+    // A second model (data-swap) fitted like the first, its ground on the first one's: at data-swap-t the first spins
+    // out and shrinks while the second spins in and grows.
+    let swap = null;
+    if (ds.swap) {
+      const g2 = await load(ds.swap), r2 = g2.scene, p2 = new THREE.Group();
+      const b2 = new THREE.Box3().setFromObject(r2), s2 = b2.getBoundingSphere(new THREE.Sphere()), f2 = 1 / (s2.radius || 1);
+      r2.position.sub(s2.center); p2.add(r2); p2.scale.setScalar(f2); scene.add(p2);
+      r2.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      swap = { pivot: p2, fit: f2, y: (box.min.y - sphere.center.y) * fitScale - (b2.min.y - s2.center.y) * f2, t: +ds.swapT };
+    }
     // Tour steps resolved in time order: a pose per step (a missing number keeps the previous step's), and each
     // part's gap at that step (0 when the part is in).
     const tour = steps && steps.reduce((acc, s, i) => {
@@ -245,18 +378,26 @@ try {
       root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       // A clear ground at the bottom of the fitted model: only the shadow shows on it.
       const ground = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.ShadowMaterial({ opacity: 0.22 }));
-      ground.rotation.x = -Math.PI / 2; ground.position.y = (box.min.y - sphere.center.y) * fitScale; ground.receiveShadow = true;
+      ground.rotation.x = -Math.PI / 2; ground.position.y = ((S && S.ground != null ? S.ground : box.min.y) - sphere.center.y) * fitScale; ground.receiveShadow = true;
       scene.add(ground);
     }
     const cam = new THREE.PerspectiveCamera(30, w / hgt, 0.05, 100);
-    const half = deg(15), fit = 1.12 / Math.sin(Math.min(half, Math.atan(Math.tan(half) * (w / hgt))));
+    const half = deg(15), th = Math.tan(half);
+    // A model fits its bounding sphere; a flat subject (a word, a logo, a row of cards) fits its own box (or the size
+    // it names), filling S.fill of the frame, so a wide word is not drawn small in the middle of a wide window.
+    const bsz = S && S.fit !== 'sphere' ? (S.size ? new THREE.Vector3(...S.size) : box.getSize(new THREE.Vector3())).multiplyScalar(fitScale) : null;
+    const fit = bsz ? Math.max(bsz.y / 2 / th, bsz.x / 2 / (th * (w / hgt))) / (S.fill || 0.86) + bsz.z / 2
+      : (1.12 / (S?.fill || 1)) / Math.sin(Math.min(half, Math.atan(th * (w / hgt))));
     // bloom and focus: MODEL_POST_JS (written only into a page that uses them) builds the composer.
     const bloom = Math.min(1, Math.max(0, +ds.bloom || 0)), focus = ds.focus === 'on';
     const post = (bloom || focus) && window.__modelPost ? await window.__modelPost({ renderer, scene, cam, w, hgt, bloom, focus, fit }) : null;
-    const mixer = gltf.animations.length ? new THREE.AnimationMixer(root) : null;
-    if (mixer) gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
+    // The model's own animation: every clip, or only the one the scene names (data-clip).
+    const clips = gltf ? (ds.clip ? [THREE.AnimationClip.findByName(gltf.animations, ds.clip)] : gltf.animations) : [];
+    if (ds.clip && !clips[0]) throw new Error('The 3D model ' + modelName + ' has no animation named "' + ds.clip + '"' + (gltf.animations.length ? ' (it has: ' + gltf.animations.map((c) => c.name).join(', ') + ')' : ' (it has none)'));
+    const mixer = clips.length ? new THREE.AnimationMixer(root) : null;
+    if (mixer) clips.forEach((clip) => mixer.clipAction(clip).play());
     const start = +ds.start, end = +ds.end, spin = ds.spin, len = Math.max(0.5, end - start);
-    const pose = POSE[spin] || POSE.turn;
+    const pose = S?.pose || POSE[spin] || POSE.turn;
     const az0 = 'az' in ds ? deg(+ds.az) : pose[0], el0 = 'el' in ds ? deg(+ds.el) : pose[1], zoom0 = +ds.zoom || 1, dist = fit / zoom0;
     const gap = +ds.gap || GAP;
     // The path's poses in radians and zoom, an empty field taking the start pose's value.
@@ -304,6 +445,16 @@ try {
       cam.position.set(Math.sin(az) * Math.cos(el) * d, Math.sin(el) * d, Math.cos(az) * Math.cos(el) * d);
       cam.lookAt(0, 0, 0);
       if (mixer) mixer.setTime(u);
+      if (painted.size) paint(t);
+      if (swap) {
+        // Both models take the spin's move; the hand-over scales one out and the other in, each turning as it goes.
+        const p = (t - swap.t) / SWAP, out = smooth(p * 1.6), inn = smooth(p * 1.6 - 0.6), r = pivot.scale.x / fitScale;
+        swap.pivot.rotation.copy(pivot.rotation); swap.pivot.rotation.y += -2.2 * (1 - inn);
+        swap.pivot.position.set(pivot.position.x, pivot.position.y + swap.y, pivot.position.z);
+        swap.pivot.scale.setScalar(Math.max(1e-4, swap.fit * r * inn)); swap.pivot.visible = inn > 0;
+        pivot.rotation.y += 2.2 * out; pivot.scale.multiplyScalar(Math.max(1e-4, 1 - out)); pivot.visible = out < 1;
+      }
+      if (S?.tick) S.tick(u, k, { t, cam, pivot, fitScale, len });
       if (post) post.render(); else renderer.render(scene, cam);
     };
     // One draw now compiles every shader and allocates the shadow map before the page reports ready. Outside its

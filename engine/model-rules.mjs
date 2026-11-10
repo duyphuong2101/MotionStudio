@@ -17,3 +17,32 @@ export const DECAL_SIZE_DEFAULT = 0.28;
 export const ENVS = ['studio', 'brand', 'none'];
 // A glow from the model's bright highlights (three's UnrealBloomPass): 0 is off, 1 the strongest.
 export const BLOOM_RANGE = [0, 1];
+
+// A model scene's extras: one named animation clip of the .glb, colour changes on a word cue, a second model that takes
+// over, and a stock material on named parts (or the whole model).
+export const CLIP_RE = /^[A-Za-z0-9][A-Za-z0-9 _.|:-]{0,59}$/;
+export const PAINTS = [1, 4];
+export const MATERIAL_LOOKS = ['glass', 'chrome', 'gold', 'clay'];
+// A paint colour: a hex colour or one of the brand's own colours by name.
+export const PAINT_COLORS = ['primary', 'primary2', 'secondary', 'ink', 'bg'];
+export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+// The other 3D kinds (templates/m3subjects.mjs), drawn by the same canvas as a model.
+// type3d: a short word or number as solid letters.
+export const WORD_MAX = 16;
+// device: a screen picture on a phone, tablet or laptop.
+export const DEVICES = ['phone', 'tablet', 'laptop'];
+// swarm: points that fly in and settle into a form.
+export const SWARM_FORMS = ['word', 'icon', 'logo'];
+// cards: photos as prints in 3D space.
+export const CARD_PHOTOS = [2, 6];
+export const CARD_CAPTION = 32;
+export const CARD_ARRANGE = ['row', 'fan', 'ring'];
+// globe: places on a turning globe, joined by arcs.
+export const GLOBE_POINTS = [1, 8];
+export const GLOBE_LABEL = 20;
+export const GLOBE_ARCS = ['hub', 'chain', 'none'];
+// Kinds a scene of the explainer (or a mix) can use for these, so the engine knows a scene draws in 3D.
+export const THREE_KINDS = ['model', 'type3d', 'device', 'swarm', 'cards', 'globe'];
+// A page holds a 3D canvas: three.js must be copied into the job's vendor/ (engine/vendor.mjs).
+export const THREE_CANVAS_RE = /<canvas class="m3c[^"]*"/;

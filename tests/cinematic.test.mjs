@@ -78,8 +78,10 @@ const CINE_BASELINE = {
   // Updated 2026-10-27: a model scene takes a camera path, exploded parts, a decal and a brand environment, a tour canvas, and the anim (Lottie) kind joined the sample (only MODEL_JS and the new kind; the pre-kind baselines leave anim out).
   // Updated 2026-10-28: a softer model contact shadow (a wider PCF blur, lighter ground); only MODEL_JS changed.
   // Updated 2026-10-29: MODEL_JS calls the opt-in bloom and focus composer; checked that only MODEL_JS changed.
-  explainer: { '16:9': '96fe611755aff6d091d5e31fc1af009f32dc8642', '1:1': 'ea020901508cbc4e906341bb94f98e97c7ad589f', '9:16': '69b894839c25fa9c4be345dc5d2875d0ce1e3323', '4:5': 'd0490e02e7ed1c1164ba5c97ec6901736fb45b96', '2:3': '43f33a0841f4bbc0c5bed55de0dfdf7d293e2910', '21:9': 'f3324cf549b9d2c340b860994295574a8001cb74' },
-  'data-story': { '16:9': '02bfd0558abde63af4b8ae6595ac396b278605bb', '1:1': '6b8c44a3726d43d58de1c099de4491c5d73f3e3a', '9:16': '430c92b9ffad6fa569a9e73dd78300cc0b6aac13', '4:5': 'd82ce7b1052f872e741870adfe16ad7f5c088349', '2:3': 'ee7604a5b96191d2ee3b2ed69fdf96eb5fea079a', '21:9': 'f185951b866796102b6b04c3275f413646478347' },
+  // Updated 2026-11-10: the sample now holds the type3d, device, swarm, cards and globe kinds, and MODEL_JS takes clip, paints, swap, material and the subject canvases; without the new kinds only MODEL_JS changed.
+  explainer: { '16:9': '65447851ab2b162b8d9fcd152979ea96ef4c1ed3', '1:1': 'efb59a89c176cd564e14862133c1ce92b7d6c0ae', '9:16': 'f217e884ad10beb0aa4a21705e523d6cb961af14', '4:5': 'b60e3d32a410471fe4be2d903a90f06f73e5b18b', '2:3': '6814b55bba5023b9d6c1b0548d7f5a40624c8d6b', '21:9': 'fd12b2fe20ce8ff136b6524d08deeb8411886e48' },
+  // Data-story re-recorded 2026-11-10: since 2026-11-03 (brand safe area) its centred boxes add justify-content:safe center, the one change.
+  'data-story': { '16:9': '2b4de7ce70a25c0a3216b669d5109e984ad7c4d0', '1:1': '6f057c2b5ecb80f2104f817439c0172d523253bc', '9:16': '11499e441af339780e86f3631980331f2d427cbf', '4:5': '455c1eb818579e79bc265e6e3d0b2a3f902a22ed', '2:3': '70a3c47750ea88efb1713cb58c19fdf4ff214dda', '21:9': '56a2d2233dd38d927719ac37a9b576fc49110805' },
   testimonial: { '9:16': '14ab068eb535cd84e62a31249b335aeb175268c2', '1:1': 'da9b5cdd41108772d1a378d6164f7bb6c4036944', '16:9': '2a201072428738db8b90ff15d3754150cfe11f31', '4:5': '844f5bb8747cc218e5704baf8cc6bdbfea82816a', '2:3': 'a5adbbde8dcbbad4e1d21c5cdb8671681afdbe46', '21:9': '3f3c95ca7ceb8a39da10eb0385803a9700634eaa' },
   event: { '9:16': '590e6697f24b646ffe357cd16465419222f47f4c', '1:1': '1432b74a7379deb1c3a97c07759c5aaab19936c0', '16:9': '3516ed7d84bb37712d80a7baa2caa4a3e7d46569', '4:5': '46b675de13f79978af16ed3729562979b33d35b1', '2:3': '96984a85bb756baf68d3a96a4a5c95f7cde89f40', '21:9': '2a277e800516179a727c555b23b837cc007428dd' },
   // Code-story re-recorded 2026-10-28: a diff line that only changed shows its changed tokens (pairChanges, user decision).
@@ -302,7 +304,7 @@ test('a flash item shows as the voice says its first word; items the voice does 
 test('cinematic centres the content between the corner logo and the subtitles, in larger type; standard pages keep their layout', async () => {
   const cases = {
     explainer: [[S('open', 'title', { title: 'Hi' }), S('a', 'step', { title: 'Plan', icon: 'chat' }), S('d', 'diagram', { title: 'F', nodes: ['A', 'B', 'C'] })], ['.step{padding:140px 120px 210px', '.diag{padding:140px 120px 210px', '.stt{font-size:108px}', '.nodes:has(> :nth-child(7)) .node{font-size:48px']],
-    'data-story': [THEMED['data-story'], ['.box.center,.box:has(> .bars),.box:has(> .chart){padding:140px 170px 210px}', '.big{font-size:300px}', '.bl{font-size:52px}']],
+    'data-story': [THEMED['data-story'], ['.box.center,.box:has(> .bars),.box:has(> .chart){padding:140px 170px 210px;justify-content:safe center}', '.big{font-size:300px}', '.bl{font-size:52px}']],
     'before-after': [[S('sp', 'split', { before: { items: ['a'] }, after: { items: ['b'] } }), S('s', 'stat', { value: 1, text: 't' })], ['.stitle{top:140px;font-size:72px}', '.stat{padding:140px 110px 210px}', '.big{font-size:300px}']],
     'code-story': [[S('c', 'checklist', { title: 'T', items: ['a', 'b'] })], ['.box:has(> .check){padding:140px 170px 210px', '.ci{font-size:58px', '.check:has(> :nth-child(6)) .ci{font-size:48px}']],
   };

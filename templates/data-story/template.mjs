@@ -1,6 +1,7 @@
 import { page, geometry, h, num, hasLogoBug, contentArea, themeClass, ACCENT_CSS } from '../kit.mjs';
 import { logoHtml } from '../shared.mjs';
 import { motionProfile } from '../../engine/brand.mjs';
+import { m3Canvas } from '../model3d.mjs';
 
 const COLORS = ['var(--primary2)', 'var(--secondary)', '#16a34a', '#e11d48', '#7c3aed'];
 // Line chart: the end value's font size (line-height 1) and the label size of a band or a reference line (1080 units).
@@ -57,7 +58,7 @@ export function build(args) {
 }
 
 /** css, body, scenes and js for page(); a mixed video composes these from several templates. */
-export function parts({ brand, script, size }) {
+export function parts({ brand, script, size, timing }) {
   const g = geometry(size);
   const { px, padX, port, land, short } = g;
   const C = chartColors(brand);
@@ -89,6 +90,21 @@ export function parts({ brand, script, size }) {
         ${ch !== null ? `<div class="chg ${ch >= 0 ? 'up' : 'dn'}" id="${id}-chg">${ch >= 0 ? '▲' : '▼'} ${Math.abs(ch).toFixed(1)}%</div>` : ''}
         <div class="dsub" data-lint>${h(sc.text)}</div></div></div>`);
       scenes.push({ id, kind: 'stat', ...tone(sc), ...focus(sc) });
+    } else if (sc.kind === 'bars' && sc.depth === true) {
+      // 3D bars (templates/m3subjects.mjs): lit columns on a floor in the chart colours, the values counting above them.
+      const items = (sc.items || []).slice(0, 6), two = Array.isArray(sc.series) && sc.series.length === 2;
+      const ref = sc.ref && Number.isFinite(Number(sc.ref.value)) ? { v: num(sc.ref.value), label: String(sc.ref.label ?? '') } : null;
+      const max = Math.max(1, ...(ref ? [ref.v] : []), ...items.flatMap((x) => (two ? [num(x.value), num(x.value2)] : [num(x.value)])));
+      const hex = (c) => { const m = /^var\(--([a-z0-9]+)\)$/.exec(c); return m ? brand.colors[m[1]] || '#64748b' : c; };
+      const dk = sc.theme === 'dark';
+      const t = timing?.scenes?.find((x) => x.id === id) || { start: 0, end: 0 };
+      const data = { items: items.map((x) => ({ label: String(x.label ?? ''), v: num(x.value), ...(two ? { v2: num(x.value2) } : {}), ...(x.tone === 'up' || x.tone === 'down' ? { tone: x.tone } : {}) })),
+        colors: C.series.map(hex), two, format: f, dec, unit: String(sc.unit ?? ''), ref, max, ...(sc.tone === 'up' || sc.tone === 'down' ? { tone: sc.tone } : {}),
+        ink: dk ? brand.colors.onPrimary || '#ffffff' : brand.colors.ink, up: dk ? '#4ade80' : '#16a34a', down: dk ? '#f87171' : '#dc2626' };
+      blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="box">${head(sc)}${two ? `<div class="sleg">${sc.series.map((n, j) => `<span data-lint><i style="background:${C.series[j]}"></i>${h(n)}</span>`).join('')}</div>` : ''}
+        <div class="b3win" id="${id}-win">${m3Canvas('bars', id, t, { colors: brand.colors, data })}</div>
+        ${sc.text ? `<div class="dsub" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
+      scenes.push({ id, kind: 'bars3d', ...tone(sc), ...focus(sc) });
     } else if (sc.kind === 'bars') {
       const items = (sc.items || []).slice(0, 6);
       const two = Array.isArray(sc.series) && sc.series.length === 2;
@@ -207,12 +223,14 @@ export function parts({ brand, script, size }) {
   // Written only when a scene uses them, so every other page stays byte for byte the same.
   const hasTone = script.scenes.some((s) => toneClass(s) || (s.kind === 'bars' && Array.isArray(s.items) && s.items.some((x) => toneClass(x ?? {})))), hasSeries = script.scenes.some((s) => s.kind === 'bars' && Array.isArray(s.series) && s.series.length === 2);
   const hasCols = script.scenes.some((s) => s.kind === 'bars' && s.layout === 'columns');
+  const has3d = scenes.some((s) => s.kind === 'bars3d');
   const hasBarRef = script.scenes.some((s) => s.kind === 'bars' && s.layout === 'columns' && s.ref);
   const hasBreak = script.scenes.some((s) => String(s.title ?? '').includes('\n'));
   const hasFocus = script.scenes.some((s) => s.pace === 'focus' && ['stat', 'bars', 'line', 'donut', 'stripes'].includes(s.kind));
   const dsubAt = hasFocus ? 'later' : 'cue';
   const hasDark = script.scenes.some((s) => s.kind !== 'cta' && s.theme === 'dark'), hasAcc = script.scenes.some((s) => s.theme === 'accent');
-  const css = `
+  const css = `${has3d ? `
+.b3win{flex:none;align-self:center;width:${px(land ? 1500 : port ? 940 : 900)};height:${px(port ? 760 : colH + 160)};max-width:100%}.b3win .m3c{display:block;width:100%;height:100%}` : ''}
 .box{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:${px(port ? 120 : 90)} ${padX(land ? 220 : 90)};gap:${px(28)}}
 .box.center{align-items:center;text-align:center}
 .dtt{font-size:${px(port ? 92 : 80)}}${hasBreak ? '.dtt .tl{display:block}' : ''}.dsub{font-size:${px(42)};color:var(--muted);line-height:1.3}
@@ -265,9 +283,9 @@ ${C.fade ? '.area{opacity:.3}' : '.area{fill:var(--primary2);opacity:.12}'}.dot{
 .acc .big{color:var(--ink);background:none}.acc .box .dsub{color:var(--ink);opacity:.8}.acc .bt{background:rgba(15,23,42,.1)}.acc .bt i{background:var(--ink)!important}
 .acc .grid{stroke:rgba(15,23,42,.14)}.acc .ln{stroke:var(--ink)}.acc .area{fill:var(--ink)}.acc .dot{fill:var(--ink);stroke:var(--ink)}
 .acc .lval{color:var(--ink)!important;background:none}.acc .axis,.acc .rlab{color:var(--ink)}.acc .band{fill:var(--ink);fill-opacity:.1}.acc .ref{stroke:var(--ink)}` : ''}${stage ? `
-.box.center,.box:has(> .bars),.box:has(> .chart){padding:${px(A.top)} ${padX(land ? 170 : 90)} ${px(A.bottom)};justify-content:safe center}
+.box.center,.box:has(> .bars),.box:has(> .chart)${has3d ? ',.box:has(> .b3win)' : ''}{padding:${px(A.top)} ${padX(land ? 170 : 90)} ${px(A.bottom)};justify-content:safe center}
 .box.center .kick{font-size:${px(40)}}.big{font-size:${px(port ? 270 : land ? 300 : 250)}}.big small{font-size:${px(land ? 120 : 100)}}.chg{font-size:${px(62)}}.box.center .dsub{font-size:${px(land ? 56 : 48)}}
-.box:has(> .bars) .dtt,.box:has(> .chart) .dtt{font-size:${px(land ? 100 : port ? 96 : 80)}}.box:has(> .bars) .dsub,.box:has(> .chart) .dsub{font-size:${px(land ? 50 : 44)}}
+.box:has(> .bars) .dtt,.box:has(> .chart) .dtt${has3d ? ',.box:has(> .b3win) .dtt' : ''}{font-size:${px(land ? 100 : port ? 96 : 80)}}.box:has(> .bars) .dsub,.box:has(> .chart) .dsub${has3d ? ',.box:has(> .b3win) .dsub' : ''}{font-size:${px(land ? 50 : 44)}}
 .bars{gap:${px(30)}}.bl{font-size:${px(land || port ? 52 : 44)}}.bt{height:${px(36)};border-radius:${px(18)}}.bt i{border-radius:${px(18)}}
 .bars:has(> :nth-child(4)){gap:${px(22)}}.bars:has(> :nth-child(4)) .bl{font-size:${px(44)}}.bars:has(> :nth-child(4)) .bt{height:${px(28)}}
 .bars:has(> :nth-child(6)){gap:${px(18)}}.bars:has(> :nth-child(6)) .bl{font-size:${px(40)}}
@@ -276,7 +294,8 @@ ${C.fade ? '.area{opacity:.3}' : '.area{fill:var(--primary2);opacity:.12}'}.dot{
 const intro = (sc, s) => { const g = $('g-' + sc.id); fadeUp(g.querySelector('.kick'), s + 0.05); fadeUp(g.querySelector('.dtt'), s + 0.12, { d: 0.6 }); return g; };
 ${hasFocus ? `const later = (sc, f) => (sc.focus ? Math.min(cue(sc, f), sc.start + 1.8) : cue(sc, f));
 ` : ''}const KINDS = {
-  title(sc, s) { const g = intro(sc, s); fadeUp(g.querySelector('.dsub'), s + 0.5); },
+  title(sc, s) { const g = intro(sc, s); fadeUp(g.querySelector('.dsub'), s + 0.5); },${has3d ? `
+  bars3d(sc, s) { const g = intro(sc, s); fadeUp(g.querySelector('.sleg'), s + 0.25); pop($(sc.id + '-win'), s + 0.2, { from: 0.9 }); fadeUp(g.querySelector('.dsub'), cue(sc, 0.6)); },` : ''}
   stat(sc, s) {
     const g = $('g-' + sc.id);
     fadeUp(g.querySelector('.kick'), s + 0.05);

@@ -91,7 +91,8 @@ const PARTS_BASELINE = {
   // Updated 2026-10-28: 1:1 only, the standard layout's diagram uses the square node rule (4+ nodes stack) so a
   // 4-node row no longer runs past both edges; NO_FLASH_BASELINE and NO_MODEL_BASELINE 1:1 changed with it.
   // Updated 2026-10-29: MODEL_JS calls the opt-in bloom and focus composer; checked that only MODEL_JS changed.
-  explainer: { '16:9': '37aa374f8a7a46731d32b78d91bf972c5036f409', '1:1': '264fc100463fc989e6f2007f774d4fe061fbcf79', '9:16': 'fb9c3900dabcb6ef05c96801f969e51c5c511a2a', '4:5': '521317afc24ddc261be361a67de55553a54ec9ea', '2:3': 'a3074918dee44d42501c1c55b80a43ea8e3947c2', '21:9': '783a9e8a0e961aa82231084c16f2ce6310e1eb4f' },
+  // Updated 2026-11-10: the sample now holds the type3d, device, swarm, cards and globe kinds, and MODEL_JS takes clip, paints, swap, material and the subject canvases; without the new kinds only MODEL_JS changed.
+  explainer: { '16:9': 'b3ff49095078bc77ced0053c9676b6d7ef48b3f8', '1:1': 'a5d71e7b1426374671efd22e0c02eb728d14a45e', '9:16': '06a6a16503b07fc9f318f044c186319d519bda28', '4:5': '10b09cebf4f19c9deefef71085b5b352762076d9', '2:3': 'b169aae41c3a29bf213e678bd6ab1082f5d3f939', '21:9': 'b1bf8c3eefdaeb102d4b3ed0d64eadac0555140f' },
   // Updated 2026-10-14 for the race and stripes kinds: the earlier scenes' markup is unchanged, only css and js were added.
   // Updated 2026-10-22: the line's end value sits right of its last point (the plot leaves a column for it) instead of
   // the chart's top-right corner.
@@ -100,6 +101,8 @@ const PARTS_BASELINE = {
   event: { '9:16': '73139d151d9e68427bff3ad88a2f56f39912dd20', '1:1': '00382498d5fae6fbc3c287f340ef4132231364b7', '16:9': '4b09d9c64ec53f928c328a0ea0bdba698a580331', '4:5': 'c46e30b5cd7ad8d13d785bdc5c3c8abf942a1d63', '2:3': '9a04ed82a580db1bb2d29a66418a0945742361f9', '21:9': '0d33e7f4489138810d1375ab9d88386129fbf20f' },
 };
 const HASH_BRAND = { name: 'Hash Co', logoText: 'Hash', colors: { primary: '#1e293b', primary2: '#4f46e5', secondary: '#f59e0b', bg: '#f8fafc', ink: '#0f172a', muted: '#64748b', onPrimary: '#ffffff' }, fonts: { display: 'Inter', body: 'Inter' } };
+// The 3D kinds of 2026-11-10 (templates/m3subjects.mjs) joined the sample; the "without X" pages leave them out.
+const NEW_3D = ['type3d', 'device', 'swarm', 'cards', 'globe'];
 const HASH_TIMING = { wordsPerSecond: { default: 2.6 }, minScene: 2.5, leadIn: 0.3, tailOut: 0.4, lastSceneHold: 1.2 };
 
 // A flash scene may carry footage behind its words (2026-11-03): the clip full frame, blurred and shaded under the
@@ -125,7 +128,7 @@ test('explainer: a flash scene with video puts the clip behind the words, blurre
 // The explainer page from before the video kind existed: a script without a video scene must still build it exactly.
 test('explainer: a script without a video scene builds the same page as before the video kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'video' && k !== 'flash' && k !== 'model' && k !== 'anim') })) });
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'video' && k !== 'flash' && k !== 'model' && k !== 'anim' && !NEW_3D.includes(k)) })) });
   const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   const html = build({ brief: { format: '16:9' }, brand: HASH_BRAND, script, timing, size: sizeFor(beats, '16:9') });
@@ -139,7 +142,7 @@ const NO_FLASH_BASELINE = { '16:9': '18ee04ac562e271d91436ef8e44cb25491b74698', 
 
 test('explainer: a script without a flash scene builds the same page as before the flash kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'flash' && k !== 'model' && k !== 'anim') })) });
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'flash' && k !== 'model' && k !== 'anim' && !NEW_3D.includes(k)) })) });
   const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   for (const [format, sha] of Object.entries(NO_FLASH_BASELINE)) {
@@ -156,7 +159,7 @@ const NO_MODEL_BASELINE = { '16:9': '2f24c6ece9b00912f0b6bfe3ec0e9969c579641e', 
 
 test('explainer: a script without a model scene builds the same page as before the model kind', async () => {
   const { dir, beats } = loadTemplate('explainer');
-  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'model' && k !== 'anim') })) });
+  const script = sampleScript({ ...beats, sequence: beats.sequence.map((slot) => ({ ...slot, kind: slot.kind.filter((k) => k !== 'model' && k !== 'anim' && !NEW_3D.includes(k)) })) });
   const timing = estimateTiming(script, HASH_TIMING, 'en', beats.pace || null);
   const { build } = await import(pathToFileURL(path.join(dir, 'template.mjs')).href);
   for (const [format, sha] of Object.entries(NO_MODEL_BASELINE)) {

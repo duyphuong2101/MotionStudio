@@ -86,6 +86,9 @@ export function pictureCopies(script, { brandOwn = new Set() } = {}) {
   const scenes = script.scenes.map((sc) => {
     const own = SCENE_GRADES.includes(sc.grade) ? sc.grade : null;
     for (const f of ['model', 'lottie']) if (typeof sc[f] === 'string' && sc[f]) add(sc[f], sc[f], 'none');
+    // A device screen is an app screen like a ui-story shot, and a swap's second model is a model: both as they are.
+    if (typeof sc.screen === 'string' && sc.screen) add(sc.screen, sc.screen, 'none');
+    if (typeof sc.swap?.model === 'string' && sc.swap.model) add(sc.swap.model, sc.swap.model, 'none');
     for (const sh of sc.shots || []) if (sh?.asset) add(sh.asset, sh.asset, 'none');
     const out = { ...sc };
     if (sc.asset) out.asset = pic(sc.asset, own);

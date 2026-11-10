@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readJson, exists, escapeHtml, loadStudioConfig, round } from './core.mjs';
 import { jobFile } from './jobs.mjs';
+import { THREE_KINDS } from './model-rules.mjs';
 import { ffmpeg } from './media.mjs';
 
 export const REVIEW_DEFAULTS = { fastWps: 3.2, slowTail: 1.5, maxSilence: 0.25, sameKindRun: 3, frameIn: 0.45, frameOut: 0.25, minOut: 0.5, tile: 480 };
@@ -36,8 +37,9 @@ export function pacing(timing, script, opts = {}) {
   const kinds = new Map((script?.scenes || []).map((s) => [s.id, s.kind]));
   // A change of background theme (light, dark, accent) is a new layout too (user decision, 2026-10-28).
   const themes = new Map((script?.scenes || []).map((s) => [s.id, s.theme ?? null]));
-  // A scene with a 3D model, its own camera pose or exploded parts (a product-tour step, a model scene) shows a different picture.
-  const posed = new Set((script?.scenes || []).filter((s) => s.view || s.path || s.explode || s.model).map((s) => s.id));
+  // A scene with a 3D model or another 3D kind, its own camera pose or exploded parts (a product-tour step, a model
+  // scene, 3D bars) shows a different picture.
+  const posed = new Set((script?.scenes || []).filter((s) => s.view || s.path || s.explode || s.model || THREE_KINDS.includes(String(s.kind).split('.').pop()) || s.depth === true).map((s) => s.id));
   // A clip that plays its own sound is heard even with no words over it.
   const sounding = [...(timing.videos || []).filter((v) => v.sound), ...(timing.footage || []).filter((f) => f.hasAudio)];
   const clips = new Map(sounding.map((c) => [c.id, c.seconds]));

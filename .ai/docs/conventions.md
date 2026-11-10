@@ -12,7 +12,7 @@ Edit here, then regenerate. Never hand-edit the generated blocks.
 - UI: one static page (`ui/index.html`, `ui/app.js`, `ui/app.css`), vanilla JS, no bundler.
 - Rendering: `playwright-core` drives installed Chrome; `ffmpeg-static` encodes. GSAP 3 animates compositions.
 - Voice: Kokoro (ONNX, local) or Windows SAPI via PowerShell. No cloud TTS.
-- Tests: `node:test` + `node:assert/strict` in `tests/*.test.mjs`. `npm test` runs them all through `tests/run.mjs` (one process per file, slowest first, at most 4 Chrome-heavy files at once, times kept in `out/_test-times.json`); `npm run test:changed` runs only the files the working-tree changes can affect (`tests/impact.mjs`); `node tests/run.mjs <file...>` runs what those files affect.
+- Tests: `node:test` + `node:assert/strict` in `tests/*.test.mjs`. `npm test` runs them all through `tests/run.mjs` (one process per file, slowest first, at most 4 Chrome-heavy files at once, times kept in `out/_test-times.json`, the whole run below normal process priority so the machine stays usable, `--normal-priority` to turn that off); the play-through sweeps skip a page that already passed with the same HTML and checker (`tests/helpers/page-cache.mjs`, `out/_test-pages/`; `--play-all` or `STUDIO_PLAY_ALL=1` plays every page); `npm run test:changed` runs only the files the working-tree changes can affect (`tests/impact.mjs`); `node tests/run.mjs <file...>` runs what those files affect.
 
 ## Naming
 

@@ -19,7 +19,7 @@ import { hasModels } from '../templates/model3d.mjs';
 const ROOT = () => path.join(DIRS.out, '_preview');
 const SAMPLE = { photo: 'sample-photo.jpg', clip: 'sample-clip.mp4' };
 // The sample scenes name these files; the preview fills them with neutral generated media.
-const FILL = { vo: 'A short line for this scene.', source: 'bullets[0]', video: 'clip.mp4', model: 'model.glb', lottie: 'anim.json', shots: [{ asset: 'photo.jpg', focus: null }] };
+const FILL = { vo: 'A short line for this scene.', source: 'bullets[0]', video: 'clip.mp4', model: 'model.glb', lottie: 'anim.json', shots: [{ asset: 'photo.jpg', focus: null }], screen: 'photo.jpg', photos: [{ asset: 'photo.jpg', caption: 'Day one' }, { asset: 'photo.jpg', caption: 'Launch' }, { asset: 'photo.jpg' }] };
 const IMG_RE = /\.(png|jpe?g|webp|svg)$/i;
 
 /** One scene of every kind each slot allows, filled from the template's own defaults. */

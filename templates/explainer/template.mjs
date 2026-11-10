@@ -1,8 +1,8 @@
 import { page, geometry, h, hasLogoBug, contentArea, themeClass, ACCENT_CSS, wordEm } from '../kit.mjs';
 import { motionProfile } from '../../engine/brand.mjs';
-import { logoHtml } from '../shared.mjs';
+import { logoHtml, logoFile } from '../shared.mjs';
 import { iconSet } from '../../motion-kit/icons.mjs';
-import { modelCanvas } from '../model3d.mjs';
+import { modelCanvas, m3Canvas } from '../model3d.mjs';
 import { lottieBox } from '../lottie.mjs';
 import { stripMarks } from '../../engine/marks.mjs';
 
@@ -30,6 +30,22 @@ export const CTA_BG_CSS = '.ctabg{position:absolute;inset:0;width:100%;height:10
 // A scene's decal as the renderer takes it: the icon's path from the icon set, the brand secondary on white.
 export const decalOf = (decal, ICONS, brand) => (decal && typeof decal === 'object' && ICONS[decal.icon] ? { ...decal, d: ICONS[decal.icon], color: brand.colors?.secondary, bg: '#ffffff' } : undefined);
 const themed = (sc) => sc.theme === 'dark' || sc.theme === 'accent';
+
+// The other 3D kinds (templates/m3subjects.mjs): each draws in the model window under an optional kicker and title.
+// `subject` names the canvas builder; `data` and `pics` give it the scene's settings and the asset pictures it reads.
+const M3_KINDS = {
+  type3d: (sc, { brand }) => ({ subject: 'type', data: { word: String(sc.word ?? ''), color: sc.theme === 'dark' ? brand.colors.secondary : sc.theme === 'accent' ? brand.colors.primary : brand.colors.primary2, weight: brand.fonts?.headingWeight || 800 } }),
+  device: (sc) => ({ subject: 'device', data: { device: sc.device || 'phone' }, pics: [sc.screen] }),
+  swarm: (sc, { brand, ICONS }) => {
+    const c = brand.colors, logo = sc.form === 'logo' ? logoFile(brand, themed(sc)) : null;
+    return { subject: 'swarm', data: { form: logo ? 'logo' : sc.form === 'icon' && ICONS[sc.icon] ? 'icon' : 'word', word: String(sc.word ?? brand.name ?? ''), icon: ICONS[sc.icon] || '', colors: sc.theme === 'accent' ? [c.primary, c.primary2] : [c.primary2, c.secondary], weight: brand.fonts?.headingWeight || 800 }, pics: logo ? [logo] : [] };
+  },
+  cards: (sc, { brand }) => {
+    const photos = (sc.photos || []).filter((p) => typeof p?.asset === 'string' && p.asset).slice(0, 6);
+    return { subject: 'cards', data: { arrange: sc.arrange || 'row', captions: photos.map((p) => String(p.caption ?? '')), ink: brand.colors.ink }, pics: photos.map((p) => p.asset) };
+  },
+  globe: (sc, { brand }) => ({ subject: 'globe', data: { points: (sc.points || []).slice(0, 8).map((p) => ({ lat: Number(p.lat) || 0, lon: Number(p.lon) || 0, label: String(p.label ?? '') })), arcs: sc.arcs || 'hub', ocean: brand.colors.primary, accent: brand.colors.secondary, ink: brand.colors.ink } }),
+};
 
 // The clip reel (templates/clip-reel, extends this renderer): clips full frame, no subtitle band.
 const REEL = 'clip-reel';
@@ -117,9 +133,17 @@ export function parts({ brand, script, timing, size, icons, brief }) {
       // A 3D model (a .glb asset) on the scene's own background; templates/model3d.mjs draws it at every seek.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
       blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="mod">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}<div class="hd vt" data-lint>${h(sc.title)}</div>
-        <div class="mwin" id="${id}-win">${modelCanvas(sc.model, t, sc.spin, { ...sc, decal: decalOf(sc.decal, ICONS, brand), colors: brand.colors })}</div>
+        <div class="mwin" id="${id}-win">${modelCanvas(sc.model, t, sc.spin, { ...sc, decal: decalOf(sc.decal, ICONS, brand), colors: brand.colors, words: (timing?.words || []).filter((w) => w.scene === id) })}</div>
         ${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
       scenes.push({ id, kind: 'model', ...tone(sc) });
+    } else if (M3_KINDS[sc.kind]) {
+      const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
+      const { subject, data, pics = [] } = M3_KINDS[sc.kind](sc, { brand, ICONS });
+      const canvas = m3Canvas(subject, id, t, { ...sc, colors: brand.colors, data, pics });
+      blocks.push(`<div class="sc fill${themeClass(sc)}" id="g-${id}"><div class="mod">${sc.kicker ? `<div class="kick" data-lint>${h(sc.kicker)}</div>` : ''}${sc.title ? `<div class="hd vt" data-lint>${h(sc.title)}</div>` : ''}
+        <div class="mwin${sc.kind === 'cards' && (sc.arrange || 'row') === 'row' ? ' m3fade' : ''}" id="${id}-win">${canvas}</div>
+        ${sc.text ? `<div class="stx" data-lint>${h(sc.text)}</div>` : ''}</div></div>`);
+      scenes.push({ id, kind: sc.kind, ...tone(sc) });
     } else if (sc.kind === 'anim') {
       // A Lottie animation (a .json asset) in the model window; templates/lottie.mjs seeks it with the page clock.
       const t = timing?.scenes.find((x) => x.id === id) || { start: 0, end: 0 };
@@ -140,7 +164,8 @@ export function parts({ brand, script, timing, size, icons, brief }) {
   const hasDarkTitle = scenes.some((s) => s.kind === 'title' && s.dark);
   const hasFlash = scenes.some((s) => s.kind === 'flash');
   const hasFlashBg = scenes.some((s) => s.kind === 'flash' && s.footage);
-  const hasModel = scenes.some((s) => s.kind === 'model' || s.kind === 'anim');
+  const hasModel = scenes.some((s) => s.kind === 'model' || s.kind === 'anim' || M3_KINDS[s.kind]);
+  const hasFade = script.scenes.some((s) => s.kind === 'cards' && (s.arrange || 'row') === 'row');
   const ctaBg = script.scenes.some((s) => s.kind === 'cta' && s.image);
   // The model window: wide in landscape, square in portrait, between the title and the content area's bottom.
   const mwin = port ? [880, short ? 640 : 860] : land ? [1240, 560] : [820, 470];
@@ -191,7 +216,7 @@ export function parts({ brand, script, timing, size, icons, brief }) {
 .vwin video{display:block;width:auto;height:auto;max-width:${px(land ? 1320 : 900)};max-height:${px(port ? 900 : land ? 600 : 560)}}` : ''}${hasModel ? `
 .mod{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${px(18)};padding:${px(A.top)} ${padX(110)} ${px(A.bottom)};text-align:center}
 .mod .vt{font-size:${px(port ? 80 : 64)}}
-.mwin{flex:none;width:${px(mwin[0])};height:${px(mwin[1])};max-width:100%}.m3c{display:block;width:100%;height:100%}.awin{position:relative}.lot{position:absolute;inset:0}.lot svg{display:block;width:100%;height:100%}` : ''}${hasDarkTitle ? `
+.mwin{flex:none;width:${px(mwin[0])};height:${px(mwin[1])};max-width:100%}.m3c{display:block;width:100%;height:100%}${hasFade ? '.m3fade{-webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}' : ''}.awin{position:relative}.lot{position:absolute;inset:0}.lot svg{display:block;width:100%;height:100%}` : ''}${hasDarkTitle ? `
 .tdark{align-items:center;text-align:center}.tdark .tt{color:var(--on);font-size:${px(port ? 140 : 150)}}.tdark .tsub{color:var(--on);opacity:.75}` : ''}${hasFlash ? `
 .flash{position:absolute;left:${padX(flashSide)};right:${padX(flashSide)};top:${px(A.top)};bottom:${px(A.bottom)}}
 .flk{position:absolute;left:0;right:0;top:0;text-align:center}
@@ -317,7 +342,8 @@ ${hasFlash ? `  flash(sc, s, e) {
     pop($(sc.id + '-win'), s + 0.2, { from: 0.92 }); fadeUp(g.querySelector('.stx'), cue(sc, 0.6));${hasTags ? `
     tagPops(sc, s);` : ''}
   },
-` : ''}${hasModel ? `  anim(sc, s) { KINDS.model(sc, s); },
+` : ''}${hasModel ? `  anim(sc, s) { KINDS.model(sc, s); },${Object.keys(M3_KINDS).filter((k) => scenes.some((x) => x.kind === k)).map((k) => `
+  ${k}(sc, s) { KINDS.model(sc, s); },`).join('')}
   model(sc, s) {
     const g = $('g-' + sc.id);
     fadeUp(g.querySelector('.kick'), s + 0.05); fadeUp(g.querySelector('.vt'), s + 0.1, { d: 0.6 });

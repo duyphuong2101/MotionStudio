@@ -48,6 +48,8 @@ export function assetPick(field, footage = false) {
   switch (field) {
     case 'asset': return footage === 'audio' ? { re: /\.(mp4|webm|mov|wav|mp3)$/i, accept: '.mp4,.webm,.mov,.wav,.mp3' } : footage ? clips : pictures;
     case 'image': return pictures;
+    // A device scene's screenshot: a raster picture only (engine/script.mjs checks png, jpg or webp).
+    case 'screen': return { re: /\.(png|jpe?g|webp)$/i, accept: '.png,.jpg,.jpeg,.webp' };
     case 'video': return clips;
     case 'model': return { re: /\.glb$/i, accept: '.glb' };
     case 'lottie': return { re: /\.json$/i, accept: '.json' };
