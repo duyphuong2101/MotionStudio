@@ -15,6 +15,12 @@ import { nodeProblem } from './runtime.mjs';
 import { importRemotion } from './remotion.mjs';
 import { importSceneScript, readScriptFile } from './scenescript.mjs';
 import { exportJob } from './export.mjs';
+import { chaptersOf, chaptersText } from './chapters.mjs';
+import { makePoster, POSTER_SIZES, POSTER_TITLE_MAX } from './poster.mjs';
+import { makeLoop, LOOP_SECONDS, LOOP_WIDTHS, LOOP_DEFAULTS } from './loop.mjs';
+import { translateJob } from './translate.mjs';
+import { readJson, DIRS } from './core.mjs';
+import path from 'node:path';
 
 const USAGE = `Motion Studio engine
 
@@ -42,6 +48,13 @@ const USAGE = `Motion Studio engine
         (a slower clip blends neighbouring frames by default; motion follows the movement, up to 20 s out, and is slow to make)
   node engine/cli.mjs qa      <project> <job>       check a done job's final.mp4 again: loudness, black/frozen picture, size, captions
   node engine/cli.mjs export  <project> <job>       a done job for an editor: one clip per scene, sound stems, captions and timeline.xml (Premiere, Resolve) in export/
+  node engine/cli.mjs chapters <project> <job>      YouTube chapters from a prepared job's scenes ("0:00 Title" lines to paste), or why there are none
+  node engine/cli.mjs poster  <project> <job> [--size ${Object.keys(POSTER_SIZES).join('|')}] [--scene <id>] [--title "<text>"] [--no-logo]
+        a thumbnail or cover PNG from a storyboard still, with the title (up to ${POSTER_TITLE_MAX} characters) on a brand scrim: poster-<size>.png
+  node engine/cli.mjs loop    <project> <job> [--scene <id>] [--seconds ${LOOP_SECONDS[0]}-${LOOP_SECONDS[1]}] [--width ${LOOP_WIDTHS[0]}-${LOOP_WIDTHS[1]}]
+        a silent web loop from a done job's video, the end fading into the start: loop.mp4 and loop.gif (default ${LOOP_DEFAULTS.seconds} s, ${LOOP_DEFAULTS.width} px)
+  node engine/cli.mjs translate <project> <job> --lang <code> [--voice <engine:voice>] [--job <new id>]   a new job that is this one in
+        another language: brief and source copied, waiting for the Director (no model is called here)
   node engine/cli.mjs sequence <project> <sequence>  join the parts' final.mp4 files into out/<project>/<sequence>/final.mp4
   node engine/cli.mjs sequence-preview <project> <sequence>  a quick low-resolution preview.mp4 of the same joins
   node engine/cli.mjs evidence git <repo> [--since 2026-01-01] [--until 2026-09-30] [--tickets OP-1,OP-2] [--grep "<text>"] [--json]
@@ -163,6 +176,10 @@ async function main(argv) {
   const banner = cmd === 'banner' ? bannerArgs(args) : null;
   const remotion = cmd === 'import-remotion' ? { job: flag(args, 'job'), template: flag(args, 'template'), composition: flag(args, 'composition') } : null;
   const sceneJob = cmd === 'import-script' ? flag(args, 'job') : undefined;
+  const poster = cmd === 'poster' ? { size: flag(args, 'size'), scene: flag(args, 'scene'), title: flag(args, 'title'), logo: !args.includes('--no-logo') } : null;
+  const loop = cmd === 'loop' ? { scene: flag(args, 'scene'), seconds: flag(args, 'seconds'), width: flag(args, 'width') } : null;
+  if (loop?.width !== undefined) loop.width = Number(loop.width);
+  const translate = cmd === 'translate' ? { voice: flag(args, 'voice', ''), newId: flag(args, 'job', '') } : null;
   const [project, id, extra] = args.filter((a) => !a.startsWith('--'));
 
   switch (cmd) {
@@ -265,6 +282,31 @@ async function main(argv) {
     case 'export': {
       const { export: ex } = (await exportJob(project, id, by)).outputs;
       console.log(`Exported to out/${project}/${id}/${ex.dir}/: ${ex.scenes} scene clip(s), stems ${ex.stems.join(', ') || 'none'}, ${ex.timeline}`);
+      return;
+    }
+    case 'chapters': {
+      loadBrief(project, id);
+      const timing = readJson(jobFile(project, id, 'timing.json'), null);
+      if (!timing) throw new StudioError('This job has no timing yet: run prepare first', 409);
+      const r = chaptersOf(timing, readJson(jobFile(project, id, 'script.json'), null));
+      console.log(r.chapters.length ? chaptersText(r.chapters).trimEnd() : `No chapters: ${r.reason}`);
+      return;
+    }
+    case 'poster': {
+      const st = await makePoster(project, id, poster, by);
+      const rec = Object.values(st.posters).sort((a, b) => b.at.localeCompare(a.at))[0];
+      console.log(`out/${project}/${id}/${rec.file}: ${rec.width}x${rec.height} from ${rec.scene}${rec.title ? `, "${rec.title}"` : ', no title'}`);
+      return;
+    }
+    case 'loop': {
+      const { loop: l } = (await makeLoop(project, id, loop, by)).outputs;
+      console.log(`out/${project}/${id}/${l.mp4} (${l.mp4Mb} MB) and ${l.gif} (${l.gifMb} MB): ${l.seconds} s from ${l.scene}, ${l.width} px wide`);
+      return;
+    }
+    case 'translate': {
+      const r = translateJob(project, id, { lang, ...translate }, { providers: readJson(path.join(DIRS.config, 'providers.json')), by });
+      console.log(`${project}/${r.brief.id}: ${r.brief.lang} version of ${id}, waiting for the Director (step 3)`);
+      if (r.warning) console.log(`Voice: ${r.warning}`);
       return;
     }
     case 'qa': {

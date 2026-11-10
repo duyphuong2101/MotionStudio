@@ -23,6 +23,8 @@ import { ensureMusic, musicPath, isLibraryMusic, MUSIC } from './library.mjs';
 import { detectBeats, beatSnap, analyseMusic, dropShift, pulseTimes } from './beats.mjs';
 import { ffmpeg, openComposition, lintInPage, probeMedia, mediaTimeoutMs, BT709_VF, BT709_TAGS } from './media.mjs';
 import { renderFrames, renderWorkers, openWorkers, cutClipFrames, CLIP_FPS, CLIP_FRAMES_DIR } from './frames.mjs';
+import { chaptersOf, chaptersText, CHAPTERS_FILE } from './chapters.mjs';
+import { focusClips, coverCrop, reframeCss, withReframeCss } from './reframe.mjs';
 import { playCheck, freshLoad, PLAY_DEFAULTS } from './playcheck.mjs';
 import { pacing, sheetShots, cutShots, writeSheet, writeCutSheet, REVIEW_DIR, SHEET, CUT_SHEET, PACING } from './review.mjs';
 import { runQa } from './qa.mjs';
@@ -209,6 +211,7 @@ export async function prepare(project, id, by = 'engine') {
     const size = sizeFor(beats, brief.format);
     const footage = beats.audio === 'footage';
     const clips = footage ? await footageClips(project, script, beats.footage || 'video') : await sceneVideos(project, script, beats);
+    const reframeNotes = [];
     const grade = brandGrade(project, brand);
     // A scene's own grade wins over the brand's for its clip: none, or a preset.
     const ownGrade = Object.fromEntries(script.scenes.filter((sc) => sc.grade !== undefined).map((sc) => [sc.id, sc.grade]));
@@ -285,6 +288,12 @@ export async function prepare(project, id, by = 'engine') {
         heardWords(timing, clips.filter((c) => c.caption && c.words?.length));
       }
       await matchLoudness(jobDir(project, id), clips, timing, voiceWords, cfg.loudness);
+      // Keep the subject in frame (engine/reframe.mjs): one focus point per clip, for ffmpeg's crop and the pages'.
+      if (brief.reframe === true) {
+        reframeNotes.push(...await focusClips(clips, { cfg, footage }));
+        const focus = clips.filter((c) => c.focus).map((c) => [c.id, c.focus]);
+        if (focus.length) timing.reframe = Object.fromEntries(focus);
+      }
       await cutClips(jobDir(project, id), clips, timing, size, clipGrade);
       if (beats.levels) await clipLevels(clips, timing);
     }
@@ -328,7 +337,9 @@ export async function prepare(project, id, by = 'engine') {
     }
     const page = async (format, sz) => {
       const args = { brief: { ...brief, format }, brand, script: pageScript, timing, size: sz, icons };
-      return beats.mixed ? buildMixed(args, beats) : (await import(pathToFileURL(path.join(tplDir, 'template.mjs')).href)).build(args);
+      const html = beats.mixed ? buildMixed(args, beats) : (await import(pathToFileURL(path.join(tplDir, 'template.mjs')).href)).build(args);
+      // A page that cover-fits a reframed clip moves it to the clip's focus, at this page's size.
+      return footage ? html : withReframeCss(html, reframeCss(clips, sz));
     };
     fs.writeFileSync(path.join(dir, 'index.html'), await page(brief.format, size), 'utf8');
     // three.js for any 3D canvas: a model, the other 3D kinds, 3D bars or a 3D logo (engine/model-rules.mjs).
@@ -348,6 +359,7 @@ export async function prepare(project, id, by = 'engine') {
     for (const f of timing.footage || []) if (f.heard) findings.push({ level: 'warning', el: 'captions', scene: f.id, msg: 'captions come from speech recognition: read them before you approve, or type the clip text to replace them' });
     if (brief.cutOnBeat && beat && !beat.grid) findings.push({ level: 'warning', el: 'music', msg: `Cut on the beat is on, but ${beat.reason}; scenes keep their own length` });
     for (const note of cutNotes) findings.push({ level: 'warning', el: 'cutout', scene: note.split(':')[0], msg: note });
+    for (const note of reframeNotes) findings.push({ level: 'warning', el: 'reframe', ...(note.startsWith('Keep') ? {} : { scene: note.split(':')[0] }), msg: note });
     if (brief.beatPulse && !timing.pulse) findings.push({ level: 'warning', el: 'music', msg: `Pulse on the beat is on, but ${beat?.reason || 'the music has no steady beat and no drop'}; the picture does not pulse` });
     if (dropScene && !drop) findings.push({ level: 'warning', el: 'music', scene: dropScene.id, msg: `${dropScene.id} asks for the music's drop, but ${beat?.seconds ? (beat.drops.length ? 'no drop in the track can land there' : 'no drop was found in the track') : beat?.reason || 'there is no music'}; the music plays from its start` });
     if (!take && tts.available && tts.name === 'sapi') {
@@ -452,7 +464,7 @@ async function footageClips(project, script, media = 'video') {
     const to = sc.out === undefined || sc.out === '' || sc.out === null ? info.duration : Math.min(Number(sc.out), info.duration);
     if (!Number.isFinite(to) || to - from < 0.5) throw new StudioError(`${sc.id}: in/out must leave at least 0.5 s of ${sc.asset} (length ${round(info.duration, 2)} s)`, 400);
     if (to - from > MAX_CLIP_SECONDS) throw new StudioError(`${sc.id}: a clip may be at most ${MAX_CLIP_SECONDS} s`, 400);
-    out.push({ id: sc.id, asset: sc.asset, file, from, seconds: round(to - from, 3), hasAudio: info.hasAudio, hasVideo: media === 'video', fit: sc.fit || 'cover', text: sc.text || '' });
+    out.push({ id: sc.id, asset: sc.asset, file, from, seconds: round(to - from, 3), hasAudio: info.hasAudio, hasVideo: media === 'video', fit: sc.fit || 'cover', text: sc.text || '', width: info.width, height: info.height });
   }
   return out;
 }
@@ -478,7 +490,7 @@ async function sceneVideos(project, script, beats = {}) {
     // (timed on what is heard), else from what is heard.
     const speaks = sc.sound === true && info.hasAudio;
     const captioned = speaks && beats.captions !== false && !String(sc.vo || '').trim();
-    out.push({ id: sc.id, asset: sc.video, file, from, seconds: round(to - from, 3), hasAudio: speaks, hasVideo: true, fit: 'contain', text: '',
+    out.push({ id: sc.id, asset: sc.video, file, from, seconds: round(to - from, 3), hasAudio: speaks, hasVideo: true, fit: 'contain', text: '', width: info.width, height: info.height,
       ...(captioned ? { caption: true, typed: String(sc.caption || '').trim() } : {}) });
   }
   return out;
@@ -694,7 +706,7 @@ async function cutClips(dir, clips, timing, { width, height }, gradeOf = () => n
   for (const c of clips.filter((x) => x.hasVideo)) {
     const scale = c.fit === 'contain'
       ? `scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2`
-      : `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
+      : coverCrop(width, height, c.focus);
     const g = gradeOf(c.id);
     const gradeVf = g ? videoGradeVf(g.grade, g.lutFile) : '';
     await ffmpeg(['-y', '-ss', String(c.from), '-t', String(c.seconds), '-i', c.file, '-an', '-vf', `${scale},fps=${CLIP_FPS}${gradeVf ? `,${gradeVf}` : ''}`,
@@ -993,6 +1005,10 @@ export async function render(project, id, by = 'engine') {
     // The offline HTML copy of the main video; a failure here never fails the render.
     let html = null;
     try { html = { file: 'video.html', mb: round((await buildHtmlVideo(dir)) / 1048576, 1) }; } catch (err) { html = { file: null, reason: err.message.slice(0, 300) }; }
+    // YouTube chapters from the scenes (engine/chapters.mjs); a video too short for them gets the reason instead.
+    const ch = chaptersOf(readJson(jobFile(project, id, 'timing.json'), null), script);
+    fs.rmSync(path.join(dir, CHAPTERS_FILE), { force: true });
+    if (ch.chapters.length) fs.writeFileSync(path.join(dir, CHAPTERS_FILE), chaptersText(ch.chapters), 'utf8');
     const secs = round((Date.now() - t0) / 1000, 1);
     return setStatus(project, id, {
       status: 'done', step: 11, progress: null,
@@ -1001,6 +1017,7 @@ export async function render(project, id, by = 'engine') {
         ...(main.alpha ? { alpha: main.alpha } : {}),
         cuts: extra.map(({ format, final, width, height, qa, alpha: a }) => ({ format, final, width, height, qa, ...(a ? { alpha: a } : {}) })),
         html,
+        chapters: ch.chapters.length ? { file: CHAPTERS_FILE, count: ch.chapters.length } : { file: null, count: 0, reason: ch.reason },
       },
     }, `${made.map((m) => m.final).join(', ')} written in ${secs}s, QA ${made.every((m) => m.qa.passed) ? 'passed' : 'failed'}`, by);
   } catch (err) {

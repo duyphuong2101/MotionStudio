@@ -12,6 +12,7 @@ import { notesForDirector } from './notes.mjs';
 import { assetRhythms } from './footage.mjs';
 import { quickRules } from './quick.mjs';
 import { CUT_KINDS, CAMERA_MOVES, SCENE_GRADES } from './direction.mjs';
+import { translationContext } from './translate.mjs';
 
 /** Stored transcripts of the project's footage, as timed segments, for picking clips and quoting them exactly. */
 function transcriptsOf(project) {
@@ -94,6 +95,7 @@ export function directorContext(project, job) {
     ...(rhythms.length ? { referenceRhythm: rhythms, rhythmRule: RHYTHM_RULE } : {}),
     ...transcriptsOf(project),
     icons: { builtIn: ICON_NAMES, brand: Object.keys(loadBrandIcons(project)) },
+    ...(translationContext(project, brief) || {}),
     ...(screenshots.length ? {
       screenshots,
       screenshotRule: 'A scene whose source is one of these bullets shows that image: put it in shots[0].asset (shot/screen) or asset. Never change a bullet asset a person locked (locks["bullets.asset"]).',

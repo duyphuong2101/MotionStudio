@@ -597,6 +597,67 @@ function qaHtml(qa, base, label = '') {
     ${qa.receipt ? `<a class="small" href="${base}/${esc(qa.receipt)}" target="_blank" rel="noopener">Full receipt (${esc(qa.receipt)})</a>` : ''}</details>`;
 }
 
+// Publishing extras on a rendered job (plan .ai/plans/publish-kit.md): YouTube chapters, a thumbnail or cover from a
+// storyboard still, and a silent web loop. Each button starts one capped engine run; the job stays done.
+const POSTER_SIZE_LABELS = [['youtube', 'YouTube thumbnail · 1280x720'], ['wide', 'Link preview · 1200x630'], ['square', 'Square post · 1080x1080'], ['story', 'Story cover · 1080x1920']];
+const LOOP_WIDTH_OPTIONS = [480, 720, 960, 1280, 1920];
+function publishTools(d, base) {
+  const s = d.status, o = s.outputs || {};
+  const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>${esc(label)}</option>`;
+  const stills = (s.stills || []).map((x) => x.id);
+  const pick = stills[1] || stills[0];
+  const posters = Object.values(s.posters || {});
+  const chapters = d.chapters
+    ? `<pre class="chapters">${esc(d.chapters)}</pre><button class="btn sm" data-copy="${esc(d.chapters)}">Copy chapters</button> <a class="small" href="${base}/chapters.txt" download="${esc(S.sel)}-chapters.txt">chapters.txt</a>`
+    : `<p class="muted small">${esc(o.chapters?.reason || 'Chapters appear after the next render.')}</p>`;
+  const loop = o.loop ? `<p class="small">Web loop: ${esc(o.loop.seconds)} s from ${esc(o.loop.scene)}, ${esc(o.loop.width)} px. <a href="${base}/${esc(o.loop.mp4)}" download="${esc(S.sel)}-loop.mp4">loop.mp4</a> (${esc(o.loop.mp4Mb)} MB) · <a href="${base}/${esc(o.loop.gif)}" download="${esc(S.sel)}-loop.gif">loop.gif</a> (${esc(o.loop.gifMb)} MB)</p>` : '';
+  return `<details class="banner pub"><summary>YouTube chapters</summary>${chapters}</details>
+    <details class="banner pub"><summary>Thumbnail and cover</summary>
+      <p class="muted small">A storyboard still under the title, on a brand scrim with the logo. Leave the title empty for the frame alone.</p>
+      <div class="pubrow"><label>Size <select id="pt-size">${POSTER_SIZE_LABELS.map(([v, l]) => opt(v, l, v === 'youtube')).join('')}</select></label>
+        <label>Scene <select id="pt-scene">${stills.map((id) => opt(id, id, id === pick)).join('')}</select></label>
+        <label>Title <input id="pt-title" maxlength="80" value="${esc(d.brief.subject || '')}"></label>
+        <label><input type="checkbox" id="pt-logo" checked> Logo</label>
+        <button class="btn" data-act="poster">Make poster</button></div>
+      ${posters.length ? `<div class="posters">${posters.map((p) => `<a href="${base}/${esc(p.file)}" download="${esc(S.sel)}-${esc(p.size)}.png" title="${esc(p.width)}x${esc(p.height)} from ${esc(p.scene)}"><img src="${base}/${esc(p.file)}?t=${encodeURIComponent(p.at)}" alt="${esc(p.size)} poster"></a>`).join('')}</div>` : ''}
+      ${s.posterError ? `<p class="bad small">Last poster failed: ${esc(s.posterError)}</p>` : ''}</details>
+    <details class="banner pub"><summary>Web loop</summary>
+      <p class="muted small">A few silent seconds that loop without a jump, for a website hero (MP4) or a chat (GIF).</p>
+      <div class="pubrow"><label>From scene <select id="lp-scene">${(d.timing?.scenes || []).map((x, i) => opt(x.id, x.id, i === 0)).join('')}</select></label>
+        <label>Seconds <input id="lp-sec" type="number" min="2" max="10" step="1" value="6"></label>
+        <label>Width <select id="lp-width">${LOOP_WIDTH_OPTIONS.map((w) => opt(w, `${w} px`, w === 960)).join('')}</select></label>
+        <button class="btn" data-act="loop">${o.loop ? 'Make it again' : 'Make web loop'}</button></div>
+      ${loop}${s.loopError ? `<p class="bad small">Last loop failed: ${esc(s.loopError)}</p>` : ''}</details>`;
+}
+
+// A language version: a new job with this one's brief and source, for the Director to write in another language.
+function langTool(d) {
+  if (!d.script?.scenes?.length) return '';
+  const bv = S.state.projects.find((p) => p.id === S.project)?.brand?.voice || {};
+  const cur = String(d.brief.lang || bv.lang || 'en').toLowerCase();
+  const opt = (v, label) => `<option value="${esc(v)}">${esc(label)}</option>`;
+  if (!S.options && !S.optionsLoading) S.optionsLoading = api('/options').then((o) => { S.options = o; fillLangVoices(); }).catch(() => {}).finally(() => { S.optionsLoading = null; });
+  // The form opens on the first language listed, so its voice is picked for that one.
+  const voices = langVoiceOptions(LANGS.find(([c]) => c !== cur)?.[0]);
+  return `<details class="banner pub"><summary>Language version</summary>
+    <p class="muted small">Makes a new job with this brief and source in another language. Run the Director on it: it writes the same scenes in that language, with the same facts. Nothing is translated until you do.</p>
+    <div class="pubrow"><label>Language <select id="tr-lang">${LANGS.filter(([c]) => c !== cur).map(([c, n]) => opt(c, `${n} · ${c}`)).join('')}</select></label>
+      <label>Voice <select id="tr-voice">${voices}</select></label>
+      <label>New job id <input id="tr-id" placeholder="${esc(S.sel)}-&lt;language&gt;" maxlength="64"></label>
+      <button class="btn" data-act="translate">Make language version</button></div></details>`;
+}
+
+/** The voice options of the language version form, the first voice that speaks `lang` selected. */
+function langVoiceOptions(lang) {
+  const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>${esc(label)}</option>`;
+  const pick = voiceForLang(lang);
+  return opt('', 'Brand default', !pick) + opt('none:', 'No voice-over (music only)')
+    + (S.options?.voices || []).filter((e) => e.available && e.voices.length)
+      .map((e) => `<optgroup label="${esc(e.label)}">${e.voices.map((v) => opt(`${e.id}:${v.id}`, v.label, `${e.id}:${v.id}` === pick)).join('')}</optgroup>`).join('');
+}
+const fillLangVoices = () => { if ($$('#tr-voice').length) $('#tr-voice').innerHTML = langVoiceOptions($('#tr-lang').value); };
+document.addEventListener('change', (e) => { if (e.target.id === 'tr-lang') fillLangVoices(); });
+
 function banner() {
   const d = S.detail, s = d.status, r = d.running;
   const B = (cls, text, buttons = '') => `<div class="banner ${cls}"><p>${text}</p>${buttons}</div>`;
@@ -612,6 +673,7 @@ function banner() {
     case 'dirty': {
       const drafts = (d.script?.scenes || []).filter((x) => x.draft).length;
       if (drafts) return B('warn', `${drafts} draft scene(s) waiting — click Run Director for this job.`, dirBtns('Run Director for this job'));
+      if (s.dirty_from === 3 && d.brief.translateOf && !d.script) return B('warn', `A ${esc(langName(d.brief.lang))} version of <code>${esc(d.brief.translateOf)}</code>. The Director writes the same scenes in this language from the copied source.`, dirBtns('Run Director for this job'));
       if (s.dirty_from === 3) return B('warn', 'You changed the template. The Director writes a new script for it from the kept source. Your earlier script is in <code>script.prev.json</code>.', dirBtns('Run Director for this job'));
       if (s.dirty_from === 1) return B('warn', 'You edited the brief. The Director needs to redo the source and script. Fields you edited in the Script and Source tabs stay locked.', dirBtns('Run Director for this job'));
       return (s.dirty_from ?? 99) < 5
@@ -619,8 +681,8 @@ function banner() {
         : B('warn', 'Script edited by hand. Rebuild the storyboard to see and hear it.', btn('prepare', 'Rebuild storyboard', true));
     }
     case 'preparing': return B('busy', '<span class="spin" aria-hidden="true"></span> Building storyboard…');
-    case 'awaiting_review': return B('human', 'Storyboard ready. Check the preview and stills, edit the script if needed, then approve to render. Changed the brand or the voice? Rebuild the storyboard to apply it.', `${btn('prepare', 'Rebuild storyboard')}${btn('approve', 'Approve, allow render', true)}`);
-    case 'approved': return B('ok', `Approved by ${esc(s.approvedBy || '')}.`, btn('render', 'Render video', true));
+    case 'awaiting_review': return B('human', 'Storyboard ready. Check the preview and stills, edit the script if needed, then approve to render. Changed the brand or the voice? Rebuild the storyboard to apply it.', `${btn('prepare', 'Rebuild storyboard')}${btn('approve', 'Approve, allow render', true)}`) + langTool(d);
+    case 'approved': return B('ok', `Approved by ${esc(s.approvedBy || '')}.`, btn('render', 'Render video', true)) + langTool(d);
     case 'rendering': {
       const p = s.progress?.total ? Math.round((s.progress.frame / s.progress.total) * 100) : 0;
       return B('busy', `<span class="spin" aria-hidden="true"></span> Rendering frame ${s.progress?.frame ?? 0}/${s.progress?.total ?? '?'} (${p}%)`);
@@ -636,7 +698,8 @@ function banner() {
         + `<div class="banner"><p>${o.export ? `Exported for an editor: <code>out/${esc(S.project)}/${esc(S.sel)}/${esc(o.export.dir)}/</code> holds ${esc(o.export.scenes)} scene clip(s), the stems (${esc(o.export.stems.join(', ') || 'none')}), the captions and <code>${esc(o.export.timeline)}</code>, which Premiere Pro and DaVinci Resolve open as a timeline. CapCut takes the clips and stems.`
           : 'Finish it in an editor: Export writes one clip per scene, the voice, music and sound stems, the captions and a timeline for Premiere Pro or DaVinci Resolve.'}${s.exportError ? ` <span class="bad">Last export failed: ${esc(s.exportError)}</span>` : ''}</p>${btn('export', o.export ? 'Export again' : 'Export for editor')}</div>`
         + qaHtml(o.qa, base, (o.cuts || []).length ? d.brief.format : '')
-        + (o.cuts || []).map((c) => qaHtml(c.qa, base, c.format)).join('');
+        + (o.cuts || []).map((c) => qaHtml(c.qa, base, c.format)).join('')
+        + publishTools(d, base) + langTool(d);
     }
     case 'error':
       // failed: 'render' keeps the approval, so the same render can simply run again.
@@ -654,6 +717,14 @@ async function act(btn) {
   await guarded(jobKey(), btn, async () => {
     if (a === 'approve') await api(`/jobs/${jobPath()}/approve`, { method: 'POST', body: {} });
     else if (a === 'director') await api('/director/run', { method: 'POST', body: { project: S.project, job: S.sel } });
+    else if (a === 'poster') await api(`/jobs/${jobPath()}/run`, { method: 'POST', body: { action: 'poster', size: $('#pt-size').value, scene: $('#pt-scene').value, title: $('#pt-title').value, logo: $('#pt-logo').checked } });
+    else if (a === 'loop') await api(`/jobs/${jobPath()}/run`, { method: 'POST', body: { action: 'loop', scene: $('#lp-scene').value, seconds: Number($('#lp-sec').value), width: Number($('#lp-width').value) } });
+    else if (a === 'translate') {
+      const r = await api(`/jobs/${jobPath()}/translate`, { method: 'POST', body: { lang: $('#tr-lang').value, voice: $('#tr-voice').value, id: $('#tr-id').value.trim() } });
+      toast(`Made ${r.brief.id}: run the Director on it${r.warning ? `. Voice: ${r.warning}` : ''}`);
+      await refreshJobs(false);
+      return;
+    }
     else await api(`/jobs/${jobPath()}/run`, { method: 'POST', body: { action: a } });
     toast(a === 'approve' ? 'Approved' : a === 'director' ? 'Director started' : `Started ${a}`);
     await refreshJobs(false);
@@ -1827,6 +1898,14 @@ const TEMPLATE_SUBJECT = {
 };
 const LANGS = [['en', 'English'], ['en-gb', 'English (UK)'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['vi', 'Vietnamese'], ['ja', 'Japanese'], ['zh', 'Chinese']];
 const langName = (code) => LANGS.find(([c]) => c === code)?.[1] || code;
+// The language a voice speaks: a Windows voice its culture, a Kokoro voice its prefix (English only here).
+const voiceLangOf = (engine, v) => (engine === 'kokoro' ? ({ a: 'en', b: 'en-gb' }[v.id[0]] || null) : engine === 'sapi' || engine === 'piper' ? String(v.culture || '').toLowerCase() || null : null);
+/** The first installed voice that speaks `lang` ("engine:id"): the exact culture first, then the same language. '' when none. */
+function voiceForLang(lang) {
+  const want = String(lang || '').toLowerCase(), base = want.split('-')[0];
+  const all = (S.options?.voices || []).filter((e) => e.available).flatMap((e) => e.voices.map((v) => ({ val: `${e.id}:${v.id}`, vl: voiceLangOf(e.id, v) }))).filter((x) => x.vl);
+  return (all.find((x) => x.vl === want) || all.find((x) => x.vl.split('-')[0] === base))?.val || '';
+}
 const subjectHint = (tpl) => SUBJECT_HINTS[TEMPLATE_SUBJECT[tpl]] || { subject: 'Subject', subjectPh: 'Short name', url: 'Reference page' };
 const tplName = (b) => [b.template, ...(b.mix || [])].join(' + ');
 const platformLabel = (id) => S.state.platforms.find((p) => p.id === id)?.label || id;
@@ -1861,7 +1940,7 @@ const briefBody = () => ({
   duration: parseNum($('#bf-dur').value), url: $('#bf-url').value.trim(),
   subject: $('#bf-subj').value.trim(), message: $('#bf-msg').value.trim(), facts: $('#bf-facts').value.trim(),
   cta: $('#bf-cta').value.trim(), notes: $('#bf-notes').value.trim(), lang: $('#bf-lang').value, voice: $('#bf-voice').value, voiceTake: $('#bf-take').value,
-  alsoFormats: $$('#bf-alsolist input:checked').map((x) => x.value), cutOnBeat: $('#bf-beat').checked, beatPulse: $('#bf-pulse').checked, motionBlur: $('#bf-blur').checked,
+  alsoFormats: $$('#bf-alsolist input:checked').map((x) => x.value), cutOnBeat: $('#bf-beat').checked, beatPulse: $('#bf-pulse').checked, motionBlur: $('#bf-blur').checked, reframe: $('#bf-reframe').checked,
   quick: $('#bf-quick').checked,
 });
 // A new brief counts as unsaved once it has a message; an edit once any field differs from the stored brief.
@@ -1882,7 +1961,7 @@ function renderBriefForm(pre) {
   const heading = pre.edit ? 'Edit brief' : pre.from ? `Duplicate of ${esc(pre.from)}` : 'New brief';
   // A new brief starts in quick mode where the template has one; an edit or a duplicate keeps what the brief says.
   const quickInit = pre.quick ?? (!pre.edit && !pre.from);
-  const moreOpen = Boolean(pre.mix?.length || pre.alsoFormats?.length || pre.voiceTake || pre.cutOnBeat || pre.beatPulse || pre.motionBlur);
+  const moreOpen = Boolean(pre.mix?.length || pre.alsoFormats?.length || pre.voiceTake || pre.cutOnBeat || pre.beatPulse || pre.motionBlur || pre.reframe);
   const editNote = !pre.edit ? ''
     : pre.started ? '<div class="banner warn"><p>The Director already worked on this job. Saving a change sends it back to the Director: the next Director run redoes the source and script. Fields you edited in the Script and Source tabs stay locked.</p></div>'
       : '<p class="muted" style="margin:0">The Director has not run yet. Saving only updates the brief file.</p>';
@@ -1929,7 +2008,9 @@ function renderBriefForm(pre) {
         <label class="chk"><input type="checkbox" id="bf-pulse" ${pre.beatPulse ? 'checked' : ''} aria-describedby="bf-pulsehint"> Pulse on the beat</label>
         <span class="muted hint" id="bf-pulsehint">The picture punches in a little on the beat, and harder with a short flash on the music's drop. A scene's Direction can ask for the drop to land on it.</span>
         <label class="chk"><input type="checkbox" id="bf-blur" ${pre.motionBlur ? 'checked' : ''} aria-describedby="bf-blurhint"> Motion blur on fast moves</label>
-        <span class="muted hint" id="bf-blurhint">Softens fast movement like a camera shutter. Rendering takes about 4 times as long; the storyboard does not change.</span></div>
+        <span class="muted hint" id="bf-blurhint">Softens fast movement like a camera shutter. Rendering takes about 4 times as long; the storyboard does not change.</span>
+        <label class="chk"><input type="checkbox" id="bf-reframe" ${pre.reframe ? 'checked' : ''} aria-describedby="bf-reframehint"> Keep the subject in frame</label>
+        <span class="muted hint" id="bf-reframehint">When footage is cropped to another shape (a 16:9 clip in a 9:16 video), the crop follows the person or product instead of the middle. Needs the cut-out model in models/matte/.</span></div>
     </div></details>
     ${editNote}
     <div class="row"><button class="btn p" type="submit" id="bf-save">${pre.edit ? 'Save changes' : 'Save brief'}</button>
@@ -2040,7 +2121,7 @@ function renderBriefForm(pre) {
   $('#bf-lang').innerHTML = opt('', `Brand default (${langName(brandLang)})`, !pre.lang)
     + LANGS.map(([c, n]) => opt(c, `${n} · ${c}`, c === pre.lang)).join('')
     + (pre.lang && !LANGS.some(([c]) => c === pre.lang) ? opt(pre.lang, pre.lang, true) : '');
-  const voiceLang = (engine, v) => (engine === 'kokoro' ? ({ a: 'en', b: 'en-gb' }[v.id[0]] || null) : engine === 'sapi' ? String(v.culture || '').toLowerCase() || null : null);
+  const voiceLang = voiceLangOf;
   const syncVoiceHint = () => {
     const sel = $('#bf-voice').selectedOptions[0];
     const vl = sel?.dataset.lang, lang = pickedLang();
@@ -2077,7 +2158,20 @@ function renderBriefForm(pre) {
     $('#bf-take').innerHTML = opt('', 'None — use the brand voice', !cur) + takes.map((a) => opt(a, a, a === cur)).join('')
       + (cur && !takes.includes(cur) ? opt(cur, `${cur} (not in the assets)`, true) : '');
   }).catch(() => {});
-  $('#bf-lang').addEventListener('change', syncVoiceHint);
+  // A language the brand voice does not speak picks the first voice here that does (e.g. Microsoft An for vi), while
+  // the voice is still the brand default or was picked this way; back to the brand's language, back to its voice.
+  let autoVoice = false;
+  $('#bf-lang').addEventListener('change', () => {
+    const sel = $('#bf-voice');
+    if (sel.value === '' || autoVoice) {
+      const lang = pickedLang(), same = lang.split('-')[0] === brandLang.split('-')[0];
+      const pick = same ? '' : voiceForLang(lang);
+      autoVoice = Boolean(pick);
+      if (pick || same) sel.value = pick;
+    }
+    syncVoiceHint();
+  });
+  $('#bf-voice').addEventListener('change', () => { autoVoice = false; });
   $('#bf-voice').addEventListener('change', syncVoiceHint);
   drawMix(); syncMix(); syncPlatforms(pre.platform); syncFormats(pre.format); syncTpl(); syncAlso(); syncQuick(); syncId();
   S.briefSnap = pre.edit ? JSON.stringify(briefBody()) : null;

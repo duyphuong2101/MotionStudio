@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { ROOT, StudioError, round, readJson, writeJson, keyFreeEnv } from './core.mjs';
+import { ROOT, StudioError, round, readJson, writeJson, keyFreeEnv, loadStudioConfig } from './core.mjs';
+import { PIPER_DIR, SHERPA_DIR, PIPER_VOICE_RE, parseVoiceId, listPiperVoices, piperText, sherpaProblem } from './tts/piper.mjs';
 import { ffmpeg, killTree, mediaTimeoutMs } from './media.mjs';
 import { wordsOf, stressAt } from './script.mjs';
 import { resolvePace, sceneGaps, sceneHold } from './timing.mjs';
@@ -13,6 +14,25 @@ const VOICE_RE = /^[A-Za-z0-9 _()-]{1,60}$/;
 const TTS_TIMEOUT_MS = 60000;
 // By full path: Windows looks for a bare name in the working folder (the repo) before PATH.
 const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const ONECORE_PS = path.join(ROOT, 'engine', 'tts', 'onecore.ps1');
+const SHERPA_PS = path.join(ROOT, 'engine', 'tts', 'sherpa.ps1');
+
+/**
+ * Whether Piper voices can speak here: Windows, the pinned sherpa-onnx runtime (engine/tts/piper.mjs sherpaProblem)
+ * and at least one voice in models/piper/.
+ */
+export function piperStatus(cfg = loadStudioConfig()) {
+  if (process.platform !== 'win32') return { available: false, reason: 'Piper voices run through sherpa-onnx for Windows here' };
+  const problem = sherpaProblem(path.join(ROOT, SHERPA_DIR), cfg.piper?.sha256);
+  if (problem) return { available: false, reason: problem };
+  return listPiperVoices(path.join(ROOT, PIPER_DIR)).length ? { available: true } : { available: false, reason: `${PIPER_DIR}/ holds no voice (a folder such as vi_VN-vais1000-medium with its .onnx, tokens.txt and espeak-ng-data/)` };
+}
+
+// The preview line in the voice's own language, so a Vietnamese voice is not heard reading English.
+const PREVIEW_TEXT = {
+  en: 'Hi, this is how your video will sound. Every claim comes from the product page.',
+  vi: 'Xin chào, đây là giọng đọc cho video của bạn. Mọi thông tin đều lấy từ trang sản phẩm.',
+};
 
 // Kokoro's own grading of its English voices (from the kokoro-js voice table); others are listed as "ungraded".
 const KOKORO_INFO = {
@@ -26,9 +46,44 @@ const KOKORO_INFO = {
 };
 let sapiVoicesCache = null;
 
+/**
+ * Windows voices for the "sapi" engine: the classic ones (System.Speech, "Microsoft Zira Desktop") and the newer
+ * OneCore ones Windows installs with a language's speech pack ("Microsoft An", Vietnamese), marked `onecore`. A
+ * OneCore voice that is a classic one under another name (Zira and Zira Desktop) is listed once.
+ */
 async function sapiVoices() {
   if (process.platform !== 'win32') return [];
   if (sapiVoicesCache) return sapiVoicesCache;
+  const desktop = await desktopVoices();
+  const known = new Set(desktop.map((v) => v.id.replace(/ Desktop$/, '')));
+  sapiVoicesCache = [...desktop, ...(await oneCoreVoices()).filter((v) => !known.has(v.id))];
+  return sapiVoicesCache;
+}
+
+const voiceLabel = (name, culture, gender) => `${name.replace(/^Microsoft /, '').replace(/ Desktop$/, '')} · ${culture} ${String(gender || '').toLowerCase()}`;
+
+/** The OneCore voices: name, language and gender from engine/tts/onecore.ps1 -List; none when it fails. */
+async function oneCoreVoices() {
+  const out = await new Promise((resolve) => {
+    const p = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', ONECORE_PS, '-List'], { shell: false, windowsHide: true, env: keyFreeEnv() });
+    let txt = '';
+    p.stdout.on('data', (d) => { if (txt.length < 20000) txt += d; });
+    const timer = setTimeout(() => killTree(p), 20000);
+    p.on('close', () => { clearTimeout(timer); resolve(txt); });
+    p.on('error', () => resolve(''));
+  });
+  return parseVoiceList(out, 'onecore');
+}
+
+/** "name|culture|gender" lines → voices; a name the voice id rule refuses is dropped. Pure, for tests. */
+export function parseVoiceList(text, kind) {
+  return String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [name, culture, gender] = l.split('|');
+    return { id: name, culture, label: voiceLabel(name, culture, gender), ...(kind === 'onecore' ? { onecore: true } : {}) };
+  }).filter((v) => VOICE_RE.test(v.id));
+}
+
+async function desktopVoices() {
   const out = await new Promise((resolve) => {
     const p = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command',
       'Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices() | Where-Object { $_.Enabled } | ForEach-Object { $_.VoiceInfo.Name + "|" + $_.VoiceInfo.Culture + "|" + $_.VoiceInfo.Gender }'],
@@ -39,11 +94,7 @@ async function sapiVoices() {
     p.on('close', () => { clearTimeout(timer); resolve(txt); });
     p.on('error', () => resolve(''));
   });
-  sapiVoicesCache = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
-    const [name, culture, gender] = l.split('|');
-    return { id: name, culture, label: `${name.replace(/^Microsoft /, '').replace(/ Desktop$/, '')} · ${culture} ${String(gender || '').toLowerCase()}` };
-  }).filter((v) => VOICE_RE.test(v.id));
-  return sapiVoicesCache;
+  return parseVoiceList(out, 'desktop');
 }
 
 /** Every TTS engine with the voices this machine actually has, for the Brand dropdowns. */
@@ -56,13 +107,16 @@ export async function listVoices() {
     { id: 'kokoro', label: 'Kokoro (natural, offline)', available: k.available, reason: k.reason || null,
       voices: [...graded.map((id) => ({ id, label: `${id} · ${KOKORO_INFO[id]}` })), ...rest.map((id) => ({ id, label: `${id} · other language` }))] },
     { id: 'sapi', label: 'Windows voices (exact word timing)', available: process.platform === 'win32', reason: process.platform === 'win32' ? null : 'Windows only', voices: await sapiVoices() },
+    (() => { const p = piperStatus(); return { id: 'piper', label: 'Piper voices (offline, sherpa-onnx)', available: p.available, reason: p.reason || null, voices: p.available ? listPiperVoices(path.join(ROOT, PIPER_DIR)) : [] }; })(),
     { id: 'none', label: 'No voice-over', available: true, reason: null, voices: [] },
   ];
 }
 
 /** A short sample line in one voice, cached on disk; returns the WAV path. */
 export async function previewVoice(cacheDir, provider, voice, speed = 1) {
-  const text = 'Hi, this is how your video will sound. Every claim comes from the product page.';
+  const culture = provider === 'piper' ? (listPiperVoices(path.join(ROOT, PIPER_DIR)).find((v) => v.id === voice)?.culture || '')
+    : provider === 'sapi' ? (await sapiVoices()).find((v) => v.id === voice)?.culture || '' : '';
+  const text = PREVIEW_TEXT[base(culture)] || PREVIEW_TEXT.en;
   fs.mkdirSync(cacheDir, { recursive: true });
   if (!VOICE_RE.test(voice || '')) throw new StudioError('Pick a voice first', 400);
   const sp = Math.max(0.6, Math.min(1.5, Number(speed) || 1));
@@ -71,6 +125,7 @@ export async function previewVoice(cacheDir, provider, voice, speed = 1) {
     return (await speakKokoro(cacheDir, text, voice, sp)).wav;
   }
   if (provider === 'sapi') return (await speakLine(cacheDir, text, voice, Math.round((sp - 1) * 20))).wav;
+  if (provider === 'piper') return (await speakPiper(cacheDir, text, voice, sp)).wav;
   throw new StudioError('This voice engine has no preview', 400);
 }
 
@@ -102,10 +157,16 @@ export function kokoroLang(voice) {
 
 /** Why this voice cannot speak this video's language here, or null when it can. Kokoro is checked; SAPI voices are checked by culture at prepare. */
 export function voiceProblem(v) {
+  if (String(v.tts || '').toLowerCase() === 'piper') {
+    const id = parseVoiceId(v.voice || '');
+    if (!id) return `Piper voice "${v.voice || ''}" is not a voice folder name such as vi_VN-vais1000-medium`;
+    const lang = id.name.slice(0, id.name.indexOf('_'));
+    return base(v.lang) === lang ? null : `Piper voice ${id.name} speaks ${lang}, and this video is "${v.lang}". Pick a voice in that language.`;
+  }
   if (String(v.tts || '').toLowerCase() !== 'kokoro') return null;
   const voice = v.voice || 'af_heart';
   if (!kokoroLang(voice)) return `Kokoro voice ${voice} needs a phonemizer for its language, and this machine only has English. Pick an English Kokoro voice or a Windows voice.`;
-  if (base(v.lang) !== 'en') return `Kokoro on this machine speaks English only, and this video is "${v.lang}". Pick a Windows voice in that language for the brief (install one in Windows Settings → Time & language → Speech), or "No voice-over".`;
+  if (base(v.lang) !== 'en') return `Kokoro on this machine speaks English only, and this video is "${v.lang}". Pick a Windows voice in that language for the brief (add the language's voice in Windows Settings → Time & language → Speech → Add voices, e.g. Microsoft An for Vietnamese, then restart the UI so it lists it), or "No voice-over".`;
   return null;
 }
 
@@ -126,6 +187,10 @@ export function ttsProvider(brand) {
   if (name === 'kokoro') {
     const st = kokoroStatus();
     return st.available ? { name, available: true } : { name, available: false, reason: `Kokoro: ${st.reason}` };
+  }
+  if (name === 'piper') {
+    const st = piperStatus();
+    return st.available ? { name, available: true } : { name, available: false, reason: `Piper: ${st.reason}` };
   }
   if (name === 'none') return { name, available: false, reason: 'no TTS set in brand.voice.tts' };
   return { name, available: false, reason: `TTS "${name}" has no adapter on this machine yet` };
@@ -212,7 +277,8 @@ export function kokoroWords(text, samples, rate = KOKORO_RATE, { inner = null } 
   if (!tokens.length) return [];
   const span = voicedSpan(samples, rate);
   const mark = (w) => (/[.!?]$/.test(w) ? 6 : /[,;:]$/.test(w) ? 3 : 0);
-  const base = (w) => w.replace(/[^A-Za-z0-9$%]/g, '').length + 2 + (/\d/.test(w) ? w.length * 2 : 0);
+  // Letters of any script count (a Vietnamese "đây" is three letters, not one); English words weigh as before.
+  const base = (w) => w.replace(/[^\p{L}\p{N}$%]/gu, '').length + 2 + (/\d/.test(w) ? w.length * 2 : 0);
   const ws = tokens.map((w) => base(w) + mark(w));
   const sum = (a, b) => ws.slice(a, b).reduce((x, y) => x + y, 0);
   // Start times of every word with these pins ({ i: last word before the pause, start, end }), sorted by i.
@@ -295,12 +361,72 @@ async function speakKokoro(dir, text, voice, speed, inner = null) {
   return { wav, ...result };
 }
 
+/**
+ * The words of a OneCore run: each cue names its characters in the text (end included) and where it starts in ms.
+ * Pure, for tests.
+ */
+export function oneCoreWords(text, cues) {
+  return (Array.isArray(cues) ? cues : [cues]).filter(Boolean)
+    .map((c) => ({ w: text.slice(c.s, c.e + 1).trim(), at: round(c.ms / 1000) })).filter((x) => x.w);
+}
+
+/** A OneCore voice speaks one line: its WAV is made 24 kHz mono like the classic voices'. Returns { seconds, words }. */
+async function speakOneCore(dir, key, text, voice, rate, wav) {
+  const input = path.join(dir, `${key}.in.json`), raw = path.join(dir, `${key}.raw.json`), native = path.join(dir, `${key}.native.wav`);
+  // The classic rate runs -10..10; OneCore takes a speed, 1 normal.
+  const speed = Math.max(0.5, Math.min(3, 1 + rate / 20));
+  fs.writeFileSync(input, JSON.stringify({ voice, speed, text }), 'utf8');
+  try {
+    await runPs(ONECORE_PS, ['-In', input, '-Wav', native, '-Out', raw]);
+    await ffmpeg(['-y', '-i', native, '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', wav], { timeoutMs: TTS_TIMEOUT_MS });
+    const parsed = JSON.parse(fs.readFileSync(raw, 'utf8').replace(/^\uFEFF/, ''));
+    return { seconds: round(wavSeconds(wav)), words: oneCoreWords(text, parsed.words) };
+  } finally {
+    for (const f of [input, raw, native]) fs.rmSync(f, { force: true });
+  }
+}
+
+/**
+ * A Piper voice speaks one line through sherpa-onnx (engine/tts/sherpa.ps1), cached by voice, speed and text. The
+ * text is guarded (piperText) before it is spoken; the words are timed on the script's own text the way Kokoro's
+ * are (kokoroWords), since the voice reports no word times. The WAV is made 24 kHz mono.
+ */
+async function speakPiper(dir, text, voice, speed, inner = null) {
+  const id = parseVoiceId(voice);
+  if (!id) throw new StudioError(`Piper voice "${voice}" is not a voice folder name such as vi_VN-vais1000-medium`, 400);
+  const st = piperStatus();
+  if (!st.available) throw new StudioError(`Piper: ${st.reason}`, 400);
+  const spoken = piperText(text);
+  if (!spoken) throw new StudioError(`This line has nothing a voice can read: ${String(text).slice(0, 60)}`, 400);
+  const key = crypto.createHash('sha1').update(`piper|${voice}|${speed}|${text}`).digest('hex').slice(0, 16);
+  const wav = path.join(dir, `${key}.wav`), meta = path.join(dir, `${key}.json`);
+  if (fs.existsSync(wav) && fs.existsSync(meta)) return { wav, ...readJson(meta) };
+  const vdir = path.join(ROOT, PIPER_DIR, id.name);
+  const input = path.join(dir, `${key}.in.json`), raw = path.join(dir, `${key}.raw.json`), native = path.join(dir, `${key}.native.wav`);
+  fs.writeFileSync(input, JSON.stringify({ lib: path.join(ROOT, SHERPA_DIR), model: path.join(vdir, `${id.name}.onnx`), tokens: path.join(vdir, 'tokens.txt'), dataDir: path.join(vdir, 'espeak-ng-data'), threads: 2, speed, sid: id.speaker, text: spoken }), 'utf8');
+  try {
+    await runPs(SHERPA_PS, ['-In', input, '-Wav', native, '-Out', raw]);
+    await ffmpeg(['-y', '-i', native, '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', wav], { timeoutMs: TTS_TIMEOUT_MS });
+  } finally {
+    for (const f of [input, raw, native]) fs.rmSync(f, { force: true });
+  }
+  const s = wavSamples(wav);
+  const result = { seconds: round(s.samples.length / s.rate), words: kokoroWords(text, s.samples, s.rate, { inner }) };
+  writeJson(meta, result);
+  return { wav, ...result };
+}
+
 /** Speaks one line (cached by text + voice + rate). Returns { wav, seconds, words:[{w, at}] }. */
 async function speakLine(dir, text, voice, rate) {
   const key = crypto.createHash('sha1').update(`${voice}|${rate}|${text}`).digest('hex').slice(0, 16);
   const wav = path.join(dir, `${key}.wav`);
   const meta = path.join(dir, `${key}.json`);
   if (fs.existsSync(wav) && fs.existsSync(meta)) return { wav, ...readJson(meta) };
+  if ((await sapiVoices()).find((v) => v.id === voice)?.onecore) {
+    const result = await speakOneCore(dir, key, text, voice, rate, wav);
+    writeJson(meta, result);
+    return { wav, ...result };
+  }
   const input = path.join(dir, `${key}.in.json`);
   fs.writeFileSync(input, JSON.stringify({ voice, rate, text }), 'utf8');
   const raw = path.join(dir, `${key}.raw.json`);
@@ -372,7 +498,7 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
   let provider = 'take', voice = take?.asset, speak = async (sc) => take.lines[sc.id] || silent, cloudUse = null;
   if (!take) {
     provider = ttsProvider(brand).name;
-    voice = brand.voice?.voice || (provider === 'kokoro' ? 'af_heart' : 'Microsoft Zira Desktop');
+    voice = brand.voice?.voice || (provider === 'kokoro' ? 'af_heart' : provider === 'piper' ? listPiperVoices(path.join(ROOT, PIPER_DIR))[0]?.id || '' : 'Microsoft Zira Desktop');
     if (!VOICE_RE.test(voice)) throw new StudioError('brand.voice.voice has unexpected characters', 400);
     const speed = Math.max(0.6, Math.min(1.5, Number(brand.voice?.speed) || 1));
     const rate = Math.max(-10, Math.min(10, Math.round((speed - 1) * 20)));
@@ -386,7 +512,8 @@ export async function speakScript(jobDirPath, script, brand, cfg, paceCfg, fixed
         v = cast[sc.speaker];
         if (!VOICE_RE.test(v)) throw new StudioError(`brand.voice.cast.${sc.speaker} has unexpected characters`, 400);
       }
-      return provider === 'kokoro' ? speakKokoro(cache, text, v, speed, innerBoundaries(groups)) : speakLine(cache, text, v, rate);
+      return provider === 'kokoro' ? speakKokoro(cache, text, v, speed, innerBoundaries(groups))
+        : provider === 'piper' ? speakPiper(cache, text, v, speed, innerBoundaries(groups)) : speakLine(cache, text, v, rate);
     };
     // A brand with a cloud voice uses the lines a person made with Make cloud voice; a line not made (or changed
     // since) keeps the local voice and is named in timing.cloud.stale. A cast speaker keeps its local voice.

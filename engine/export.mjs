@@ -12,6 +12,7 @@ import { ffmpeg, mediaTimeoutMs, BT709_TAGS } from './media.mjs';
 import { musicStemArgs, SPEECH_FILES } from './pipeline.mjs';
 import { SFX_FILE } from './sfx.mjs';
 import { scriptBrand } from './looks.mjs';
+import { CHAPTERS_FILE } from './chapters.mjs';
 
 export const EXPORT_DIR = 'export';
 const SCENE_CRF = 16;
@@ -112,7 +113,7 @@ async function writeExport(project, id, by) {
   const script = readJson(jobFile(project, id, 'script.json'), null);
   const musicArgs = await musicStemArgs(project, scriptBrand(script, loadBrand(project)), { duration: timing.duration, musicShift: timing.music?.shift || 0, out: path.join(out, 'stems', 'music.wav') });
   if (musicArgs) { await ffmpeg(musicArgs, { timeoutMs: mediaTimeoutMs(timing.duration) }); stems.push('music.wav'); }
-  if (fs.existsSync(path.join(dir, 'captions.srt'))) fs.copyFileSync(path.join(dir, 'captions.srt'), path.join(out, 'captions.srt'));
+  for (const f of ['captions.srt', CHAPTERS_FILE]) if (fs.existsSync(path.join(dir, f))) fs.copyFileSync(path.join(dir, f), path.join(out, f));
   const total = Math.round(timing.duration * fps);
   const title = loadBrief(project, id)?.subject || id;
   fs.writeFileSync(path.join(out, 'timeline.xml'), timelineXml({ title, fps, width: o.width, height: o.height, total, scenes, stems, dir: out }), 'utf8');

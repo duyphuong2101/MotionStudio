@@ -59,7 +59,7 @@ function safeAreaCss(pct, g, bug) {
 }
 
 /** @font-face rules for the brand's own font files (licensed fonts that Google Fonts does not serve). */
-function fontFaces(f) {
+export function fontFaces(f) {
   return (f.files || []).map((x) => {
     const ext = x.file.split('.').pop().toLowerCase();
     return `@font-face{font-family:"${x.family}";src:url("${asset(x.file)}") format("${FONT_FORMAT[ext]}");font-weight:${x.weight ?? 400};font-style:${x.style === 'italic' ? 'italic' : 'normal'};font-display:block}`;

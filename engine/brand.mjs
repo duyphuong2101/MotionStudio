@@ -223,7 +223,7 @@ export function validateBrand(input) {
   if (!Number.isFinite(gain) || gain < -40 || gain > 0) errors.push('music.gainDb must be -40..0');
   if (b.music?.file != null && b.music.file !== '' && !MUSIC_FILE.test(b.music.file)) errors.push('music.file must be a .wav, .mp3 or .m4a asset or a built-in track');
   if (b.music?.duck != null && typeof b.music.duck !== 'boolean') errors.push('music.duck must be true or false');
-  if (b.voice?.tts != null && !['kokoro', 'sapi', 'windows', 'none'].includes(String(b.voice.tts).toLowerCase())) errors.push('voice.tts must be kokoro, sapi or none');
+  if (b.voice?.tts != null && !['kokoro', 'sapi', 'windows', 'piper', 'none'].includes(String(b.voice.tts).toLowerCase())) errors.push('voice.tts must be kokoro, sapi, piper or none');
   const say = sayMap(b.voice?.say, errors);
   const cast = castMap(b.voice?.cast, errors);
   const cloud = cloudVoice(b.voice?.cloud, errors);

@@ -93,7 +93,12 @@ Pick the engine on the Brand tab, under Voice-over. **▶ Preview voice** plays 
   - `voices/<voice>.bin`, one file per voice
 
   The folder is not shared through the repo. Copy it from a teammate's machine. The model comes from the kokoro-onnx release (Apache-2.0).
-- Windows voices use the speech voices installed in Windows. They give exact word timing for captions, and they are how you get other languages: add a voice in Windows Settings → Time & language → Speech, then pick it as the brief's **Voice**. Kokoro's other-language voices need a phonemizer this setup does not have, so they are greyed out.
+- Windows voices use the speech voices installed in Windows, the classic ones and the newer ones Windows adds with a language pack (for Vietnamese, Microsoft An). They give exact word timing for captions: add a voice in Windows Settings → Time & language → Speech → Add voices, restart the UI, then pick it as the brief's **Voice**. Kokoro's other-language voices need a phonemizer this setup does not have, so they are greyed out.
+- Piper voices (offline, e.g. Vietnamese) run through sherpa-onnx. Neither is in the repo, and the tool never downloads them:
+  - `models/sherpa-onnx/`: `sherpa-onnx.dll` (lib/net45 of the NuGet package `org.k2fsa.sherpa.onnx` 1.13.8), `sherpa-onnx-c-api.dll` and `onnxruntime.dll` (runtimes/win-x64/native of `org.k2fsa.sherpa.onnx.runtime.win-x64` 1.13.8). Their SHA-256 hashes are pinned in `config/studio.json` → `piper.sha256`; any other build is refused by name. Version 2 of sherpa-onnx dropped espeak-ng and has no Vietnamese lexicon, so stay on 1.13.8.
+  - `models/piper/<voice>/`: one folder per voice, from the sherpa-onnx `tts-models` release on GitHub (`vits-piper-vi_VN-vais1000-medium.tar.bz2`, `vits-piper-vi_VN-vivos-x_low.tar.bz2`), renamed to the voice name (`vi_VN-vais1000-medium`), holding the `.onnx`, `tokens.txt`, `espeak-ng-data/` and `MODEL_CARD`.
+  - Each voice is listed with the licence in its model card. **vivos is CC BY-NC-SA 4.0: tests and internal videos only, never a client or marketing video.** vais1000 is CC BY 4.0: credit the VAIS-1000 corpus.
+  - The text a Piper voice reads keeps only letters, marks, digits and plain punctuation, up to 1000 characters a line. Word timing is estimated from the audio, like Kokoro's.
 - No voice-over gives a music-only video. Timing is then estimated from word count.
 
 Background music: pick a built-in track, or upload an `.mp3`/`.wav` under Brand → Assets.

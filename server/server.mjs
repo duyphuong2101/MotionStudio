@@ -49,6 +49,9 @@ import { writeBanner, bannerFile, parseBannerSize, BANNER_BACKDROPS, BANNER_SIZE
 import { transitionPreview, transitionPreviewFile } from '../engine/transition-preview.mjs';
 import { nodeProblem } from '../engine/runtime.mjs';
 import { importSceneScript } from '../engine/scenescript.mjs';
+import { posterOptions } from '../engine/poster.mjs';
+import { loopOptions } from '../engine/loop.mjs';
+import { translateJob } from '../engine/translate.mjs';
 import { FILES as VOICE_CLOUD_FILES, startCloudVoice, voiceCloudState, voiceCloudHas } from './voice-cloud.mjs';
 import { COOKIE, lanInterface, newCode, codeMatches, cookieCode, reviewRoute, reviewPage } from './review.mjs';
 import { createAssistant } from './assistant.mjs';
@@ -107,9 +110,10 @@ const MIME = {
   '.webp': 'image/webp', '.svg': 'image/svg+xml', '.mp4': 'video/mp4', '.srt': 'text/plain; charset=utf-8',
   '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
   '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.glb': 'model/gltf-binary',
+  '.gif': 'image/gif', '.txt': 'text/plain; charset=utf-8',
 };
 // A sequence's renders are "<title> v<N>.mp4" (VERSION_FILE_RE in engine/sequences.mjs).
-const JOB_FILE_RE = /^(index(-\d+x\d+)?\.html|final(-\d+x\d+)?\.mp4|[A-Za-z0-9][A-Za-z0-9 ._-]{0,79} v\d{1,4}\.mp4|preview\.mp4|captions\.srt|voice\.wav|footage\.wav|sfx\.wav|qa(-\d+x\d+)?\.json|video\.html|alpha(-\d+x\d+)?\.mov|stills\/(\d+x\d+\/)?[a-z0-9-]+\.png|review\/(sheet\.jpg|cuts\.jpg|pacing\.json)|clips\/[a-z0-9-]+\.mp4|vendor\/[A-Za-z0-9.]+\.js|assets\/[A-Za-z0-9][A-Za-z0-9._-]*)$/;
+const JOB_FILE_RE = /^(index(-\d+x\d+)?\.html|final(-\d+x\d+)?\.mp4|[A-Za-z0-9][A-Za-z0-9 ._-]{0,79} v\d{1,4}\.mp4|preview\.mp4|captions\.srt|voice\.wav|footage\.wav|sfx\.wav|qa(-\d+x\d+)?\.json|video\.html|alpha(-\d+x\d+)?\.mov|poster-(youtube|wide|square|story)\.png|loop\.(mp4|gif)|chapters\.txt|stills\/(\d+x\d+\/)?[a-z0-9-]+\.png|review\/(sheet\.jpg|cuts\.jpg|pacing\.json)|clips\/[a-z0-9-]+\.mp4|vendor\/[A-Za-z0-9.]+\.js|assets\/[A-Za-z0-9][A-Za-z0-9._-]*)$/;
 
 /* ---------- engine runner: one child process at a time, no shell, hard timeout ---------- */
 const running = new Map();
@@ -130,7 +134,11 @@ function hold(key, entry, child, rec) {
 }
 const release = (key) => { running.delete(key); untrackChild(key); };
 
-function runEngine(action, project, id) {
+// Actions on a finished job that leave its status alone: a failure lands in its own field, not in status error.
+const SIDE_ERROR = { export: 'exportError', poster: 'posterError', loop: 'loopError' };
+
+/** One engine command on one job. `extra` are its option flags (built by the route, never raw input). */
+function runEngine(action, project, id, extra = []) {
   const key = `${project}/${id}`;
   // With engine.maxConcurrentRuns above 1, two quick clicks would otherwise both start and write the same files.
   if (running.has(key)) throw new StudioError(`This ${action.startsWith('sequence') ? 'sequence' : 'job'} is already running ${running.get(key).action}. Wait for it to finish.`, 409);
@@ -141,7 +149,7 @@ function runEngine(action, project, id) {
   let bytes = 0;
   // A log that cannot be written (locked, disk full) stops logging; an 'error' with no listener would end the server.
   log.on('error', () => { bytes = Infinity; });
-  const child = engineChild([action, project, id, '--by', USER]);
+  const child = engineChild([action, project, id, ...extra, '--by', USER]);
   const capped = (d) => { if (bytes < cfg.engine.maxLogBytes) { bytes += d.length; log.write(d); } };
   child.stdout.on('data', capped);
   child.stderr.on('data', capped);
@@ -157,7 +165,7 @@ function runEngine(action, project, id) {
     // A preview that stops leaves the sequence status alone; only its preview slot records the error.
     // A stopped render keeps the approval: `failed: 'render'` lets the person render again without a new prepare.
     // A stopped export leaves the finished job as it is and records why in exportError.
-    fail(project, id, action === 'sequence-preview' ? { preview: { file: null, error } } : action === 'export' ? { exportError: error } : { status: 'error', error, ...(action === 'render' ? { failed: 'render' } : {}) }, event, 'server');
+    fail(project, id, action === 'sequence-preview' ? { preview: { file: null, error } } : SIDE_ERROR[action] ? { [SIDE_ERROR[action]]: error } : { status: 'error', error, ...(action === 'render' ? { failed: 'render' } : {}) }, event, 'server');
   };
   const timer = setTimeout(() => stop(`${action} timed out after ${cfg.engine.runTimeoutMinutes} min`, `${action} timed out`), cfg.engine.runTimeoutMinutes * 60000);
   hold(key, { action, startedAt: Date.now() }, child, { kind: action.startsWith('sequence') ? 'sequence' : 'job', action, project, id });
@@ -412,6 +420,8 @@ function jobDetail(project, id) {
     stamps: { source: docStamp(f('source.json')), script: docStamp(f('script.json')) },
     ...(outline ? { outline } : {}),
     timing: readJson(f('timing.json'), null),
+    // chapters.txt of the last render (engine/chapters.mjs), shown with a copy button; a few hundred bytes.
+    chapters: exists(f('chapters.txt')) ? fs.readFileSync(f('chapters.txt'), 'utf8').slice(0, 4000) : null,
     has: {
       index: exists(f('index.html')), final: exists(f('final.mp4')), captions: exists(f('captions.srt')),
       voice: exists(f('voice.wav')), footage: exists(f('footage.wav')), sfx: exists(f('sfx.wav')),
@@ -737,10 +747,27 @@ async function api(req, res, url, review = false) {
       return send(res, 200, { changed, dirty_from: dirtyFrom, warnings });
     }
     if (m === 'POST' && action === 'approve') return send(res, 200, approve(project, id, USER));
+    // A language version (engine/translate.mjs): a new job for the Director; nothing is translated here.
+    if (m === 'POST' && action === 'translate' && parts.length === 4 && !review) {
+      const r = translateJob(project, id, { lang: body.lang, voice: body.voice || '', newId: body.id || '' }, { providers: readJson(PROVIDERS_FILE), by: USER });
+      return send(res, 201, r);
+    }
     if (m === 'POST' && action === 'run') {
       if (directorHas(project, id)) throw new StudioError('The Director is working on this job. Wait for it to finish.', 409);
       const what = body.action;
-      if (!['prepare', 'render', 'export'].includes(what)) throw new StudioError('action must be prepare, render or export', 400);
+      if (!['prepare', 'render', 'export', 'poster', 'loop'].includes(what)) throw new StudioError('action must be prepare, render, export, poster or loop', 400);
+      // A poster (engine/poster.mjs) from a storyboard still: checked here so a bad choice answers at once.
+      if (what === 'poster') {
+        if (['preparing', 'rendering'].includes(st.status)) throw new StudioError(`Job is ${st.status}. Wait until it finishes.`, 409);
+        const o = posterOptions(st, { size: body.size, scene: body.scene, title: body.title, logo: body.logo });
+        return send(res, 202, { started: runEngine('poster', project, id, ['--size', o.size, '--scene', o.scene, ...(o.title ? ['--title', o.title] : []), ...(o.logo ? [] : ['--no-logo'])]).started });
+      }
+      // A web loop (engine/loop.mjs) is cut from the rendered video; the job stays done.
+      if (what === 'loop') {
+        if (st.status !== 'done') throw new StudioError('Render the video first: the loop is cut from the rendered video', 409);
+        const o = loopOptions(readJson(jobFile(project, id, 'timing.json'), null), { scene: body.scene, seconds: body.seconds, width: body.width });
+        return send(res, 202, { started: runEngine('loop', project, id, ['--scene', o.scene, '--seconds', String(o.seconds), '--width', String(o.width)]).started });
+      }
       // Export for an editor (engine/export.mjs): cut from a finished render, the job's status stays done.
       if (what === 'export') {
         if (st.status !== 'done') throw new StudioError('Render the video first: the export is cut from the rendered video', 409);
